@@ -1,0 +1,62 @@
+steps:
+  # Frontend dependencies
+  - name: 'node:20'
+    entrypoint: 'npm'
+    args: ['ci']
+    dir: 'Frontend'
+
+  # Frontend build
+  - name: 'node:20'
+    entrypoint: 'npm'
+    args: ['run', 'build']
+    dir: 'Frontend'
+
+  # Backend dependencies
+  - name: 'node:20'
+    entrypoint: 'npm'
+    args: ['ci']
+    dir: 'Backend'
+
+  # Backend build (skipped if no build script)
+  - name: 'node:20'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if npm run build 2>/dev/null; then
+          echo "Backend build succeeded"
+        else
+          echo "No build script found, skipping"
+        fi
+    dir: 'Backend'
+
+  # Deploy Hosting & Functions
+  - name: 'node:20'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Install firebase-tools via npm (avoids ES module issue)
+        npm install -g firebase-tools
+        
+        # Verify installation
+        firebase --version
+        
+        # Deploy hosting
+        firebase deploy --only hosting --project recruitorv-1291c --token "$$FIREBASE_TOKEN"
+        
+        # Deploy functions
+        firebase deploy --only functions --project recruitorv-1291c --token "$$FIREBASE_TOKEN"
+    secretEnv: ['FIREBASE_TOKEN']
+
+# Secrets section
+availableSecrets:
+  secretManager:
+    - versionName: "projects/625961410451/secrets/FIREBASE_TOKEN/versions/latest"
+      env: "FIREBASE_TOKEN"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'  # Optional: faster builds
+
+timeout: '1200s'  # 20 minutes timeout

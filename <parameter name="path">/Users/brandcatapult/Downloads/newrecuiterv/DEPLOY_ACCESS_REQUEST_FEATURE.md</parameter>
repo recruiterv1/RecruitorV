@@ -1,0 +1,55 @@
+<parameter name="content"># Deployment Guide for Access Request Recruiter Details Feature
+
+## Frontend Changes
+The feature has been implemented in `Frontend/src/pages/AccessRequestsManagement.jsx`:
+- Added clickable recruiter names in the access requests table
+- Created RecruiterProfileModal component with 5 tabs (Personal, Professional, Skills, Experience, Education)
+- Added API call to fetch recruiter profiles
+
+## Backend Requirements
+Ensure the following API endpoint exists:
+```
+GET /api/profile/recruiter/:id
+```
+
+This endpoint should return recruiter profile data including:
+- Personal info (name, email, phone, location, country, bio)
+- Professional details (specialization, industries, methods, experience)
+- Skills array
+- Work experience array
+- Education array
+
+## Firebase Deployment Steps
+
+### 1. Build the frontend
+```bash
+cd /Users/brandcatapult/Downloads/newrecuiterv/Frontend
+npm run build
+```
+
+### 2. Deploy to Firebase Hosting
+```bash
+cd /Users/brandcatapult/Downloads/newrecuiterv
+firebase deploy --only hosting
+```
+
+### 3. Or deploy the entire project
+```bash
+firebase deploy
+```
+
+## For Automatic Deployment
+If you have CI/CD set up, commit and push to trigger automatic deployment:
+```bash
+git add .
+git commit -m "Add recruiter profile details feature to access requests"
+git push origin main
+```
+
+## Verification
+After deployment, verify:
+1. Access Requests Management page loads correctly
+2. Clicking on recruiter name opens the profile modal
+3. All tabs (Personal, Professional, Skills, Experience, Education) display correctly
+4. Profile completion percentage shows correctly
+</parameter>

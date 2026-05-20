@@ -1,0 +1,1083 @@
+import React, { useState, useEffect, useContext } from 'react';
+import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Users, 
+  Briefcase, 
+  TrendingUp, 
+  TrendingDown,
+  Search,
+  RefreshCw,
+  Download,
+  Eye,
+  CheckCircle,
+  XCircle,
+  Clock,
+  FileText,
+  ChevronDown,
+  ChevronRight,
+  Mail,
+  X,
+  Send,
+  AlertCircle,
+  Building2,
+  Menu,
+  ArrowLeft
+} from 'lucide-react';
+import { UserStateContext } from '../context/AuthPro';
+import { SidebarContext } from '../context/Sidebarcontext';
+import ClientSpocSidebar from '../components/Dash_View_ClientSpocSidebar';
+
+const ClientSpocStats = () => {
+  const { user } = useContext(UserStateContext);
+  const { isSidebarCollapsed, setIsSidebarCollapsed } = useContext(SidebarContext);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+  const [spocs, setSpocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: 'positionCount', direction: 'desc' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [expandedRows, setExpandedRows] = useState(new Set());
+  const [spocDetails, setSpocDetails] = useState({});
+  const [loadingDetails, setLoadingDetails] = useState({});
+  const navigate = useNavigate();
+  
+  const isCollapsed = isSidebarCollapsed || false;
+
+  // Candidate details modal state
+  const [candidateModal, setCandidateModal] = useState({
+    isOpen: false,
+    candidates: [],
+    positionName: '',
+    clientName: ''
+  });
+  
+  // Email modal state
+  const [emailModal, setEmailModal] = useState({
+    isOpen: false,
+    spoc: null,
+    subject: '',
+    body: '',
+    loading: false,
+    error: null,
+    success: false
+  });
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  // Check if SPOC is inactive (more than 3 days)
+  const isInactive = (lastActive) => {
+    if (!lastActive) {
+      return true; // Never logged in - show as inactive
+    }
+    
+    try {
+      const date = new Date(lastActive);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffDays = Math.floor(diffMs / 86400000);
+      return diffDays >= 3;
+    } catch (err) {
+      return false;
+    }
+  };
+
+  // Format last active date/time
+  const formatLastActive = (lastActive) => {
+    if (!lastActive) {
+      return 'Never';
+    }
+
+    try {
+      const date = new Date(lastActive);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+      if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+      if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+      
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (err) {
+      return 'Invalid date';
+    }
+  };
+
+  // Fetch Client SPOC statistics
+  const fetchClientSpocStats = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.get('/clientspocstats/all');
+      if (response.data.success) {
+        setSpocs(response.data.spocs);
+      } else {
+        setError('Failed to fetch Client SPOC statistics');
+      }
+    } catch (err) {
+      console.error('Error fetching Client SPOC stats:', err);
+      setError(err.response?.data?.message || 'Failed to load Client SPOC statistics');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch detailed stats for a specific SPOC
+  const fetchSpocDetails = async (spocId) => {
+    if (spocDetails[spocId]) {
+      return; // Already loaded
+    }
+
+    setLoadingDetails(prev => ({ ...prev, [spocId]: true }));
+    try {
+      const response = await axios.get(`/clientspocstats/${spocId}`);
+      if (response.data.success) {
+        setSpocDetails(prev => ({
+          ...prev,
+          [spocId]: response.data.data
+        }));
+      }
+    } catch (err) {
+      console.error('Error fetching SPOC details:', err);
+    } finally {
+      setLoadingDetails(prev => ({ ...prev, [spocId]: false }));
+    }
+  };
+
+  // Toggle row expansion
+  const toggleRowExpansion = (spocId) => {
+    const newExpandedRows = new Set(expandedRows);
+    if (newExpandedRows.has(spocId)) {
+      newExpandedRows.delete(spocId);
+    } else {
+      newExpandedRows.add(spocId);
+      fetchSpocDetails(spocId);
+    }
+    setExpandedRows(newExpandedRows);
+  };
+
+  // Open email modal
+  const openEmailModal = (spoc) => {
+    const defaultBody = `Dear ${spoc.name},
+
+We hope this message finds you well.
+
+We noticed that you haven't been active on the RecruiterV platform recently. We wanted to reach out and see if there's anything we can help you with.
+
+Your contributions are valuable to us, and we'd love to see you back on the platform. If you're facing any challenges or have any questions, please don't hesitate to reach out.
+
+We're here to support you in managing your recruitment needs.
+
+Best regards,
+RecruiterV Team
+admin@recruiterv.com`;
+
+    setEmailModal({
+      isOpen: true,
+      spoc: spoc,
+      subject: 'No Activity Found - Let\'s Connect',
+      body: defaultBody,
+      loading: false,
+      error: null,
+      success: false
+    });
+  };
+
+  // Open candidate details modal
+  const openCandidateModal = (candidates, positionName, clientName) => {
+    setCandidateModal({
+      isOpen: true,
+      candidates: candidates,
+      positionName: positionName,
+      clientName: clientName
+    });
+  };
+
+  // Close candidate details modal
+  const closeCandidateModal = () => {
+    setCandidateModal({
+      isOpen: false,
+      candidates: [],
+      positionName: '',
+      clientName: ''
+    });
+  };
+
+  // Close email modal
+  const closeEmailModal = () => {
+    setEmailModal({
+      isOpen: false,
+      spoc: null,
+      subject: '',
+      body: '',
+      loading: false,
+      error: null,
+      success: false
+    });
+  };
+
+  // Send email
+  const sendEmail = async () => {
+    setEmailModal(prev => ({ ...prev, loading: true, error: null }));
+    
+    try {
+      const response = await axios.post('/clientspocstats/send-email', {
+        to: emailModal.spoc.email,
+        subject: emailModal.subject,
+        body: emailModal.body
+      });
+
+      if (response.data.success) {
+        setEmailModal(prev => ({ ...prev, loading: false, success: true }));
+        setTimeout(() => {
+          closeEmailModal();
+        }, 2000);
+      } else {
+        setEmailModal(prev => ({ 
+          ...prev, 
+          loading: false, 
+          error: response.data.message || 'Failed to send email' 
+        }));
+      }
+    } catch (err) {
+      setEmailModal(prev => ({ 
+        ...prev, 
+        loading: false, 
+        error: err.response?.data?.message || 'Failed to send email. Please try again.' 
+      }));
+    }
+  };
+
+  useEffect(() => {
+    fetchClientSpocStats();
+  }, []);
+
+  // Sort function
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Filter and sort SPOCs
+  const filteredAndSortedSpocs = React.useMemo(() => {
+    let filtered = spocs.filter(spoc =>
+      spoc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      spoc.email.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    if (sortConfig.key) {
+      filtered.sort((a, b) => {
+        let aValue = a[sortConfig.key];
+        let bValue = b[sortConfig.key];
+
+        if (typeof aValue === 'string' && aValue.includes('%')) {
+          aValue = parseFloat(aValue);
+          bValue = parseFloat(bValue);
+        }
+
+        if (sortConfig.key === 'lastActive') {
+          const aDate = aValue ? new Date(aValue).getTime() : 0;
+          const bDate = bValue ? new Date(bValue).getTime() : 0;
+          
+          if (aDate < bDate) return sortConfig.direction === 'asc' ? -1 : 1;
+          if (aDate > bDate) return sortConfig.direction === 'asc' ? 1 : -1;
+          return 0;
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [spocs, searchTerm, sortConfig]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredAndSortedSpocs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedSpocs = filteredAndSortedSpocs.slice(startIndex, endIndex);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, sortConfig]);
+
+  // Export to CSV
+  const exportToCSV = () => {
+    const headers = ['Name', 'Email', 'Last Active', 'Clients', 'Positions', 'Recruiters', 'Candidates Submitted', 'On Process', 'Successful', 'Rejected', 'Success Rate'];
+    const csvData = filteredAndSortedSpocs.map(s => [
+      s.name,
+      s.email,
+      formatLastActive(s.lastActive),
+      s.clientCount,
+      s.positionCount,
+      s.recruiterCount,
+      s.candidatesSubmitted,
+      s.candidatesOnProcess,
+      s.candidatesSuccessful,
+      s.candidatesRejected,
+      s.successRate
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `client-spoc-stats-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  // Summary statistics
+  const summaryStats = React.useMemo(() => {
+    return {
+      totalSpocs: spocs.length,
+      totalClients: spocs.reduce((sum, s) => sum + s.clientCount, 0),
+      totalPositions: spocs.reduce((sum, s) => sum + s.positionCount, 0),
+      totalRecruiters: spocs.reduce((sum, s) => sum + s.recruiterCount, 0)
+    };
+  }, [spocs]);
+
+  // Loading spinner
+  const LoadingSpinner = () => (
+    <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="text-center">
+        <div className="w-16 h-16 border-4 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-gray-600 font-medium">Loading Client SPOC statistics...</p>
+      </div>
+    </div>
+  );
+
+  if (!isMounted || !user) {
+    return <LoadingSpinner />;
+  }
+
+  if (loading) {
+    return <LoadingSpinner />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center bg-white rounded-2xl shadow-xl p-8 max-w-md border-2 border-red-200">
+          <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Error Loading Data</h3>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={fetchClientSpocStats}
+            className="px-6 py-2 bg-gradient-to-r from-blue-600 to-orange-500 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-orange-600 transition-all"
+          >
+            Try Again
+          </button>
+        </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 relative">
+      
+      {/* Sidebar - Desktop */}
+      <aside className="hidden lg:block fixed inset-y-0 left-0 z-40 transition-all duration-300">
+        <ClientSpocSidebar />
+      </aside>
+
+      {/* Sidebar - Mobile */}
+      {isSidebarOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 w-64">
+            <ClientSpocSidebar />
+          </aside>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className={`transition-all duration-300 ${isCollapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+        
+        {/* Header */}
+        <header className="sticky top-0 z-30 bg-white shadow-sm">
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsSidebarOpen(true)}
+                className="lg:hidden p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+              >
+                <Menu size={24} />
+              </button>
+              <button
+                onClick={() => navigate('/ad_panel')}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Back to Dashboard"
+              >
+                <ArrowLeft size={20} className="text-gray-600" />
+              </button>
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">Client SPOC Performance</h1>
+                <p className="text-sm text-gray-500">Viewing as {user?.name || 'Admin'}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={fetchClientSpocStats}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <RefreshCw size={18} />
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="min-h-screen">
+          <div className="p-4 sm:p-6 lg:p-8">
+      
+      {/* Header Section */}
+      <div className="mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-orange-500 bg-clip-text text-transparent mb-2">
+              Client SPOC Performance Dashboard
+            </h1>
+            <p className="text-gray-600">Track clients, positions, and performance metrics for all Client SPOCs</p>
+          </div>
+          
+          <div className="flex gap-3">
+            <button
+              onClick={exportToCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-md"
+            >
+              <Download size={18} />
+              <span className="hidden sm:inline">Export CSV</span>
+            </button>
+          </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="bg-white rounded-xl p-6 shadow-lg border-2 border-blue-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Total SPOCs</p>
+                <p className="text-3xl font-bold text-blue-600">{summaryStats.totalSpocs}</p>
+              </div>
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <Users className="text-blue-600" size={24} />
+              </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-6 shadow-lg border-2 border-purple-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Total Clients</p>
+                <p className="text-3xl font-bold text-purple-600">{summaryStats.totalClients}</p>
+              </div>
+              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                <Building2 className="text-purple-600" size={24} />
+              </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-6 shadow-lg border-2 border-orange-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Total Positions</p>
+                <p className="text-3xl font-bold text-orange-600">{summaryStats.totalPositions}</p>
+              </div>
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                <Briefcase className="text-orange-600" size={24} />
+              </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-6 shadow-lg border-2 border-green-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Total Recruiters</p>
+                <p className="text-3xl font-bold text-green-600">{summaryStats.totalRecruiters}</p>
+              </div>
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                <Users className="text-green-600" size={24} />
+              </div>
+          </div>
+
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            placeholder="Search by name or email..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+          />
+        </div>
+
+      {/* Table Section */}
+      <div className="bg-white rounded-xl shadow-xl border-2 border-gray-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gradient-to-r from-blue-600 to-orange-500 text-white">
+              <tr>
+                <th 
+                  className="px-6 py-4 text-left text-sm font-semibold cursor-pointer hover:bg-blue-700 transition-colors"
+                  onClick={() => handleSort('name')}
+                >
+                  <div className="flex items-center gap-2">
+                    SPOC Name
+                    {sortConfig.key === 'name' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-semibold">Email</th>
+                <th 
+                  className="px-6 py-4 text-center text-sm font-semibold cursor-pointer hover:bg-blue-700 transition-colors"
+                  onClick={() => handleSort('clientCount')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Clients
+                    {sortConfig.key === 'clientCount' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-center text-sm font-semibold cursor-pointer hover:bg-blue-700 transition-colors"
+                  onClick={() => handleSort('positionCount')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Positions
+                    {sortConfig.key === 'positionCount' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-center text-sm font-semibold cursor-pointer hover:bg-blue-700 transition-colors"
+                  onClick={() => handleSort('recruiterCount')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Recruiters
+                    {sortConfig.key === 'recruiterCount' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-center text-sm font-semibold cursor-pointer hover:bg-blue-700 transition-colors"
+                  onClick={() => handleSort('candidatesSubmitted')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Submitted
+                    {sortConfig.key === 'candidatesSubmitted' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+                <th 
+                  className="px-6 py-4 text-center text-sm font-semibold cursor-pointer hover:bg-blue-700 transition-colors"
+                  onClick={() => handleSort('successRate')}
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    Success Rate
+                    {sortConfig.key === 'successRate' && (
+                      <span>{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {paginatedSpocs.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center justify-center text-gray-500">
+                      <Users size={48} className="mb-4 opacity-50" />
+                      <p className="text-lg font-semibold">No Client SPOCs found</p>
+                      <p className="text-sm">Try adjusting your search criteria</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedSpocs.map((spoc) => (
+                  <React.Fragment key={spoc.id}>
+                    <tr 
+                      onClick={() => toggleRowExpansion(spoc.id)}
+                      className="hover:bg-blue-50 transition-colors cursor-pointer"
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <button
+                            className="text-gray-500 hover:text-blue-600 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleRowExpansion(spoc.id);
+                            }}
+                          >
+                            {expandedRows.has(spoc.id) ? (
+                              <ChevronDown size={20} className="text-blue-600" />
+                            ) : (
+                              <ChevronRight size={20} />
+                            )}
+                          </button>
+                          
+                          {/* Avatar with inactive badge */}
+                          <div className="relative">
+                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-orange-500 rounded-full flex items-center justify-center text-white font-bold">
+                              {spoc.name.charAt(0).toUpperCase()}
+                            </div>
+                            {isInactive(spoc.lastActive) && (
+                              <div 
+                                className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-400 border-2 border-white rounded-full flex items-center justify-center shadow-lg"
+                                title={`Inactive for 3+ days - Last active: ${formatLastActive(spoc.lastActive)}`}
+                                style={{ fontSize: '14px' }}
+                              >
+                                😔
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-gray-900">{spoc.name}</p>
+                              {/* Email icon - only show for inactive SPOCs */}
+                              {isInactive(spoc.lastActive) && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEmailModal(spoc);
+                                  }}
+                                  className="p-1 hover:bg-blue-100 rounded-full transition-colors group"
+                                  title="Send email to inactive SPOC"
+                                >
+                                  <Mail size={16} className="text-gray-400 group-hover:text-blue-600" />
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-500 flex items-center gap-1">
+                              <Clock size={12} />
+                              Last active: {formatLastActive(spoc.lastActive)}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700">{spoc.email}</td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="inline-flex items-center justify-center w-12 h-12 bg-purple-100 text-purple-700 rounded-full font-bold text-lg">
+                          {spoc.clientCount}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="inline-flex items-center justify-center w-12 h-12 bg-blue-100 text-blue-700 rounded-full font-bold text-lg">
+                          {spoc.positionCount}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className="inline-flex items-center justify-center w-12 h-12 bg-green-100 text-green-700 rounded-full font-bold text-lg">
+                          {spoc.recruiterCount}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <FileText size={16} className="text-gray-500" />
+                          <span className="font-semibold text-gray-900">{spoc.candidatesSubmitted}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+                          parseFloat(spoc.successRate) >= 50 
+                            ? 'bg-green-100 text-green-700'
+                            : parseFloat(spoc.successRate) >= 25
+                            ? 'bg-yellow-100 text-yellow-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}>
+                          {spoc.successRate}
+                        </span>
+                      </td>
+                    </tr>
+                    
+                    {/* Expanded Row Details */}
+                    {expandedRows.has(spoc.id) && (
+                      <tr className="bg-gray-50">
+                        <td colSpan="7" className="px-6 py-4">
+                          {loadingDetails[spoc.id] ? (
+                            <div className="flex items-center justify-center py-8">
+                              <RefreshCw className="w-6 h-6 text-blue-600 animate-spin mr-3" />
+                              <span className="text-gray-600">Loading details...</span>
+                            </div>
+                          ) : spocDetails[spoc.id] ? (
+                            <div className="bg-white rounded-lg p-6 shadow-inner">
+                              <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                <Building2 size={20} className="text-blue-600" />
+                                Client-wise Position Breakdown
+                              </h4>
+
+                              {spocDetails[spoc.id].clientBreakdown.length === 0 ? (
+                                <p className="text-gray-500 text-center py-4">No clients found</p>
+                              ) : (
+                                <div className="space-y-4">
+                                  {spocDetails[spoc.id].clientBreakdown.map((client, idx) => (
+                                    <div key={idx} className="border-2 border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                                      <div className="flex items-start justify-between mb-3">
+                                        <div className="flex-1">
+                                          <h5 className="font-semibold text-gray-900 text-lg flex items-center gap-2">
+                                            <Building2 size={18} className="text-purple-600" />
+                                            {client.clientName}
+                                          </h5>
+                                        </div>
+                                        <div className="bg-purple-100 text-purple-700 px-4 py-2 rounded-full font-bold">
+                                          {client.positionCount} {client.positionCount === 1 ? 'Position' : 'Positions'}
+                                        </div>
+                                      </div>
+
+                                      {/* Positions Table */}
+                                      <div className="mt-3 overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                          <thead className="bg-gray-100">
+                                            <tr>
+                                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Position</th>
+                                              <th className="px-3 py-2 text-left font-semibold text-gray-700">HR Name</th>
+                                              <th className="px-3 py-2 text-center font-semibold text-gray-700">Candidates</th>
+                                              <th className="px-3 py-2 text-left font-semibold text-gray-700">Posted Date</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody className="divide-y divide-gray-200">
+                                            {client.positions.map((position, pIdx) => (
+                                              <tr key={pIdx} className="hover:bg-gray-50">
+                                                <td className="px-3 py-2 text-gray-900">{position.positionName}</td>
+                                                <td className="px-3 py-2 text-gray-700">{position.hrName}</td>
+                                                <td className="px-3 py-2 text-center">
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      openCandidateModal(position.candidates, position.positionName, client.clientName);
+                                                    }}
+                                                    className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors cursor-pointer"
+                                                    title="Click to view candidate details"
+                                                  >
+                                                    {position.candidateCount}
+                                                  </button>
+                                                </td>
+                                                <td className="px-3 py-2 text-gray-600">
+                                                  {position.datePosted ? (
+                                                    new Date(position.datePosted).toLocaleDateString('en-US', {
+                                                      year: 'numeric',
+                                                      month: 'short',
+                                                      day: 'numeric'
+                                                    })
+                                                  ) : (
+                                                    'N/A'
+                                                  )}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-center py-4 text-gray-500">
+                              Failed to load details
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+      {/* Pagination Controls */}
+      {filteredAndSortedSpocs.length > 0 && (
+        <div className="mt-6 bg-white rounded-xl shadow-lg border-2 border-gray-100 p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            
+            {/* Items per page selector */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-600 font-medium">Rows per page:</label>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+
+            {/* Page info */}
+            <div className="text-sm text-gray-600">
+              Showing {startIndex + 1} to {Math.min(endIndex, filteredAndSortedSpocs.length)} of {filteredAndSortedSpocs.length} SPOCs
+            </div>
+
+            {/* Page navigation */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-3 py-2 border-2 border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                title="First page"
+              >
+                «
+              </button>
+              
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 border-2 border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                title="Previous page"
+              >
+                ‹
+              </button>
+
+              {/* Page numbers */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let startPage = Math.max(1, currentPage - 2);
+                  let endPage = Math.min(totalPages, startPage + 4);
+                  startPage = Math.max(1, endPage - 4);
+                  
+                  return Array.from({ length: endPage - startPage + 1 }, (_, idx) => {
+                    let pageNum = startPage + idx;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`px-3 py-2 border-2 rounded-lg transition-all ${
+                          currentPage === pageNum
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-gray-200 hover:bg-blue-50 hover:border-blue-300'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  });
+                })}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 border-2 border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                title="Next page"
+              >
+                ›
+              </button>
+              
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 border-2 border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                title="Last page"
+              >
+                »
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Modal */}
+      {emailModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-orange-500 p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                  <Mail size={24} />
+                  Send Email
+                </h2>
+                <button
+                  onClick={closeEmailModal}
+                  className="text-white/80 hover:text-white transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              <p className="text-white/80 mt-2">Send email to inactive Client SPOC</p>
+            </div>
+
+            <div className="p-6">
+              {emailModal.success ? (
+                <div className="text-center py-8">
+                  <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Email Sent Successfully!</h3>
+                  <p className="text-gray-600">Your email has been sent to {emailModal.spoc?.email}</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">To:</label>
+                    <input
+                      type="email"
+                      value={emailModal.spoc?.email || ''}
+                      readOnly
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg bg-gray-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Subject:</label>
+                    <input
+                      type="text"
+                      value={emailModal.subject}
+                      onChange={(e) => setEmailModal(prev => ({ ...prev, subject: e.target.value }))}
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">Body:</label>
+                    <textarea
+                      value={emailModal.body}
+                      onChange={(e) => setEmailModal(prev => ({ ...prev, body: e.target.value }))}
+                      rows={10}
+                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all resize-none"
+                    />
+                  </div>
+
+                  {emailModal.error && (
+                    <div className="flex items-center gap-2 text-red-600 bg-red-50 p-3 rounded-lg">
+                      <AlertCircle size={20} />
+                      <span>{emailModal.error}</span>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={sendEmail}
+                      disabled={emailModal.loading}
+                      className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-orange-500 text-white rounded-xl font-semibold hover:from-blue-700 hover:to-orange-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {emailModal.loading ? (
+                        <>
+                          <RefreshCw className="w-5 h-5 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send size={20} />
+                          Send Email
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={closeEmailModal}
+                      className="px-6 py-3 border-2 border-gray-200 rounded-xl font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Candidate Details Modal */}
+      {candidateModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-orange-500 p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <FileText size={24} />
+                    Candidate Details
+                  </h2>
+                  <p className="text-white/80 mt-1">{candidateModal.positionName}</p>
+                  <p className="text-white/60 text-sm">{candidateModal.clientName}</p>
+                </div>
+                <button
+                  onClick={closeCandidateModal}
+                  className="text-white/80 hover:text-white transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              {candidateModal.candidates.length === 0 ? (
+                <p className="text-center text-gray-500 py-8">No candidates found for this position</p>
+              ) : (
+                <div className="space-y-4">
+                  {candidateModal.candidates.map((candidate, idx) => (
+                    <div key={idx} className="border-2 border-gray-100 rounded-lg p-4 hover:border-blue-200 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-orange-500 rounded-full flex items-center justify-center text-white font-bold">
+                            {candidate.name?.charAt(0).toUpperCase() || '?'}
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-900">{candidate.name || 'Unknown'}</h4>
+                            <p className="text-sm text-gray-500">{candidate.email || 'No email'}</p>
+                          </div>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          candidate.status === 'selected' ? 'bg-green-100 text-green-700' :
+                          candidate.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {candidate.status || 'pending'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-gray-100 bg-gray-50">
+              <button
+                onClick={closeCandidateModal}
+                className="w-full px-6 py-3 border-2 border-gray-200 rounded-xl font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ClientSpocStats;

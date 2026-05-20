@@ -1,0 +1,37 @@
+/* React Quill Editor Styles */
+.ql-container {
+  font-size: 16px;
+  font-family: inherit;
+}
+
+.ql-editor {
+  min-height: 300px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.ql-editor.ql-blank::before {
+  font-style: italic;
+  color: #aaa;
+}
+
+/* Ensure toolbar is visible */
+.ql-toolbar {
+  background: #f8f9fa;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+.ql-container {
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+/* Fix z-index issues with modal */
+.ql-tooltip {
+  z-index: 9999 !important;
+}
+
+.ql-editing {
+  z-index: 9999 !important;
+}

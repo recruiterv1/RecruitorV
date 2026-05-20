@@ -1,0 +1,345 @@
+import { useContext, useState, useEffect } from "react";
+import axios from "axios";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { FcGoogle } from "react-icons/fc";
+import { FaLinkedin } from "react-icons/fa";
+import { UserDispatchContext } from "../context/AuthPro";
+import { auth, googleProvider } from "../firebase";
+import { signInWithPopup } from "firebase/auth";
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2, UserCheck } from "lucide-react";
+
+const Login = () => {
+  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dispatch = useContext(UserDispatchContext);
+
+  // Check for inactivity logout message
+  useEffect(() => {
+    if (searchParams.get('inactivity') === 'true') {
+      setMessage('You have been logged out due to inactivity.');
+      // Clear the query parameter
+      searchParams.delete('inactivity');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
+    dispatch({ type: "LOGIN_START" });
+
+    try {
+      const res = await axios.post("/auth/rec_verify/", {
+        email: email.toLowerCase().trim(),  // Normalize email to lowercase
+        password,
+      }, { withCredentials: true });
+      
+      setMessage(res.data.message || "Verified successfully ✅");
+      
+      const userData = res.data.user;
+      
+      dispatch({ 
+        type: "LOGIN_SUCCESS", 
+        payload: { 
+          name: userData?.name, 
+          email: userData?.email,
+          roleCategory: userData?.roleCategory,
+          experienceCategory: userData?.experienceCategory
+        } 
+      });
+
+      // ✅ SIMPLE ROUTING LOGIC - Backward Compatible
+      setTimeout(() => {
+        const role = userData?.roleCategory;
+
+        // If Coach → go to Coach Dashboard
+        if (role === 'Coach') {
+          navigate("/coach-dashboard");
+        }
+        // If Expert → go to Expert Dashboard
+        else if (role === 'Expert') {
+          navigate("/expert-dashboard");
+        }
+        // Super Admin → go to superadmin
+        else if (role === 'Super Admin') {
+          navigate("/superadmin")
+        }
+        // Otherwise (Recruiter, RTS, undefined/old users without roleCategory) → go to /dash_rec
+        else {
+          navigate("/dash_rec");
+        }
+      }, 1000);
+      
+    } catch (err) {
+      dispatch({ type: "LOGIN_FAILURE" });
+      
+      // Parse error response for better messages
+      const errorData = err.response?.data;
+      const errorCode = errorData?.errorCode;
+      const errorMessage = errorData?.message;
+      const errorHint = errorData?.hint;
+      
+      // Build enhanced error message
+      let displayMessage = errorMessage || "Invalid or Wrong Password";
+      
+      // Add hint if available
+      if (errorHint) {
+        displayMessage = `${displayMessage}\n\n💡 ${errorHint}`;
+      }
+      
+      // Special handling for different error types
+      if (errorCode === "USER_NOT_FOUND") {
+        displayMessage = "No account found with this email.\n\n💡 Please check your email or register for a new account.";
+      } else if (errorCode === "EMAIL_NOT_VERIFIED") {
+        displayMessage = "Email not verified.\n\n💡 Check your email for the OTP code sent during registration.";
+      } else if (errorCode === "INVALID_PASSWORD") {
+        displayMessage = "Incorrect password.\n\n💡 Use 'Forgot Password' to reset your password if needed.";
+      } else if (errorCode === "SERVER_ERROR") {
+        displayMessage = "Server error. Please try again later.";
+      }
+      
+      setMessage(displayMessage);
+    }
+
+    setLoading(false);
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      console.log(result);
+
+      const idToken = await result.user.getIdToken();
+
+      const response = await axios.post("/api/googla/au_google", {}, {
+        withCredentials: true,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        }
+      });
+
+      const userData = response.data;
+      console.log("Backend response:", userData);
+
+      dispatch({
+        type: "LOGIN_SUCCESS",
+        payload: {
+          name: userData?.name || result.user.displayName,
+          email: userData?.email || result.user.email,
+          roleCategory: userData?.roleCategory,
+          experienceCategory: userData?.experienceCategory
+        },
+      });
+
+      // ✅ SIMPLE ROUTING LOGIC (same as email login)
+      const role = userData?.roleCategory;
+
+      if (role === 'Coach') {
+        navigate("/coach-dashboard");
+      } else if (role === 'Expert') {
+        navigate("/expert-dashboard");
+      } else if (role === 'Super Admin') {
+        navigate("/superadmin")
+      } else {
+        navigate("/dash_rec");
+      }
+      
+    } catch (error) {
+      console.error("Google login error:", error);
+      dispatch({ type: "LOGIN_FAILURE" });
+      setMessage("Google login failed. Please try again.");
+    }
+  };
+
+  const handleLinkedInLogin = () => {
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: import.meta.env.VITE_LINKEDIN_CLIENT_ID,
+      redirect_uri: import.meta.env.VITE_LINKEDIN_REDIRECT_URI,
+      scope: 'openid email profile',
+    });
+
+    window.location.href = `https://www.linkedin.com/oauth/v2/authorization?${params}`;
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-orange-50 px-4 py-8">
+      <div className="bg-white shadow-2xl rounded-2xl w-full max-w-md overflow-hidden">
+        
+        {/* Header Section with Gradient */}
+        <div className="bg-gradient-to-r from-blue-600 to-orange-500 p-6 text-center relative overflow-hidden">
+          {/* Decorative circles */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
+          <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/10 rounded-full -ml-12 -mb-12"></div>
+          
+          <div className="relative">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full mb-4">
+              <UserCheck size={32} className="text-white" />
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">
+              Welcome Back
+            </h2>
+            <p className="text-blue-50 text-sm">Sign in to your account</p>
+          </div>
+        </div>
+
+        <div className="p-6 sm:p-8">
+          {/* Message Display */}
+          {message && (
+            <div className={`text-center text-sm mb-6 p-3 rounded-xl font-medium border-2 ${
+              message.includes("success") || message.includes("✅")
+                ? "bg-green-50 text-green-700 border-green-200"
+                : "bg-red-50 text-red-700 border-red-200"
+            }`}>
+              {message}
+            </div>
+          )}
+
+          <form onSubmit={handleVerify} className="space-y-5">
+            {/* Email Input */}
+            <div className="relative">
+              <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <Mail size={16} className="text-blue-600" />
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                placeholder="you@example.com"
+              />
+            </div>
+
+            {/* Password Input */}
+            <div className="relative">
+              <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <Lock size={16} className="text-blue-600" />
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 pr-12 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-blue-600 transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
+
+            {/* Forgot Password Link */}
+            <div className="flex justify-end">
+              <Link
+                to="/forgot-password"
+                className="text-sm text-blue-600 hover:text-orange-500 font-medium transition-colors"
+              >
+                Forgot Password?
+              </Link>
+            </div>
+
+            {/* Login Button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white py-3.5 rounded-xl font-semibold text-base transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  <span>Verifying...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight size={20} />
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="flex items-center my-6">
+            <div className="flex-1 h-px bg-gray-300"></div>
+            <span className="px-4 text-gray-500 text-sm font-medium">or continue with</span>
+            <div className="flex-1 h-px bg-gray-300"></div>
+          </div>
+
+          {/* Social Login Buttons */}
+          <div className="space-y-3">
+            {/* Google Login */}
+            <button
+              onClick={handleGoogleLogin}
+              className="w-full flex items-center justify-center gap-3 border-2 border-gray-200 rounded-xl py-3 hover:bg-gray-50 hover:border-blue-300 transition-all duration-300 group"
+            >
+              <FcGoogle size={24} />
+              <span className="text-gray-700 font-medium group-hover:text-gray-900">
+                Continue with Google
+              </span>
+            </button>
+
+            {/* LinkedIn Login */}
+            <button
+              onClick={handleLinkedInLogin}
+              className="w-full flex items-center justify-center gap-3 border-2 border-gray-200 rounded-xl py-3 hover:bg-blue-50 hover:border-blue-400 transition-all duration-300 group"
+            >
+              <FaLinkedin size={24} className="text-blue-600" />
+              <span className="text-gray-700 font-medium group-hover:text-blue-700">
+                Continue with LinkedIn
+              </span>
+            </button>
+          </div>
+
+          {/* Footer Links */}
+          <div className="mt-6 space-y-3">
+            <p className="text-center text-xs text-gray-500">
+              By signing in, you agree to our{" "}
+              <Link
+                to="/login/con"   //Login Conditions
+                className="text-blue-600 hover:text-orange-500 font-semibold hover:underline transition-colors"
+              >
+                Terms & Conditions
+              </Link>
+            </p>
+
+            <div className="flex items-center justify-center gap-2 text-sm pt-2">
+              <span className="text-gray-600">Don't have an account?</span>
+              <Link
+                to="/reg"
+                className="text-blue-600 hover:text-orange-500 font-semibold hover:underline transition-colors"
+              >
+                Sign Up
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Security Badge */}
+        <div className="bg-gradient-to-r from-blue-50 to-orange-50 px-6 py-3 border-t border-gray-200">
+          <div className="flex items-center justify-center gap-2 text-xs text-gray-600">
+            <Lock size={14} className="text-blue-600" />
+            <span>Secure login with 256-bit encryption</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Login;

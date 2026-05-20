@@ -1,0 +1,144 @@
+{
+  "firestore": {
+    "indexes": "firestore.indexes.json"
+  },
+  "hosting": {
+    "public": "Frontend/dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/auth/**",
+        "function": "api"
+      },
+      {
+        "source": "/clientspoc/**",
+        "function": "api"
+      },
+      {
+        "source": "/admin/**",
+        "function": "api"
+      },
+      {
+        "source": "/candidate/**",
+        "function": "api"
+      },
+      {
+        "source": "/addit/**",
+        "function": "api"
+      },
+      {
+        "source": "/download/**",
+        "function": "api"
+      },
+      {
+        "source": "/api/**",
+        "function": "api"
+      },
+      {
+        "source": "/blog/**",
+        "function": "api"
+      },
+      {
+        "source": "/recruiterstats/**",
+        "function": "api"
+      },
+      {
+        "source": "/clientspocstats/**",
+        "function": "api"
+      },
+      {
+        "source": "/positionstats/**",
+        "function": "api"
+      },
+      {
+        "source": "/dashboardstats/**",
+        "function": "api"
+      },
+      {
+        "source": "/candidatestats/**",
+        "function": "api"
+      },
+      {
+        "source": "/clientstats/**",
+        "function": "api"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "headers": [
+      {
+        "source": "/api/**",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          }
+        ]
+      }
+    ]
+  },
+  "functions": [
+    {
+      "source": "Backend",
+      "codebase": "default",
+      "runtime": "nodejs20",
+      "ignore": [
+        "node_modules",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
+  "emulators": {
+    "apphosting": {
+      "port": 5000,
+      "rootDirectory": "./",
+      "startCommand": "npm run dev"
+    },
+    "auth": {
+      "port": 9099
+    },
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "database": {
+      "port": 9000
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "pubsub": {
+      "port": 8085
+    },
+    "storage": {
+      "port": 9119
+    },
+    "eventarc": {
+      "port": 9299
+    },
+    "dataconnect": {
+      "port": 5004,
+      "dataDir": "dataconnect/.dataconnect/pgliteData"
+    },
+    "tasks": {
+      "port": 4173
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
+    "singleProjectMode": true
+  }
+}

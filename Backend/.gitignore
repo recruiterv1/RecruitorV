@@ -1,0 +1,24 @@
+
+.local.env
+
+# Firebase Service Account Keys (NEVER commit these!)
+serviceAccountKey.json
+ServiceAccountKey.json
+**/serviceAccountKey*.json
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Node modules
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Firebase cache
+.firebase/
