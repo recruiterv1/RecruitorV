@@ -34,7 +34,7 @@ const findExpertByEmail = async (email) => {
     const snap = await expertDb.where("email", "==", email.toLowerCase()).limit(1).get();
     if (snap.empty) return null;
     const doc = snap.docs[0];
-    return { id: doc.id, ...doc.data() };
+    return { id: doc.id, ...doc.data(), source: 'Expert' };
   } catch (error) {
     console.error("Error finding expert by email:", error);
     throw error;

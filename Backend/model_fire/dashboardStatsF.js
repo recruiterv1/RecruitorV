@@ -6,6 +6,23 @@ const candidateDb = db.collection('candidate_db');
 const companyDb = db.collection('Company_Overview');
 const positionsDb = db.collection('admin_AddPos');
 
+// candidate_db docs carry resumeText/cv_data/matchTokens (many KB each) that summary/count
+// code never reads. A full unprojected read of that collection (15k+ docs) was taking
+// 50+ seconds and timing out the page ("Failed to load dashboard data"). Project to just
+// the fields used below and cache briefly since /summary is refetched often.
+const CANDIDATES_SUMMARY_CACHE_TTL_MS = 30 * 1000;
+let candidatesSummaryCache = { data: null, timestamp: 0 };
+const getCandidatesForSummary = async () => {
+  const now = Date.now();
+  if (candidatesSummaryCache.data && (now - candidatesSummaryCache.timestamp) < CANDIDATES_SUMMARY_CACHE_TTL_MS) {
+    return candidatesSummaryCache.data;
+  }
+  const snapshot = await candidateDb.select('pos_id', 'datePosted').get();
+  const candidates = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  candidatesSummaryCache = { data: candidates, timestamp: now };
+  return candidates;
+};
+
 /**
  * Get date range based on filter type
  * @param {string} filter - 'today', 'week', or 'month'
@@ -37,12 +54,32 @@ const getDateRange = (filter) => {
  * @returns {Object} Summary statistics
  * Updated: 2026-01-17 - Fixed SPOC and Position counting
  */
+// Whole-summary cache, keyed by filter. The dashboard doesn't need second-level
+// freshness, and with a warm instance this cache persists across requests — so
+// only the first hit per filter every few minutes pays the query cost; the rest
+// are instant. This is what turns a ~6s dashboard load into an instant one.
+const SUMMARY_CACHE_TTL_MS = 5 * 60 * 1000;
+const summaryCache = new Map(); // filterKey -> { data, timestamp }
+
 const getDashboardSummary = async (filter = null) => {
+  const key = filter || 'all';
+  const cached = summaryCache.get(key);
+  if (cached && (Date.now() - cached.timestamp) < SUMMARY_CACHE_TTL_MS) {
+    return cached.data;
+  }
+  const data = await computeDashboardSummary(filter);
+  summaryCache.set(key, { data, timestamp: Date.now() });
+  return data;
+};
+
+const computeDashboardSummary = async (filter = null) => {
   try {
     const startDate = filter ? getDateRange(filter) : null;
-    
+
     // Get all recruiters
-    const recruitersSnap = await recruiterDb.get();
+    const recruitersSnap = await recruiterDb
+      .select('registrationDate', 'roleCategory', 'planType')
+      .get();
     let allRecruiters = recruitersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
     // Filter by date if needed
@@ -63,7 +100,7 @@ const getDashboardSummary = async (filter = null) => {
     const freeRecruiters = recruiters.filter(r => r.planType === 0);
     
     // Get all admin/client SPOCs (all records in admin_db are SPOCs)
-    const adminSnap = await adminDb.get();
+    const adminSnap = await adminDb.select('datePosted').get();
     let admins = adminSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
     // Filter by date if needed
@@ -78,7 +115,7 @@ const getDashboardSummary = async (filter = null) => {
     const clientSpocs = admins;
     
     // Get all companies/clients
-    const companySnap = await companyDb.get();
+    const companySnap = await companyDb.select('datePosted').get();
     let companies = companySnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
     // Filter by date if needed
@@ -89,9 +126,8 @@ const getDashboardSummary = async (filter = null) => {
       });
     }
     
-    // Get all candidates
-    const candidateSnap = await candidateDb.get();
-    let candidates = candidateSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Get all candidates (projected + cached — see getCandidatesForSummary above)
+    let candidates = await getCandidatesForSummary();
     
     // Get unique positions from ALL candidates first (using pos_id)
     const allPositions = [...new Set(candidates.map(c => c.pos_id).filter(Boolean))];

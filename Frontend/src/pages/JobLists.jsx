@@ -119,7 +119,9 @@ const JobLists = () => {
                 <div className="bg-gradient-to-r from-blue-50 to-orange-50 border-2 border-blue-200 rounded-xl p-3 mb-4">
                   <div className="flex items-center justify-center text-blue-700 text-sm font-bold">
                     <BadgePercent size={18} className="mr-2" />
-                    {job.ctcStart ? (
+                    {job.commission_type === 'fixed' ? (
+                      <span>Commission: ₹{Number(job.commison).toLocaleString('en-IN')}</span>
+                    ) : job.ctcStart ? (
                       <span>
                         Commission: ₹{((Number(job.ctcStart) * Number(job.commison)) / 100).toLocaleString('en-IN')}
                       </span>

@@ -4,6 +4,55 @@ const candidate = db.collection("candidate_db");
 const positions = db.collection("admin_AddPos");
 const { findRecruiterByEmail } = require('./recruiterF');
 
+// Helper function to calculate profile completion - matches Frontend Profile.jsx fields
+const calculateProfileCompletion = (user) => {
+  // Handle mobile -> phone mapping
+  const phone = user.phone || user.mobile || '';
+  
+  // Map frontend field names to backend/user model field names
+  const company = user.company || user.currentCompany || '';
+  const designation = user.designation || user.currentTitle || '';
+  
+  const fields = {
+    // Common fields (all users) - matching Frontend Profile.jsx
+    name: { value: user.name, weight: 5 },
+    email: { value: user.email, weight: 5 },
+    phone: { value: phone, weight: 5 },
+    yearsOfExperience: { value: user.yearsOfExperience, weight: 5 },
+    location: { value: user.location, weight: 3 },
+    country: { value: user.country, weight: 3 },
+    bio: { value: user.bio, weight: 10 },
+    // Professional tab fields
+    currentCompany: { value: company, weight: 5 },
+    currentTitle: { value: designation, weight: 5 },
+    linkedin: { value: user.linkedin, weight: 2 },
+    twitter: { value: user.twitter, weight: 1 },
+    website: { value: user.website, weight: 1 },
+    // Skills and Experience (arrays)
+    skills: { value: user.skills, weight: 15, type: 'array' },
+    workExperience: { value: user.workExperience, weight: 20, type: 'array' },
+    // Profile photo
+    profilePhoto: { value: user.profilePhoto, weight: 10 },
+  };
+
+  let totalWeight = 0;
+  let filledWeight = 0;
+
+  for (const [field, config] of Object.entries(fields)) {
+    totalWeight += config.weight;
+    
+    const isFilled = config.type === 'array' 
+      ? (config.value && Array.isArray(config.value) && config.value.length > 0)
+      : (config.value && config.value.toString().trim() !== '');
+    
+    if (isFilled) {
+      filledWeight += config.weight;
+    }
+  }
+
+  return Math.round((filledWeight / totalWeight) * 100);
+};
+
 /**
  * Get recruiter statistics with position counts
  * Returns a list of all recruiters with the count of positions they're working on
@@ -17,9 +66,39 @@ const getRecruiterStats = async () => {
       return [];
     }
 
-    // 2. Get all candidates to count positions per recruiter
-    const candidatesSnap = await candidate.get();
-    const candidatesData = candidatesSnap.docs.map(doc => doc.data());
+    // 2. Get only the candidate fields needed to group by recruiter. Candidate docs also
+    // carry resumeText/cv_data/matchTokens (tens of KB each); pulling those on every call
+    // for all 15k+ candidates, then re-filtering that full list once per recruiter below
+    // (O(recruiters * candidates)), is what was making this endpoint time out.
+    const candidatesSnap = await candidate.select('recEmail', 'pos_id', 'statusa').get();
+
+    // Group candidates by recruiter email once (O(candidates)) instead of re-scanning the
+    // whole candidate list per recruiter (O(recruiters * candidates)).
+    const candidatesByRecruiterEmail = new Map();
+    candidatesSnap.docs.forEach(doc => {
+      const c = doc.data();
+      const email = c.recEmail ? String(c.recEmail).trim().toLowerCase() : '';
+      if (!email) return;
+      if (!candidatesByRecruiterEmail.has(email)) candidatesByRecruiterEmail.set(email, []);
+      candidatesByRecruiterEmail.get(email).push(c);
+    });
+
+    // 2b. Team membership. A recruiter has "joined a team" when they have an
+    // APPROVED coach_team_requests record (coaches AND experts store team
+    // membership in this same collection). Map recruiterEmail → [coach/expert names].
+    const teamsByRecruiterEmail = new Map();
+    try {
+      const teamSnap = await db.collection('coach_team_requests').where('status', '==', 'approved').get();
+      teamSnap.docs.forEach(doc => {
+        const t = doc.data();
+        const email = t.recruiterEmail ? String(t.recruiterEmail).trim().toLowerCase() : '';
+        if (!email) return;
+        if (!teamsByRecruiterEmail.has(email)) teamsByRecruiterEmail.set(email, []);
+        teamsByRecruiterEmail.get(email).push(t.coachName || t.coachEmail || 'Team');
+      });
+    } catch (e) {
+      console.error('coach_team_requests lookup failed:', e.message); // never block the list
+    }
 
     // 3. Build recruiter stats
     const recruiterStats = [];
@@ -31,11 +110,8 @@ const getRecruiterStats = async () => {
 
       // FIX: Use case-insensitive comparison for recEmail matching
       const recruiterEmailLower = String(recruiterEmail).trim().toLowerCase();
-      const recruiterCandidates = candidatesData.filter(c => {
-        const candidateEmail = c.recEmail ? String(c.recEmail).trim().toLowerCase() : '';
-        return candidateEmail === recruiterEmailLower;
-      });
-      
+      const recruiterCandidates = candidatesByRecruiterEmail.get(recruiterEmailLower) || [];
+
       // Get unique position IDs
       const uniquePositions = [...new Set(recruiterCandidates.map(c => c.pos_id))];
       const positionCount = uniquePositions.length;
@@ -83,7 +159,7 @@ const getRecruiterStats = async () => {
         id: recruiterId,
         name: recruiterData.name || 'N/A',
         email: recruiterEmail || 'N/A',
-        phone: recruiterData.mob || 'N/A',
+        phone: recruiterData.phone || recruiterData.mobile || recruiterData.mob || 'N/A',
         positionCount: positionCount,
         candidatesSubmitted: submittedCount,
         candidatesOnProcess: onProcessCount,
@@ -92,9 +168,26 @@ const getRecruiterStats = async () => {
         successRate: submittedCount > 0 
           ? ((successfulCount / submittedCount) * 100).toFixed(1) + '%'
           : '0%',
+        registrationDate: recruiterData.registrationDate,
         createdAt: recruiterData.createdAt || null,
-        lastActive: lastActiveDate
+        lastActive: lastActiveDate,
+        profileCompletion: calculateProfileCompletion(recruiterData),
+        agreementSigned: !!recruiterData.agreementSigned,
+        commisiontype: recruiterData.commisiontype || '',
+        accountStatus: recruiterData.accountStatus || 'approved',
+        // Active flag drives the Action column; a suspended account is inactive.
+        isActive: recruiterData.isActive !== false && recruiterData.accountStatus !== 'suspended',
+        suspendedReason: recruiterData.suspendedReason || '',
+        mobile: recruiterData.mobile || recruiterData.phone || recruiterData.mob || '',
+        experienceCategory: recruiterData.experienceCategory || '',
+        planType: recruiterData.planType,
+        resumeUrl: recruiterData.resumeUrl || '',
+        // Team membership (coach/expert teams) — see step 2b above.
+        teams: teamsByRecruiterEmail.get(recruiterEmailLower) || [],
+        teamCount: (teamsByRecruiterEmail.get(recruiterEmailLower) || []).length,
+        joinedTeam: (teamsByRecruiterEmail.get(recruiterEmailLower) || []).length > 0,
       });
+
     }
 
     // Sort by position count (descending)

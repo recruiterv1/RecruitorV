@@ -33,8 +33,11 @@ const ImmediateCards = () => {
       .catch((error) => console.log(error));
   }, []);
 
-  const formatCommission = (job) => {
+  const formatCommissionDisplay = (job) => {
     if (!job.commison) return null;
+    if (job.commission_type === 'fixed') {
+      return `₹${Number(job.commison).toLocaleString("en-IN")}`;
+    }
     if (job.ctcStart) {
       const commissionValue = ((Number(job.ctcStart) * Number(job.commison)) / 100).toLocaleString("en-IN");
       return `₹${commissionValue}`;
@@ -173,7 +176,7 @@ const ImmediateCards = () => {
                   <div className="bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-200 rounded-xl p-4 mt-4">
                     <div className="flex items-center justify-center text-orange-700 font-bold">
                       <BadgePercent size={20} className="mr-2" />
-                      <span className="text-lg">{formatCommission(job)}</span>
+                      <span className="text-lg">{formatCommissionDisplay(job)}</span>
                     </div>
                   </div>
                 )}

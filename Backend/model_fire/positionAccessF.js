@@ -1,7 +1,87 @@
 const { db } = require("../router/firebase_ad");
+const adminModel = require("./adminF");
 const positionAccessRequests = db.collection("position_access_requests");
 const recruiterDb = db.collection("recruiter_db");
 const adminPosDb = db.collection("admin_AddPos");
+const candidateDb = db.collection("candidate_db");
+
+/**
+ * Set of positions the recruiter has currently released — i.e. they have a
+ * "released" record and no active "approved" record for that position. A released
+ * position keeps its candidate history but does NOT occupy a working slot.
+ */
+const getReleasedPositionIds = async (recruiterEmail) => {
+  const normalizedEmail = (recruiterEmail || "").toLowerCase();
+  const reqSnap = await positionAccessRequests
+    .where("recruiterEmail", "==", normalizedEmail)
+    .get();
+  const approvedPos = new Set();
+  const releasedPos = new Set();
+  reqSnap.docs.forEach(doc => {
+    const r = doc.data();
+    if (!r.positionId) return;
+    if (r.status === "approved") approvedPos.add(r.positionId);
+    else if (r.status === "released") releasedPos.add(r.positionId);
+  });
+  // Released "now" = released and not re-assigned (no approved record)
+  return new Set([...releasedPos].filter(p => !approvedPos.has(p)));
+};
+
+/**
+ * Count the distinct positions a recruiter is actively working on. A position counts
+ * toward the free-plan limit of 4 if EITHER:
+ *   - the recruiter has at least 1 active (non-rejected) candidate on it, OR
+ *   - it was assigned to them by a Coach and they accepted it.
+ * Released positions are excluded (they free a slot).
+ */
+const countActiveWorkingPositions = async (recruiterEmail) => {
+  const normalizedEmail = (recruiterEmail || "").toLowerCase();
+  const emailVariants = [...new Set([normalizedEmail, recruiterEmail].filter(Boolean))];
+  const [snap, releasedNow, coachSnap] = await Promise.all([
+    candidateDb.where("recEmail", "==", normalizedEmail).get(),
+    getReleasedPositionIds(normalizedEmail),
+    db.collection("coach_recruiter_assignments").where("recruiterEmail", "in", emailVariants).get()
+  ]);
+  const posIds = new Set();
+  // Positions with at least 1 active candidate submitted by this recruiter
+  snap.docs.forEach(doc => {
+    const c = doc.data();
+    if (c.pos_id && !adminModel.REJECTION_STATUSES.includes(c.statusa) && !releasedNow.has(c.pos_id)) {
+      posIds.add(c.pos_id);
+    }
+  });
+  // Accepted coach-assigned positions also occupy a slot
+  coachSnap.docs.forEach(doc => {
+    const a = doc.data();
+    if (a.status === "accepted" && a.positionId && !releasedNow.has(a.positionId)) {
+      posIds.add(a.positionId);
+    }
+  });
+  return { count: posIds.size, posIds };
+};
+
+/**
+ * Re-engage a previously released position (e.g. when the recruiter assigns it
+ * again or submits a new candidate). Flips any "released" records back to
+ * "approved" so the position counts as a working slot again.
+ */
+const reengageReleasedPosition = async (recruiterEmail, positionId) => {
+  const normalizedEmail = (recruiterEmail || "").toLowerCase();
+  const snap = await positionAccessRequests
+    .where("recruiterEmail", "==", normalizedEmail)
+    .where("positionId", "==", positionId)
+    .where("status", "==", "released")
+    .get();
+  if (snap.empty) return { reengaged: false };
+  const batch = db.batch();
+  snap.docs.forEach(doc => batch.update(doc.ref, {
+    status: "approved",
+    reengagedAt: new Date(),
+    updatedAt: new Date()
+  }));
+  await batch.commit();
+  return { reengaged: true, count: snap.size };
+};
 
 /**
  * Create a new position access request
@@ -34,37 +114,15 @@ const createAccessRequest = async (recruiterId, recruiterEmail, positionId) => {
     }
     const recruiter = recruiterSnap.docs[0].data();
 
-    // Note: Plan limit checks are now handled in the router (positionAccess.js)
-    // The router passes different limits based on planType
-    // Free plan: max 4 requests, max 2 approved
-    // Paid plan: max 20 requests, max 10 approved
+    // Plan/position limits are enforced at the Assign Me endpoint
+    // (free recruiters: max 4 positions with at least 1 active candidate).
+    // The 30-day free-plan expiry has been removed.
 
-    // Check if plan has expired (only for free plan)
-    const isFreePlan = recruiter.planType === 0;
-    if (isFreePlan) {
-      const now = new Date();
-      const expiryDate = recruiter.planExpiryDate?.toDate ? recruiter.planExpiryDate.toDate() : 
-                        (recruiter.planExpiryDate ? new Date(recruiter.planExpiryDate) : null);
-      
-      if (expiryDate && now > expiryDate) {
-        throw new Error("Your free plan has expired. Please upgrade to continue.");
-      }
-    }
-
-    // Check if user is the position owner (clientspoc)
-    const isPositionOwner = position.clientspoc && 
-                            position.clientspoc.toLowerCase() === recruiterEmail.toLowerCase();
-
-    // Auto-approve if user is the position owner
-    const initialStatus = isPositionOwner ? "approved" : "pending";
-    const initialRespondedAt = isPositionOwner ? new Date() : null;
-    const initialRespondedBy = isPositionOwner ? recruiterEmail : null;
-    let initialExpiresAt = null;
-    if (isPositionOwner) {
-      const expiryDateCalc = new Date();
-      expiryDateCalc.setDate(expiryDateCalc.getDate() + 30);
-      initialExpiresAt = expiryDateCalc;
-    }
+    // Access is granted immediately — no ClientSPOC approval required.
+    const initialStatus = "approved";
+    const initialRespondedAt = new Date();
+    const initialRespondedBy = "auto-approved";
+    const initialExpiresAt = null; // never expires
 
     // Create request
     const requestData = {
@@ -294,10 +352,45 @@ const checkRecruiterAccess = async (recruiterEmail, positionId) => {
     const snapshot = await positionAccessRequests
       .where("recruiterEmail", "==", recruiterEmail)
       .where("positionId", "==", positionId)
-      .limit(1)
       .get();
 
+    // Always check legacy fallbacks — even if a stale/expired/rejected request record exists
+    const checkLegacyAccess = async () => {
+      // Coach-assigned positions: recruiter accepted an assignment from a coach
+      const coachAssignSnap = await db.collection("coach_recruiter_assignments")
+        .where("recruiterEmail", "==", recruiterEmail)
+        .where("positionId", "==", positionId)
+        .where("status", "==", "accepted")
+        .limit(1)
+        .get();
+      if (!coachAssignSnap.empty) {
+        return { hasAccess: true, status: "approved", hasRequest: true, source: "coach_assignment" };
+      }
+
+      const assignSnap = await db.collection("position_assignments")
+        .where("recruiterEmail", "==", recruiterEmail)
+        .where("pos_id", "==", positionId)
+        .where("assigned", "==", true)
+        .limit(1)
+        .get();
+      if (!assignSnap.empty) {
+        return { hasAccess: true, status: "approved", hasRequest: true, source: "assignment" };
+      }
+
+      const posSnap = await adminPosDb.where("pos_id", "==", positionId).limit(1).get();
+      if (!posSnap.empty) {
+        const posData = posSnap.docs[0].data();
+        const hrName = (posData.hr_name || "").toLowerCase().trim();
+        if (hrName && hrName === recruiterEmail.toLowerCase().trim()) {
+          return { hasAccess: true, status: "approved", hasRequest: true, source: "hr_name" };
+        }
+      }
+      return null;
+    };
+
     if (snapshot.empty) {
+      const legacy = await checkLegacyAccess();
+      if (legacy) return legacy;
       return {
         hasAccess: false,
         status: null,
@@ -305,85 +398,62 @@ const checkRecruiterAccess = async (recruiterEmail, positionId) => {
       };
     }
 
-    const request = snapshot.docs[0].data();
     const now = new Date();
-    const expiresAt = request.expiresAt?.toDate ? request.expiresAt.toDate() : 
-                     (request.expiresAt ? new Date(request.expiresAt) : null);
 
-    // Handle different statuses
-    if (request.status === "approved") {
-      // Check if access has expired
-      if (expiresAt && now > expiresAt) {
-        // Auto-expire the request
-        await positionAccessRequests.doc(snapshot.docs[0].id).update({
-          status: "expired",
-          updatedAt: new Date()
-        });
-
-        return {
-          hasAccess: false,
-          status: "expired",
-          message: "Your access to this position has expired",
-          hasRequest: true,
-          requestId: snapshot.docs[0].id
-        };
+    // Multiple records can exist (e.g. one expired + one approved). Find the best one.
+    let bestDoc = null;
+    let bestRequest = null;
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      if (data.status === "approved") {
+        const exp = data.expiresAt?.toDate ? data.expiresAt.toDate() : (data.expiresAt ? new Date(data.expiresAt) : null);
+        if (!exp || now <= exp) {
+          // Valid approved record — use this immediately
+          bestDoc = doc;
+          bestRequest = data;
+          break;
+        }
+        // Approved but expired — auto-expire it and keep looking
+        await positionAccessRequests.doc(doc.id).update({ status: "expired", updatedAt: new Date() });
+      } else if (!bestDoc) {
+        // Keep the first non-approved record as fallback
+        bestDoc = doc;
+        bestRequest = data;
       }
+    }
 
+    if (bestRequest && bestRequest.status === "approved") {
+      const exp = bestRequest.expiresAt?.toDate ? bestRequest.expiresAt.toDate() : (bestRequest.expiresAt ? new Date(bestRequest.expiresAt) : null);
       return {
         hasAccess: true,
         status: "approved",
-        requestId: snapshot.docs[0].id,
-        expiresAt: expiresAt,
+        requestId: bestDoc.id,
+        expiresAt: exp,
         hasRequest: true
       };
     }
 
-    if (request.status === "rejected") {
-      return {
-        hasAccess: false,
-        status: "rejected",
-        message: "Your access request was rejected by the ClientSPOC",
-        hasRequest: true,
-        requestId: snapshot.docs[0].id
-      };
+    // No valid approved record — check legacy assignment systems before returning no-access
+    const legacyResult = await checkLegacyAccess();
+    if (legacyResult) return legacyResult;
+
+    if (!bestRequest) {
+      return { hasAccess: false, status: null, hasRequest: false };
     }
 
-    if (request.status === "waitlist") {
-      return {
-        hasAccess: false,
-        status: "waitlist",
-        message: "You are on the waitlist for this position",
-        hasRequest: true,
-        requestId: snapshot.docs[0].id
-      };
-    }
+    const statusMessages = {
+      rejected: "Your access request was rejected by the ClientSPOC",
+      waitlist: "You are on the waitlist for this position",
+      pending:  "Your access request is pending approval",
+      expired:  "Your access to this position has expired",
+    };
 
-    if (request.status === "pending") {
-      return {
-        hasAccess: false,
-        status: "pending",
-        message: "Your access request is pending approval",
-        hasRequest: true,
-        requestId: snapshot.docs[0].id
-      };
-    }
-
-    if (request.status === "expired") {
-      return {
-        hasAccess: false,
-        status: "expired",
-        message: "Your access to this position has expired",
-        hasRequest: true,
-        requestId: snapshot.docs[0].id
-      };
-    }
-
-    // Default fallback
     return {
       hasAccess: false,
-      status: request.status,
+      status: bestRequest.status,
+      message: statusMessages[bestRequest.status] || "Access not granted",
       hasRequest: true,
-      requestId: snapshot.docs[0].id
+      requestId: bestDoc.id
     };
 
   } catch (error) {
@@ -523,14 +593,17 @@ const getRecruiterAssignments = async (recruiterEmail) => {
 
     const assignments = [];
     const now = new Date();
+    const seenPositions = new Set();
 
     snapshot.docs.forEach(doc => {
       const data = doc.data();
-      const expiresAt = data.expiresAt?.toDate ? data.expiresAt.toDate() : 
+      const expiresAt = data.expiresAt?.toDate ? data.expiresAt.toDate() :
                        (data.expiresAt ? new Date(data.expiresAt) : null);
-      
-      // Only include non-expired assignments
-      if (!expiresAt || now <= expiresAt) {
+
+      // Only include non-expired assignments, deduped by position
+      // (a position can have both an "access" and an "assign" approved record).
+      if ((!expiresAt || now <= expiresAt) && !seenPositions.has(data.positionId)) {
+        seenPositions.add(data.positionId);
         assignments.push({
           id: doc.id,
           requestId: doc.id,
@@ -545,6 +618,65 @@ const getRecruiterAssignments = async (recruiterEmail) => {
         });
       }
     });
+
+    // Positions assigned by a coach live in their own collection, so they never
+    // appeared in "My Positions" even after the recruiter accepted them — which
+    // also meant they could not be released. Merge them in here (deduped against
+    // the access requests above, and skipping any the recruiter already released).
+    try {
+      const coachSnap = await db.collection("coach_recruiter_assignments")
+        .where("recruiterEmail", "==", normalizedEmail)
+        .where("status", "==", "accepted")
+        .get();
+
+      // Positions this recruiter has explicitly released — must stay hidden.
+      const releasedSnap = await positionAccessRequests
+        .where("recruiterEmail", "==", normalizedEmail)
+        .where("status", "==", "released")
+        .get();
+      const releasedPositions = new Set(releasedSnap.docs.map(d => d.data().positionId));
+
+      for (const doc of coachSnap.docs) {
+        const data = doc.data();
+        if (seenPositions.has(data.positionId) || releasedPositions.has(data.positionId)) continue;
+        seenPositions.add(data.positionId);
+
+        // Assignment docs don't always carry the position title/client — backfill
+        // from the position record so the card renders properly.
+        let positionTitle = data.positionTitle || "";
+        let client = data.client || "";
+        let clientspoc = data.clientspoc || "";
+        if (!positionTitle || !client) {
+          try {
+            const posSnap = await adminPosDb.where("pos_id", "==", data.positionId).limit(1).get();
+            if (!posSnap.empty) {
+              const p = posSnap.docs[0].data();
+              positionTitle = positionTitle || p.position || "";
+              client = client || p.client || "";
+              clientspoc = clientspoc || p.clientspoc || "";
+            }
+          } catch (_) { /* keep whatever we have */ }
+        }
+
+        assignments.push({
+          id: doc.id,
+          requestId: doc.id,
+          positionId: data.positionId,
+          positionTitle,
+          client,
+          clientspoc,
+          status: "approved",
+          source: "coach_assignment",
+          assignedByCoach: data.coachEmail || data.coachName || "",
+          requestedAt: data.acceptedAt?.toDate ? data.acceptedAt.toDate() : (data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt),
+          expiresAt: null,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+        });
+      }
+    } catch (coachErr) {
+      // Never let this break the main list
+      console.error("coach assignment merge failed:", coachErr.message);
+    }
 
     // Sort by requested date (newest first)
     assignments.sort((a, b) => {
@@ -567,33 +699,69 @@ const getRecruiterAssignments = async (recruiterEmail) => {
 const releasePositionAssignment = async (recruiterEmail, positionId) => {
   try {
     const normalizedEmail = recruiterEmail.toLowerCase();
-    
-    // Find the assignment
+
+    // Release ALL approved records (access + assign types) for this position so the
+    // slot is fully freed. Candidate history in candidate_db is left untouched.
     const snapshot = await positionAccessRequests
       .where("recruiterEmail", "==", normalizedEmail)
       .where("positionId", "==", positionId)
       .where("status", "==", "approved")
-      .limit(1)
       .get();
 
-    if (snapshot.empty) {
-      throw new Error("Assignment not found or you don't have access to this position");
+    const now = new Date();
+
+    // A position can also come from a coach assignment (separate collection).
+    // Release those too, otherwise the recruiter keeps access to a position they
+    // just released and it reappears in their list.
+    let coachReleased = 0;
+    try {
+      const coachSnap = await db.collection("coach_recruiter_assignments")
+        .where("recruiterEmail", "==", normalizedEmail)
+        .where("positionId", "==", positionId)
+        .where("status", "==", "accepted")
+        .get();
+      if (!coachSnap.empty) {
+        const cb = db.batch();
+        coachSnap.docs.forEach(doc => cb.update(doc.ref, {
+          status: "released",
+          releasedAt: now,
+          updatedAt: now
+        }));
+        await cb.commit();
+        coachReleased = coachSnap.size;
+      }
+    } catch (coachErr) {
+      console.error("coach assignment release failed:", coachErr.message);
     }
 
-    const doc = snapshot.docs[0];
-    
-    // Update the assignment to released status
-    await positionAccessRequests.doc(doc.id).update({
+    if (snapshot.empty) {
+      // No approved access record (e.g. coach-assigned or legacy data) — drop a
+      // release marker so the slot still frees and the position stays hidden.
+      await positionAccessRequests.add({
+        type: "release-marker",
+        recruiterEmail: normalizedEmail,
+        positionId: positionId,
+        status: "released",
+        releasedAt: now,
+        createdAt: now,
+        updatedAt: now
+      });
+      return { success: true, message: "Position released successfully", positionId, releasedCount: coachReleased };
+    }
+
+    const batch = db.batch();
+    snapshot.docs.forEach(doc => batch.update(doc.ref, {
       status: "released",
-      releasedAt: new Date(),
-      updatedAt: new Date()
-    });
+      releasedAt: now,
+      updatedAt: now
+    }));
+    await batch.commit();
 
     return {
       success: true,
       message: "Position released successfully",
-      assignmentId: doc.id,
-      positionId: positionId
+      positionId: positionId,
+      releasedCount: snapshot.size + coachReleased
     };
   } catch (error) {
     console.error("Error releasing position assignment:", error);
@@ -673,18 +841,9 @@ const createAssignRequest = async (recruiterId, recruiterEmail, positionId, mess
       recruiter = recruiterSnap.docs[0].data();
     }
 
-    // Check if user is the position owner (clientspoc) - auto-approve
-    const isPositionOwner = position.clientspoc && 
-                            position.clientspoc.toLowerCase() === normalizedEmail;
-
-    const initialStatus = isPositionOwner ? "approved" : "pending";
-    let expiresAt = null;
-    
-    if (isPositionOwner) {
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 30);
-      expiresAt = expiryDate;
-    }
+    // Assignment is granted immediately — no ClientSPOC approval required.
+    const initialStatus = "approved";
+    const expiresAt = null; // never expires
 
     // Create the assign request
     const requestData = {
@@ -699,8 +858,8 @@ const createAssignRequest = async (recruiterId, recruiterEmail, positionId, mess
       status: initialStatus,
       message: message || '',
       requestedAt: new Date(),
-      respondedAt: isPositionOwner ? new Date() : null,
-      respondedBy: isPositionOwner ? normalizedEmail : null,
+      respondedAt: new Date(),
+      respondedBy: "auto-approved",
       expiresAt: expiresAt,
       createdAt: new Date(),
       updatedAt: new Date()
@@ -1065,5 +1224,8 @@ module.exports = {
   updateAssignRequestStatus,
   getPositionAssignees,
   cancelAssignRequest,
-  canRecruiterSubmitForPosition
+  canRecruiterSubmitForPosition,
+  countActiveWorkingPositions,
+  getReleasedPositionIds,
+  reengageReleasedPosition
 };

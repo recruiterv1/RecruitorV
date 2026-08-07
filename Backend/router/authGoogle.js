@@ -41,19 +41,20 @@ router.post('/au_google', verifyToken, async (req, res) => {
     }
 
     // 4. CRITICAL ADDITION: Generate Session Token
-    const token = jwt.sign({ email: user.email }, SECRET_KEY, { expiresIn: "1h" });
+    const token = jwt.sign({ email: user.email, portal: 'user' }, SECRET_KEY, { expiresIn: "30d" });
 
     // 5. CRITICAL ADDITION: Set the Cookie
     // Without this, your dashboard check will fail immediately.
+    const isProduction = !!process.env.K_SERVICE;
     res.cookie("__session", token, {
       httpOnly: true,
-      secure: true, // Required for Firebase
-      sameSite: "none",
-      maxAge: 3600000 // 1 hour
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000
     });
 
     console.log(`Google Login Success for: ${email}`);
-    res.status(200).json(user);
+    res.status(200).json({ ...user, token });
 
   } catch (err) {
     console.error("Google Login Error:", err);

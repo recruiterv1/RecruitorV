@@ -3,6 +3,7 @@ import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
 import { UserDispatchContext } from '../context/AuthPro';
+import { setAuthToken } from '../lib/authToken';
 
 const Ad_login = () => {
   const [email, setEmail] = useState("");
@@ -19,10 +20,12 @@ const Ad_login = () => {
     setMessage("");
 
     try {
-      const res = await axios.post("/admin/ad", {
+      const res = await axios.post("/admin/login", {
         email,
         pass
       }, {withCredentials: true});
+
+      setAuthToken(res.data.token); // native-app header auth; harmless on web
 
       dispatch({
         type: "ADMIN_LOGIN_SUCCESS",
@@ -36,8 +39,17 @@ const Ad_login = () => {
       });
 
       setMessage(res.data.message || "Verified Successfully!");
+      const roleCategory = res.data.roleCategory;
       setTimeout(() => {
-        navigate("/ad_panel");
+        if (roleCategory === 'Super Admin' || roleCategory === 'SuperAdmin') {
+          navigate("/superadmin");
+        } else if (roleCategory === 'Admin') {
+          navigate("/admin-dashboard");
+        } else if (roleCategory === 'Vendor') {
+          navigate("/vendor-dashboard");
+        } else {
+          navigate("/ad_panel");
+        }
       }, 1000);
     } catch (err) {
       setMessage(err.response?.data?.message || 'Invalid Credentials');

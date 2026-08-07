@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { MaterialReactTable, useMaterialReactTable } from 'material-react-table';
 import { Briefcase, MapPin, IndianRupee, BadgePercent, Calendar, TrendingUp, Eye } from 'lucide-react';
 import { Box, Chip } from '@mui/material';
+import { formatCommission } from '../lib/commission';
 
 const Ce_Pos= () => {
   const [jobs, setJobs] = useState([]);
@@ -117,13 +118,13 @@ const Ce_Pos= () => {
         accessorKey: 'commison',
         header: 'Commission',
         size: 150,
-        Cell: ({ cell }) => {
+        Cell: ({ cell, row }) => {
           const commission = cell.getValue();
           const colors = getCommissionColor(commission);
           return (
             <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full ${colors.bg} ${colors.text} border-2 ${colors.border} font-bold`}>
               <BadgePercent size={16} />
-              <span>{commission}%</span>
+              <span>{formatCommission(commission, row.original.commission_type)}</span>
             </div>
           );
         },

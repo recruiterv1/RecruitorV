@@ -20,10 +20,17 @@ const findRecruiterByEmail= async (email)=>{
         return null;
     }
 
-    const doc=snap.docs[0]
-    const data = doc.data();
-    console.log(`✅ Recruiter found: ${doc.id}, email: ${data.email}, role: ${data.roleCategory}`);
-    return { id: doc.id, ...data, source: "Emailwa" }
+    // Prefer verified record; among unverified, return the one with latest otpExpires
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const verified = docs.find(d => d.isVerified);
+    if (verified) {
+        console.log(`✅ Recruiter found (verified): ${verified.id}, email: ${verified.email}`);
+        return { ...verified, source: "Emailwa" };
+    }
+    docs.sort((a, b) => (Number(b.otpExpires) || 0) - (Number(a.otpExpires) || 0));
+    const doc = docs[0];
+    console.log(`✅ Recruiter found (unverified, latest): ${doc.id}, email: ${doc.email}, role: ${doc.roleCategory}`);
+    return { ...doc, source: "Emailwa" };
 }
 
 const updateRecruiter= async (id,data)=>{
@@ -92,6 +99,7 @@ const getRecruiterPublicProfile = async (recruiterId) => {
             recruitmentMethods: data.recruitmentMethods || [],
             currentCompany: data.currentCompany || '',
             currentTitle: data.currentTitle || '',
+            experienceCategory: data.experienceCategory || data.experience_category || '',
             yearsOfExperience: data.yearsOfExperience || '',
             // Skills
             skills: data.skills || [],
@@ -102,6 +110,7 @@ const getRecruiterPublicProfile = async (recruiterId) => {
             // Resume
             hasResume: !!data.resume,
             resumeFileName: data.resumeFileName || null,
+            resume: data.resume || null,
             // Profile completion
             profileCompletion: calculateProfileCompletion(data),
             // Activity stats
@@ -159,52 +168,29 @@ const checkPlanLimits= async (recruiterId)=>{
         }
 
         // Free plan (planType === 0) - check limits
+        // No time-based expiry. Free recruiters can work on max 4 positions.
         if (recruiterDoc.planType === 0) {
-            const now = new Date();
-            const expiryDate = recruiterDoc.planExpiryDate?.toDate ? recruiterDoc.planExpiryDate.toDate() : 
-                              (recruiterDoc.planExpiryDate ? new Date(recruiterDoc.planExpiryDate) : null);
-
-            // Check if plan expired
-            if (expiryDate && now > expiryDate) {
-                return { 
-                    canCreatePosition: false, 
-                    message: "Your free plan has expired (30 days limit). Please upgrade to continue.",
-                    expired: true,
-                    planType: 0,
-                    currentPositionCount: await getRecruiterPositionCount(recruiterDoc.email),
-                    daysRemaining: 0
-                };
-            }
-
-            // Check position count - Free plan (planType === 0) has max 4 positions
             const positionCount = await getRecruiterPositionCount(recruiterDoc.email);
             const maxPositions = recruiterDoc.maxPositions || 4;
 
             if (positionCount >= maxPositions) {
-                const daysRemaining = expiryDate ? Math.max(0, Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24))) : 0;
-                
-                return { 
-                    canCreatePosition: false, 
+                return {
+                    canCreatePosition: false,
                     message: `You have reached the maximum limit of ${maxPositions} positions for the free plan. Please upgrade to add more positions.`,
                     limitReached: true,
                     planType: 0,
                     currentPositionCount: positionCount,
-                    maxPositions: maxPositions,
-                    daysRemaining: daysRemaining
+                    maxPositions: maxPositions
                 };
             }
 
-            // Calculate days remaining - ensure it's never negative
-            const daysRemaining = expiryDate ? Math.max(0, Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24))) : 30;
-
-            return { 
-                canCreatePosition: true, 
+            return {
+                canCreatePosition: true,
                 isPaid: false,
                 planType: 0,
                 currentPositionCount: positionCount,
                 positionsRemaining: maxPositions - positionCount,
-                maxPositions: maxPositions,
-                daysRemaining: daysRemaining
+                maxPositions: maxPositions
             };
         }
 
@@ -243,16 +229,46 @@ const getAllRecruiters= async ()=>{
 }
 
 
-module.exports={ 
-    createRecruiter, 
-    findRecruiterByEmail, 
+// Normalise phone: strip non-digits, take last 10 digits
+const normalisePhone = (phone) => {
+    if (!phone) return null;
+    const digits = String(phone).replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : null;
+};
+
+// Find a VERIFIED recruiter by phone number (any of mobile / phone / mob fields)
+const findVerifiedRecruiterByPhone = async (rawPhone) => {
+    const norm = normalisePhone(rawPhone);
+    if (!norm) return null;
+
+    const allDocs = await recruiter.where('isVerified', '==', true).get();
+    for (const doc of allDocs.docs) {
+        const d = doc.data();
+        const stored = normalisePhone(d.mobile || d.phone || d.mob || '');
+        if (stored && stored === norm) {
+            return { id: doc.id, ...d };
+        }
+    }
+    return null;
+};
+
+// Delete a recruiter document by ID
+const deleteRecruiter = async (id) => {
+    await recruiter.doc(id).delete();
+};
+
+module.exports={
+    createRecruiter,
+    findRecruiterByEmail,
     updateRecruiter,
     createOrUpdateRecruiter,
     findRecruiterById,
     getRecruiterPublicProfile,
     checkPlanLimits,
     getRecruiterPositionCount,
-    getAllRecruiters
+    getAllRecruiters,
+    findVerifiedRecruiterByPhone,
+    deleteRecruiter,
+    normalisePhone
 }
-
 

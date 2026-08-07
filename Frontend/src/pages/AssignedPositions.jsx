@@ -1,37 +1,63 @@
 import axios from 'axios';
-import React, { useState, useEffect, useMemo, useContext } from 'react';
-import { MaterialReactTable, useMaterialReactTable } from 'material-react-table';
-import { Briefcase, MapPin, IndianRupee, BadgePercent, Calendar, Users, User, Clock, CheckCircle, Filter, X, Search, Users as UsersIcon, AlertTriangle } from 'lucide-react';
-import { Box, Collapse, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button } from '@mui/material';
-import { UserStateContext } from '../context/AuthPro';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Briefcase, MapPin, BadgePercent, Calendar, Users, User, Clock, CheckCircle, Filter, X, Search, UserCheck, Send, Ban, ChevronDown, ChevronUp, Building2, Loader, Sparkles, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import ApplyModal from '../components/ApplyModal';
+import SubmitCandidateTabs from '../components/SubmitCandidateTabs';
+import { formatCommission } from '../lib/commission';
 
 const AssignedPositions = () => {
-  const { user } = useContext(UserStateContext);
   const navigate = useNavigate();
+  // Candidate carried over from Refer & Earn "Use Resume" — pre-fills the
+  // Submit Candidate form once a position is chosen.
+  const [useResumeCand, setUseResumeCand] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem('rne_use_resume');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+  const clearUseResume = () => {
+    try { sessionStorage.removeItem('rne_use_resume'); } catch (_) {}
+    setUseResumeCand(null);
+  };
   const [positions, setPositions] = useState([]);
+  const [coachAssigned, setCoachAssigned] = useState([]);
   const [loading, setLoading] = useState(true);
   const [positionFilter, setPositionFilter] = useState('');
   const [clientFilter, setClientFilter] = useState('');
   const [positionSearch, setPositionSearch] = useState('');
   const [clientSearch, setClientSearch] = useState('');
+  const [catFilter, setCatFilter] = useState('');
   const [expandedRows, setExpandedRows] = useState({});
-  const [showFullModal, setShowFullModal] = useState(false);
-  const [selectedFullPosition, setSelectedFullPosition] = useState(null);
+
+  // Submit Candidate modal state (mirrors dash_view / Dash_See)
+  const [isApplyOpen, setIsApplyOpen] = useState(false);
+  const [applyPos, setApplyPos] = useState(null);
+  const [loadingApplyId, setLoadingApplyId] = useState(null);
+
+  // Set of positionIds the coach has assigned to this recruiter (accepted)
+  const coachAssignedIds = useMemo(
+    () => new Set(coachAssigned.map(a => a.positionId)),
+    [coachAssigned]
+  );
 
   const fetchAssignedPositions = async () => {
     setLoading(true);
     try {
-      const res = await axios.get("/candidate/pos/assigned-positions", {
-        withCredentials: true
-      });
-      if (res.data.success) {
-        setPositions(res.data.positions);
-      }
+      // Fetch positions — primary data, must succeed
+      const posRes = await axios.get("/candidate/pos/assigned-positions", { withCredentials: true });
+      if (posRes.data.success) setPositions(posRes.data.positions);
     } catch (err) {
       console.error('Error fetching assigned positions:', err);
     } finally {
       setLoading(false);
+    }
+    // Fetch coach assignments separately — non-blocking, failures silently ignored
+    try {
+      const coachRes = await axios.get("/api/coach-expert/coach-assigned-positions", { withCredentials: true });
+      setCoachAssigned((coachRes.data?.assignments || []).filter(a => a.status === 'accepted'));
+    } catch {
+      setCoachAssigned([]);
     }
   };
 
@@ -39,22 +65,44 @@ const AssignedPositions = () => {
     fetchAssignedPositions();
   }, []);
 
-  // Handle row click
-  const handleRowClick = (position) => {
-    if (position.isFull) {
-      // Show modal for full positions
-      setSelectedFullPosition(position);
-      setShowFullModal(true);
-    } else {
-      // Navigate to dash_view for available positions
-      navigate(`/dash_view/${position.pos_id}`);
+  // A position is active unless its status says otherwise (matches backend
+  // convention exactly: empty status OR a status containing the word "active").
+  const isPositionActive = (position) => {
+    const st = (position?.status || '').toString().toLowerCase().trim();
+    return st === '' || st.includes('active');
+  };
+
+  // Open the Submit Candidate modal — same flow as clicking in dash_view.
+  // Fetch full position detail to get clientspoc / hr_name for the form.
+  const handleSubmitCandidate = async (e, position) => {
+    e.stopPropagation();
+    if (loadingApplyId) return;
+    if (!isPositionActive(position)) return; // never open the modal for inactive positions
+    setLoadingApplyId(position.pos_id);
+    try {
+      let full = position;
+      try {
+        const res = await axios.get(`/candidate/position/${position.pos_id}`);
+        if (res.data) full = { ...position, ...res.data };
+      } catch {
+        // fall back to the data we already have
+      }
+      setApplyPos({
+        pos_id: position.pos_id,
+        client: full.client || position.client || '',
+        clientspoc: full.clientspoc || '',
+        pos_name: full.position || position.position || '',
+        hr_name: full.hr_name || position.hr_name || '',
+      });
+      setIsApplyOpen(true);
+    } finally {
+      setLoadingApplyId(null);
     }
   };
 
-  // Close modal
-  const handleCloseModal = () => {
-    setShowFullModal(false);
-    setSelectedFullPosition(null);
+  const closeApplyModal = () => {
+    setIsApplyOpen(false);
+    setApplyPos(null);
   };
 
   const formatDate = (datePosted) => {
@@ -65,15 +113,15 @@ const AssignedPositions = () => {
   };
 
   const getCommissionColor = (commission) => {
-    if (commission >= 10) return { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200' };
-    if (commission >= 5) return { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' };
-    return { bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-200' };
+    if (commission >= 10) return 'bg-green-100 text-green-700 border-green-200';
+    if (commission >= 5) return 'bg-orange-100 text-orange-700 border-orange-200';
+    return 'bg-gray-100 text-gray-700 border-gray-200';
   };
 
   const getStatusColor = (status) => {
     const successStatuses = ['Offer Accepted', 'Joining'];
     const rejectionStatuses = ['Screen Reject', 'L1 Reject', 'L2 Reject', 'L3 Reject', 'HR Reject', 'Background Verification Reject', 'Negotiation Reject', 'Offer Declined'];
-    
+
     if (successStatuses.includes(status)) {
       return 'bg-green-100 text-green-700 border-green-200';
     } else if (rejectionStatuses.includes(status)) {
@@ -94,365 +142,76 @@ const AssignedPositions = () => {
 
   // Filtered lists based on search
   const filteredPositionOptions = useMemo(() => {
-    const filtered = uniquePositions.filter(pos => 
+    const filtered = uniquePositions.filter(pos =>
       pos.toLowerCase().includes(positionSearch.toLowerCase())
     );
     return filtered.slice(0, 10);
   }, [uniquePositions, positionSearch]);
 
   const filteredClientOptions = useMemo(() => {
-    const filtered = uniqueClients.filter(client => 
+    const filtered = uniqueClients.filter(client =>
       client.toLowerCase().includes(clientSearch.toLowerCase())
     );
     return filtered.slice(0, 10);
   }, [uniqueClients, clientSearch]);
 
-  // Filter positions based on selected filters
+  // Filter positions based on selected filters, then show active positions first
   const filteredPositions = useMemo(() => {
-    return positions.filter(position => {
-      // Filter by position name
-      if (positionFilter && position.position !== positionFilter) {
-        return false;
-      }
-
-      // Filter by client
-      if (clientFilter && position.client !== clientFilter) {
-        return false;
-      }
-
+    const filtered = positions.filter(position => {
+      if (positionFilter && position.position !== positionFilter) return false;
+      if (clientFilter && position.client !== clientFilter) return false;
+      if (catFilter && position.pos_cat !== catFilter) return false;
       return true;
     });
-  }, [positions, positionFilter, clientFilter]);
+    // Stable sort: active positions first, preserving the existing (newest-first) order within each group
+    return filtered
+      .map((position, index) => ({ position, index }))
+      .sort((a, b) => {
+        const aActive = isPositionActive(a.position) ? 0 : 1;
+        const bActive = isPositionActive(b.position) ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+        return a.index - b.index;
+      })
+      .map(item => item.position);
+  }, [positions, positionFilter, clientFilter, catFilter]);
 
   const clearFilters = () => {
     setPositionFilter('');
     setClientFilter('');
     setPositionSearch('');
     setClientSearch('');
+    setCatFilter('');
   };
 
-  // Toggle row expansion
+  // Quick category filters (match position.pos_cat values)
+  const CATEGORY_FILTERS = [
+    { label: 'Immediate Hiring', color: 'red' },
+    { label: 'Interview Drives', color: 'purple' },
+    { label: 'Fast Response', color: 'blue' },
+    { label: 'High Commission', color: 'green' },
+    { label: 'New', color: 'teal' },
+  ];
+  const catBtnClasses = (cat) => {
+    const active = catFilter === cat.label;
+    const palette = {
+      red: active ? 'bg-red-600 text-white border-red-600' : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100',
+      purple: active ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100',
+      blue: active ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100',
+      green: active ? 'bg-green-600 text-white border-green-600' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100',
+      teal: active ? 'bg-teal-600 text-white border-teal-600' : 'bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100',
+    };
+    return palette[cat.color];
+  };
+
   const toggleRowExpansion = (posId) => {
-    setExpandedRows(prev => ({
-      ...prev,
-      [posId]: !prev[posId]
-    }));
+    setExpandedRows(prev => ({ ...prev, [posId]: !prev[posId] }));
   };
-
-  const columns = useMemo(
-    () => [
-      {
-        accessorKey: 'serialNumber',
-        header: 'S.No.',
-        size: 70,
-        enableColumnOrdering: false,
-        enableSorting: false,
-        enableColumnFilter: false,
-        enableHiding: false,
-        Cell: ({ row }) => (
-          <div className="flex items-center justify-center">
-            <span className="font-bold text-gray-700 text-xs sm:text-sm bg-blue-50 px-2 sm:px-3 py-1 rounded-full">
-              {row.index + 1}
-            </span>
-          </div>
-        ),
-      },
-      {
-        accessorKey: 'position',
-        header: 'Position',
-        size: 200,
-        Cell: ({ cell, row }) => (
-          <div>
-            <p className="font-bold text-gray-900 text-xs sm:text-sm">{cell.getValue()}</p>
-            <p className="text-xs text-gray-500">{row.original.pos_cat}</p>
-          </div>
-        ),
-      },
-      {
-        accessorKey: 'client',
-        header: 'Client',
-        size: 140,
-        Cell: ({ cell }) => (
-          <span className="font-medium text-gray-700 text-xs sm:text-sm">
-            {cell.getValue() || 'Confidential'}
-          </span>
-        ),
-      },
-      {
-        accessorKey: 'location',
-        header: 'Location',
-        size: 150,
-        Cell: ({ cell }) => (
-          <div className="flex items-center gap-1 sm:gap-2 text-gray-600">
-            <MapPin size={14} className="text-blue-500 flex-shrink-0" />
-            <span className="truncate text-xs sm:text-sm">
-              {Array.isArray(cell.getValue()) 
-                ? cell.getValue().slice(0, 2).join(", ") + (cell.getValue().length > 2 ? '...' : '')
-                : cell.getValue()}
-            </span>
-          </div>
-        ),
-      },
-      {
-        accessorKey: 'commison',
-        header: 'Commission',
-        size: 110,
-        Cell: ({ cell }) => {
-          const commission = cell.getValue();
-          const colors = getCommissionColor(commission);
-          
-          return (
-            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${colors.bg} ${colors.text} border-2 ${colors.border} font-bold text-xs`}>
-              <BadgePercent size={12} />
-              <span>{commission}%</span>
-            </div>
-          );
-        },
-      },
-      {
-        accessorKey: 'candidateCount',
-        header: 'Total Candidates',
-        size: 120,
-        Cell: ({ cell }) => {
-          const count = cell.getValue() || 0;
-          
-          return (
-            <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm ${
-              count > 0 
-                ? 'bg-blue-500 text-white' 
-                : 'bg-gray-200 text-gray-500'
-            }`}>
-              <Users size={16} />
-              <span>{count}</span>
-            </div>
-          );
-        },
-      },
-      {
-        accessorKey: 'myCandidateCount',
-        header: 'My Candidates',
-        size: 120,
-        Cell: ({ cell }) => {
-          const count = cell.getValue() || 0;
-          
-          return (
-            <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg font-semibold text-sm ${
-              count > 0 
-                ? 'bg-green-500 text-white' 
-                : 'bg-gray-200 text-gray-500'
-            }`}>
-              <User size={16} />
-              <span>{count}</span>
-            </div>
-          );
-        },
-      },
-      {
-        accessorKey: 'remaining',
-        header: 'Remaining',
-        size: 100,
-        Cell: ({ cell, row }) => {
-          const remaining = cell.getValue() || 0;
-          const isFull = row.original.isFull;
-          
-          return (
-            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${
-              isFull 
-                ? 'bg-red-100 text-red-700 border-2 border-red-200' 
-                : 'bg-green-100 text-green-700 border-2 border-green-200'
-            }`}>
-              <span>{remaining}</span>
-              <span className="text-xs">/ {row.original.maxCandidate || 10}</span>
-            </div>
-          );
-        },
-      },
-      {
-        accessorKey: 'datePosted',
-        header: 'Posted On',
-        size: 120,
-        Cell: ({ cell }) => (
-          <div className="flex items-center gap-1 sm:gap-2 text-gray-600">
-            <Calendar size={12} className="text-orange-500 flex-shrink-0" />
-            <span className="font-medium text-xs sm:text-sm">{formatDate(cell.getValue())}</span>
-          </div>
-        ),
-        sortingFn: (rowA, rowB) => {
-          const dateA = rowA.original.datePosted?._seconds || 0;
-          const dateB = rowB.original.datePosted?._seconds || 0;
-          return dateA - dateB;
-        },
-      },
-    ],
-    []
-  );
-
-  const table = useMaterialReactTable({
-    columns,
-    data: filteredPositions,
-    
-    enableColumnOrdering: true,
-    enableColumnResizing: true,
-    enableColumnFilters: true,
-    enableSorting: true,
-    enablePagination: true,
-    enableDensityToggle: true,
-    enableFullScreenToggle: true,
-    enableGlobalFilter: true,
-    enableHiding: true,
-    
-    getRowId: (row) => row.pos_id,
-    
-    initialState: {
-      pagination: { pageSize: 15, pageIndex: 0 },
-      density: 'compact',
-      sorting: [{ id: 'datePosted', desc: true }],
-    },
-    
-    state: {
-      isLoading: loading,
-    },
-
-    muiTableContainerProps: {
-      sx: {
-        maxHeight: 'calc(100vh - 400px)',
-        minHeight: '400px',
-      },
-    },
-    
-    muiTableProps: {
-      sx: {
-        '& .MuiTableCell-root': {
-          borderBottom: '1px solid #e5e7eb',
-          padding: '8px 12px',
-        },
-      },
-    },
-    
-    muiTableHeadCellProps: {
-      sx: {
-        background: 'linear-gradient(to right, #eff6ff, #fff7ed)',
-        borderBottom: '2px solid #bfdbfe',
-        fontWeight: '600',
-        color: '#1f2937',
-        padding: '12px',
-      },
-    },
-    
-    muiTableBodyRowProps: ({ row }) => ({
-      onClick: () => handleRowClick(row.original),
-      sx: {
-        cursor: 'pointer',
-        '&:hover': {
-          backgroundColor: '#f9fafb',
-        },
-        transition: 'all 0.3s',
-      },
-    }),
-    
-    muiTablePaperProps: {
-      sx: {
-        boxShadow: 'none',
-        border: 'none',
-      },
-    },
-    
-    muiTopToolbarProps: {
-      sx: {
-        background: 'linear-gradient(to right, #2563eb, #f97316)',
-        padding: '12px',
-        '& .MuiBox-root': {
-          color: 'white',
-        },
-        '& .MuiIconButton-root': {
-          color: 'white',
-        },
-        '& .MuiInputBase-root': {
-          color: 'white',
-          '&::before': {
-            borderBottomColor: 'rgba(255,255,255,0.5)',
-          },
-        },
-      },
-    },
-    
-    renderDetailPanel: ({ row }) => {
-      const posId = row.original.pos_id;
-      const isExpanded = expandedRows[posId];
-      const myCandidates = row.original.myCandidates || [];
-
-      if (myCandidates.length === 0) {
-        return (
-          <Box sx={{ padding: '16px', backgroundColor: '#f9fafb' }}>
-            <div className="text-center py-4">
-              <UsersIcon size={48} className="mx-auto text-gray-300 mb-2" />
-              <p className="text-gray-500">You haven't submitted any candidates for this position yet.</p>
-              <p className="text-sm text-gray-400 mt-1">
-                Go to Open Positions to find and submit candidates.
-              </p>
-            </div>
-          </Box>
-        );
-      }
-
-      return (
-        <Box sx={{ padding: '16px', backgroundColor: '#f9fafb' }}>
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-              <User size={16} className="text-green-600" />
-              Your Candidates ({myCandidates.length})
-            </h4>
-            <button
-              onClick={() => toggleRowExpansion(posId)}
-              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-            >
-              {isExpanded ? 'Collapse' : 'Expand'}
-            </button>
-          </div>
-          
-          <Collapse in={isExpanded || true}>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-              {myCandidates.map((candidate, idx) => (
-                <div key={idx} className="bg-white rounded-lg p-4 border-2 border-green-100">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900 text-sm">{candidate.candidateName}</p>
-                      <div className="space-y-1 mt-1">
-                        {candidate.dateAdded && (
-                          <div className="flex items-center gap-1 text-xs text-gray-500">
-                            <Clock size={12} />
-                            <span className="font-medium">Submitted:</span>
-                            <span>{formatDate(candidate.dateAdded)}</span>
-                          </div>
-                        )}
-                        {candidate.lastUpdated && (
-                          <div className="flex items-center gap-1 text-xs text-blue-600">
-                            <Clock size={12} />
-                            <span className="font-medium">Updated:</span>
-                            <span>{formatDate(candidate.lastUpdated)}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border-2 text-xs font-medium ${getStatusColor(candidate.status)}`}>
-                    <CheckCircle size={12} />
-                    <span>{candidate.status}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Collapse>
-        </Box>
-      );
-    },
-  });
 
   return (
     <div className="w-full min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-orange-50/30 p-2 sm:p-4 lg:p-6">
       <div className="w-full lg:max-w-[calc(100vw-320px)] mx-auto">
         <div className="bg-white shadow-xl rounded-xl sm:rounded-2xl border border-gray-200 overflow-hidden">
-          
+
           {/* Header */}
           <div className="bg-gradient-to-r from-green-600 to-teal-500 p-3 sm:p-4 lg:p-6">
             <div className="flex items-center justify-between flex-wrap gap-3 sm:gap-4">
@@ -465,7 +224,7 @@ const AssignedPositions = () => {
                     Assigned Positions
                   </h3>
                   <p className="text-green-100 text-xs sm:text-sm">
-                    {positions.length} positions • Click to expand and see your candidates
+                    {positions.length} positions • Submit candidates directly from each card
                   </p>
                 </div>
               </div>
@@ -509,7 +268,7 @@ const AssignedPositions = () => {
                 </button>
               )}
             </div>
-            
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* Position Filter */}
               <div>
@@ -643,65 +402,259 @@ const AssignedPositions = () => {
             )}
           </div>
 
+          {/* Referral "Use Resume" banner — a candidate is waiting to be submitted */}
+          {useResumeCand && (
+            <div className="bg-indigo-50 border-b-2 border-indigo-200 px-3 sm:px-4 lg:px-6 py-3">
+              <div className="flex items-start sm:items-center gap-3 text-sm flex-wrap">
+                <FileText size={17} className="text-indigo-600 flex-shrink-0" />
+                <p className="text-indigo-900 flex-1 min-w-0">
+                  Submitting <strong>{useResumeCand.candidate || 'referred candidate'}</strong>
+                  {useResumeCand.emails ? ` (${useResumeCand.emails})` : ''} — choose a position below and click
+                  <strong> Submit Candidate</strong>. Their details will be filled in for you.
+                </p>
+                <button onClick={clearUseResume}
+                  className="text-indigo-700 hover:text-indigo-900 font-semibold text-xs underline flex-shrink-0">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Info Banner */}
           <div className="bg-green-50 border-b-2 border-green-200 px-3 sm:px-4 lg:px-6 py-2 sm:py-3">
             <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
               <Users size={16} className="text-green-600 flex-shrink-0" />
               <p className="text-green-800">
-                <span className="font-semibold">Tip:</span> 
-                <span className="hidden sm:inline"> Click the expand icon in the first column to see your submitted candidates for each position</span>
-                <span className="sm:hidden"> Click expand icon to see candidates</span>
+                <span className="font-semibold">Tip:</span>
+                <span className="hidden sm:inline"> Click <strong>Submit Candidate</strong> on any card to add a candidate, or "My Candidates" to view your submissions.</span>
+                <span className="sm:hidden"> Tap Submit Candidate on a card to apply.</span>
               </p>
             </div>
           </div>
 
-          {/* Material React Table */}
-          <div className="p-2 sm:p-3 lg:p-4">
-            <MaterialReactTable table={table} />
+          {/* Category Quick Filters */}
+          <div className="px-3 sm:px-4 lg:px-6 pt-3 sm:pt-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setCatFilter('')}
+                className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm font-semibold transition-colors ${
+                  catFilter === '' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                All
+              </button>
+              {CATEGORY_FILTERS.map(cat => (
+                <button
+                  key={cat.label}
+                  onClick={() => setCatFilter(prev => prev === cat.label ? '' : cat.label)}
+                  className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm font-semibold transition-colors ${catBtnClasses(cat)}`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cards Grid */}
+          <div className="p-3 sm:p-4 lg:p-6">
+            {loading ? (
+              <div className="flex justify-center py-20">
+                <div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : filteredPositions.length === 0 ? (
+              <div className="text-center py-20 text-gray-400">
+                <Briefcase size={44} className="mx-auto mb-3 opacity-30" />
+                <p className="font-semibold">No assigned positions found</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredPositions.map((position) => {
+                  const posId = position.pos_id;
+                  const active = isPositionActive(position);
+                  const isCoach = coachAssignedIds.has(posId);
+                  const myCandidates = position.myCandidates || [];
+                  const isExpanded = expandedRows[posId];
+                  const loc = (() => {
+                    const arr = Array.isArray(position.location)
+                      ? position.location.filter(Boolean)
+                      : (position.location ? [position.location] : []);
+                    if (arr.length > 0) {
+                      return arr.slice(0, 2).join(', ') + (arr.length > 2 ? '…' : '');
+                    }
+                    // fallback to state field when location is empty (matches dash_view)
+                    const st = Array.isArray(position.state)
+                      ? position.state.filter(Boolean).join(', ')
+                      : (position.state || '');
+                    return st || '—';
+                  })();
+                  const busy = loadingApplyId === posId;
+
+                  return (
+                    <div
+                      key={posId}
+                      onClick={() => navigate(`/dash_view/${posId}`)}
+                      className={`relative bg-white rounded-2xl border shadow-sm flex flex-col gap-3 p-4 transition-all duration-200 cursor-pointer hover:shadow-md hover:-translate-y-0.5 ${
+                        isCoach ? 'border-orange-200 ring-1 ring-orange-200' : 'border-gray-200 hover:border-green-300'
+                      }`}
+                    >
+                      {/* Title + badges */}
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-bold text-gray-900 text-sm leading-snug line-clamp-2">{position.position || '—'}</h4>
+                          <div className="flex-shrink-0 flex items-center gap-1.5">
+                            <span
+                              title={`${position.resumeBankMatchCount || 0} resume-bank candidate(s) match this JD by 75% or more`}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                position.resumeBankMatchCount > 0
+                                  ? 'bg-purple-100 text-purple-700 border-purple-200'
+                                  : 'bg-gray-100 text-gray-400 border-gray-200'
+                              }`}
+                            >
+                              <Sparkles size={10} /> {position.resumeBankMatchCount || 0} match
+                            </span>
+                            {position.isOwner && (
+                              <span className="px-2 py-0.5 bg-green-100 text-green-700 border border-green-200 rounded-full text-[10px] font-bold">Owner</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                          {position.pos_cat && (
+                            <span className="text-xs text-gray-500">{position.pos_cat}</span>
+                          )}
+                          {isCoach && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-orange-100 text-orange-700 border border-orange-200 rounded-full text-[10px] font-bold">
+                              <UserCheck size={10} /> Coach
+                            </span>
+                          )}
+                          {!active && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-gray-200 text-gray-600 border border-gray-300 rounded-full text-[10px] font-bold">
+                              Inactive
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Client */}
+                      <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                        <Building2 size={13} className="text-green-500 flex-shrink-0" />
+                        <span className="truncate font-medium">{position.client || 'Confidential'}</span>
+                      </div>
+
+                      {/* Location */}
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <MapPin size={13} className="text-blue-400 flex-shrink-0" />
+                        <span className="truncate">{loc}</span>
+                      </div>
+
+                      {/* Stats */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 text-xs font-semibold">
+                          <Users size={12} /> {position.candidateCount || 0} total
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-green-50 text-green-700 text-xs font-semibold">
+                          <User size={12} /> {position.myCandidateCount || 0} mine
+                        </span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold border ${
+                          position.isFull ? 'bg-red-50 text-red-600 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}>
+                          {position.remaining ?? 0}/{position.maxCandidate || 10} left
+                        </span>
+                      </div>
+
+                      {/* Date + commission */}
+                      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                        <div className="flex items-center gap-1 text-xs text-gray-400">
+                          <Calendar size={11} />
+                          <span>{formatDate(position.datePosted) || '—'}</span>
+                        </div>
+                        <span className={`flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-full border ${getCommissionColor(position.commison)}`}>
+                          <BadgePercent size={11} />{formatCommission(position.commison, position.commission_type)}
+                        </span>
+                      </div>
+
+                      {/* Action: Submit Candidate / Position Not Active */}
+                      <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                        {active ? (
+                          <button
+                            onClick={(e) => handleSubmitCandidate(e, position)}
+                            disabled={busy}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-colors"
+                          >
+                            {busy ? <Loader size={15} className="animate-spin" /> : <Send size={15} />}
+                            Submit Candidate
+                          </button>
+                        ) : (
+                          <button
+                            disabled
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-500 text-sm font-semibold rounded-xl border border-gray-200 cursor-not-allowed"
+                          >
+                            <Ban size={15} />
+                            Position Not Active
+                          </button>
+                        )}
+                      </div>
+
+                      {/* My Candidates expander */}
+                      {myCandidates.length > 0 && (
+                        <div className="border-t border-gray-100 pt-2" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => toggleRowExpansion(posId)}
+                            className="w-full flex items-center justify-between text-xs font-semibold text-gray-600 hover:text-gray-900"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <User size={13} className="text-green-600" />
+                              My Candidates ({myCandidates.length})
+                            </span>
+                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </button>
+                          {isExpanded && (
+                            <div className="mt-2 space-y-2">
+                              {myCandidates.map((candidate, idx) => (
+                                <div key={idx} className="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                                  <p className="font-medium text-gray-900 text-xs">{candidate.candidateName}</p>
+                                  {candidate.dateAdded && (
+                                    <div className="flex items-center gap-1 text-[11px] text-gray-500 mt-0.5">
+                                      <Clock size={11} />
+                                      <span>Submitted {formatDate(candidate.dateAdded)}</span>
+                                    </div>
+                                  )}
+                                  <span className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full border text-[10px] font-medium ${getStatusColor(candidate.status)}`}>
+                                    <CheckCircle size={10} />
+                                    {candidate.status}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
         </div>
       </div>
 
-      {/* Max Candidate Full Modal */}
-      <Dialog
-        open={showFullModal}
-        onClose={handleCloseModal}
-        aria-labelledby="alert-dialog-title"
-        aria-describedby="alert-dialog-description"
-      >
-        <DialogTitle id="alert-dialog-title" className="flex items-center gap-2">
-          <AlertTriangle className="text-red-500" size={24} />
-          Max Candidates Reached
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText id="alert-dialog-description">
-            {selectedFullPosition && (
-              <div className="space-y-3">
-                <p className="text-gray-700">
-                  The position <strong>{selectedFullPosition.position}</strong> has reached its maximum candidate limit.
-                </p>
-                <div className="bg-gray-100 p-3 rounded-lg space-y-1 text-sm">
-                  <p><span className="font-medium">Client:</span> {selectedFullPosition.client || 'Confidential'}</p>
-                  <p><span className="font-medium">Max Candidates:</span> {selectedFullPosition.maxCandidate || 10}</p>
-                  <p><span className="font-medium">Current Candidates:</span> {selectedFullPosition.candidateCount || 0}</p>
-                </div>
-                <p className="text-gray-600 text-sm mt-2">
-                  You cannot add more candidates to this position. Please check other available positions.
-                </p>
-              </div>
-            )}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseModal} color="primary" autoFocus>
-            OK
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Submit Candidate Modal — same flow as dash_view */}
+      {applyPos && (
+        <ApplyModal isOpen={isApplyOpen} onClose={closeApplyModal}>
+          <SubmitCandidateTabs
+            pos_id={applyPos.pos_id}
+            client={applyPos.client}
+            clientspoc={applyPos.clientspoc}
+            pos_name={applyPos.pos_name}
+            hr_name={applyPos.hr_name}
+            prefill={useResumeCand}
+            onClose={closeApplyModal}
+            onSubmitted={() => { clearUseResume(); fetchAssignedPositions(); }}
+          />
+        </ApplyModal>
+      )}
     </div>
   );
 };
 
 export default AssignedPositions;
-

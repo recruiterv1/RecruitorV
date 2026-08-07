@@ -1,0 +1,348 @@
+/**
+ * Default (code) email templates + variable metadata for the SuperAdmin
+ * Email Template Designer.
+ *
+ * Each entry is the editable starting point shown in the designer. Templates are
+ * stored in Firestore (collection `email_templates`) only once a SuperAdmin
+ * customizes them; until then the live code templates in utils/email.js remain
+ * the source of truth (see renderEmail() fallback), so nothing changes visually
+ * until someone edits a template here.
+ *
+ * Bodies use {{variable}} placeholders. brandWrap() applies the shared shell.
+ */
+
+const brandWrap = (inner) => `
+  <div style="font-family:Arial,Helvetica,sans-serif;background:#f4f5f7;padding:24px 0;">
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
+      <div style="background:linear-gradient(135deg,#2563eb,#f97316);padding:18px 24px;">
+        <span style="color:#fff;font-size:18px;font-weight:800;letter-spacing:.3px;">RecruiterV</span>
+      </div>
+      <div style="padding:24px;color:#1f2937;font-size:14px;line-height:1.65;">
+        ${inner}
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #f0f0f0;color:#9ca3af;font-size:11px;">
+        © RecruiterV · This is an automated message, please do not reply.
+      </div>
+    </div>
+  </div>`;
+
+const TEMPLATES = [
+  {
+    key: 'candidateStatusUpdated', name: 'Candidate status updated', recipient: 'Recruiter',
+    subject: 'Status update — {{candidateName}} | {{positionTitle}}',
+    variables: ['recruiterName', 'candidateName', 'positionTitle', 'clientName', 'newStatus', 'dashboardUrl'],
+    sample: { recruiterName: 'Aisha', candidateName: 'Rohan Mehta', positionTitle: 'Java Developer', clientName: 'Acme Corp', newStatus: 'L2 Scheduled', dashboardUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p>Dear {{recruiterName}},</p>
+      <p>The status of your candidate <b>{{candidateName}}</b> for <b>{{positionTitle}}</b>{{clientName}} has been updated to:</p>
+      <p style="font-size:16px;font-weight:700;color:#2563eb;">{{newStatus}}</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">View in dashboard</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'positionDirectAssigned', name: 'Position directly assigned', recipient: 'Coach / Expert',
+    subject: 'New position assigned — {{positionTitle}}',
+    variables: ['userName', 'userType', 'positionTitle', 'clientName', 'dashboardUrl'],
+    sample: { userName: 'Priya', userType: 'Coach', positionTitle: 'DevOps Engineer', clientName: 'Globex', dashboardUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p>A new position <b>{{positionTitle}}</b>{{clientName}} has been assigned to you as {{userType}}.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Open position</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'registrationPending', name: 'Registration pending', recipient: 'New registrant',
+    subject: 'Your RecruiterV registration is received',
+    variables: ['name', 'userType'],
+    sample: { name: 'Sanjay', userType: 'Recruiter' },
+    body: brandWrap(`
+      <p>Dear {{name}},</p>
+      <p>Thank you for registering on RecruiterV as a {{userType}}. Your account is pending review by our team.</p>
+      <p>You'll receive another email once your account is approved.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'accountApproved', name: 'Account approved', recipient: 'New user',
+    subject: 'Your RecruiterV account is approved 🎉',
+    variables: ['name', 'userType', 'loginUrl'],
+    sample: { name: 'Sanjay', userType: 'Recruiter', loginUrl: 'https://www.recruiterv.com/log_rec' },
+    body: brandWrap(`
+      <p>Dear {{name}},</p>
+      <p>Great news — your RecruiterV {{userType}} account has been approved. You can now sign in and get started.</p>
+      <p><a href="{{loginUrl}}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Sign in</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'accountRejected', name: 'Account rejected', recipient: 'New user',
+    subject: 'Update on your RecruiterV registration',
+    variables: ['name', 'userType'],
+    sample: { name: 'Sanjay', userType: 'Recruiter' },
+    body: brandWrap(`
+      <p>Dear {{name}},</p>
+      <p>Thank you for your interest in RecruiterV. After reviewing your {{userType}} registration, we're unable to approve your account at this time.</p>
+      <p>If you believe this is a mistake, please reach out to our support team.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'directApplicantNotification', name: 'Direct applicant notification', recipient: 'Recruiter / ClientSPOC',
+    subject: '🎯 New direct application — {{positionTitle}} | {{candidateName}}',
+    variables: ['recipientName', 'recipientType', 'candidateName', 'candidateEmail', 'candidatePhone', 'positionTitle', 'client', 'dashboardUrl'],
+    sample: { recipientName: 'Hiring Manager', recipientType: 'clientspoc', candidateName: 'Neha Gupta', candidateEmail: 'neha@example.com', candidatePhone: '9876543210', positionTitle: 'Frontend Developer', client: 'Acme Corp', dashboardUrl: 'https://www.recruiterv.com/clientspoc-direct-applications' },
+    body: brandWrap(`
+      <p>Dear {{recipientName}},</p>
+      <p>A new candidate has applied directly for <b>{{positionTitle}}</b> ({{client}}):</p>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;margin:8px 0;">
+        <tr><td style="padding:4px 0;color:#6b7280;">Name</td><td style="padding:4px 0;font-weight:600;">{{candidateName}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Email</td><td style="padding:4px 0;">{{candidateEmail}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Phone</td><td style="padding:4px 0;">{{candidatePhone}}</td></tr>
+      </table>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Review application</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'welcome', name: 'Welcome', recipient: 'New user',
+    subject: 'Welcome to RecruiterV',
+    variables: ['userName', 'roleCategory', 'loginUrl'],
+    sample: { userName: 'Sanjay', roleCategory: 'Recruiter', loginUrl: 'https://www.recruiterv.com/log_rec' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p>Welcome to RecruiterV! Your {{roleCategory}} account is ready.</p>
+      <p><a href="{{loginUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Get started</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'forgotPassword', name: 'Forgot password', recipient: 'Any user',
+    subject: 'Reset your RecruiterV password',
+    variables: ['userName', 'resetLink'],
+    sample: { userName: 'Sanjay', resetLink: 'https://www.recruiterv.com/reset?token=…' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p>We received a request to reset your RecruiterV password. Click below to set a new one. This link expires shortly.</p>
+      <p><a href="{{resetLink}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Reset password</a></p>
+      <p style="color:#6b7280;">If you didn't request this, you can safely ignore this email.</p>`),
+  },
+  {
+    key: 'positionAssigned', name: 'Position assigned (recruiter)', recipient: 'Recruiter',
+    subject: 'New position assigned — {{positionName}}',
+    variables: ['recruiterName', 'positionName', 'dashboardUrl'],
+    sample: { recruiterName: 'Aisha', positionName: 'Backend Engineer', dashboardUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p>Dear {{recruiterName}},</p>
+      <p>A new position <b>{{positionName}}</b> has been assigned to you.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">View position</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'candidateAndJd', name: 'Candidate and JD', recipient: 'Candidate',
+    subject: 'Your profile has been submitted — {{positionTitle}}',
+    variables: [
+      'submitterName', 'submitterRole', 'positionTitle', 'positionId', 'clientName', 'positionLink',
+      'candidateName', 'candidateEmail', 'candidatePhone', 'relExp', 'totalExp', 'currentCTC', 'expectedCTC',
+      'noticePeriod', 'currentEmployer', 'currentLocation', 'preferredLocation', 'highestEducation',
+      'techSkills', 'nonTechSkills', 'rhId', 'resumeUrl', 'dateSubmitted',
+    ],
+    sample: {
+      submitterName: 'Aisha', submitterRole: 'Recruiter', positionTitle: 'Java Developer', positionId: 'POS123',
+      clientName: 'Acme Corp', positionLink: 'https://www.recruiterv.com/position/POS123?view=share&rec=aisha%40example.com',
+      candidateName: 'Rohan Mehta', candidateEmail: 'rohan@example.com', candidatePhone: '9876543210',
+      relExp: '4', totalExp: '6', currentCTC: '₹12 LPA', expectedCTC: '₹18 LPA', noticePeriod: '30 days',
+      currentEmployer: 'Globex', currentLocation: 'Bengaluru, KA', preferredLocation: 'Bengaluru, KA',
+      highestEducation: 'B.Tech (CSE)', techSkills: 'Java, Spring Boot, SQL', nonTechSkills: 'Communication',
+      rhId: 'RH-556', resumeUrl: 'https://www.recruiterv.com/resume/sample.pdf',
+      dateSubmitted: '24 July 2026, 12:30 pm',
+    },
+    body: brandWrap(`
+      <p>Dear {{candidateName}},</p>
+      <p>Your profile has been submitted for the position below by <b>{{submitterName}}</b> ({{submitterRole}}). A copy of the submitted details is included for your reference.</p>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;margin:12px 0;background:#f9fafb;border-radius:10px;">
+        <tr><td colspan="2" style="padding:10px 12px;font-weight:800;color:#2563eb;border-bottom:1px solid #eef2f7;">Position</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;width:42%;">Title</td><td style="padding:6px 12px;font-weight:600;">{{positionTitle}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Position ID</td><td style="padding:6px 12px;">{{positionId}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Client</td><td style="padding:6px 12px;">{{clientName}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Submitted as</td><td style="padding:6px 12px;">{{submitterRole}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Submitted on</td><td style="padding:6px 12px;">{{dateSubmitted}}</td></tr>
+      </table>
+      <p style="margin:14px 0;"><a href="{{positionLink}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">View Position &amp; JD</a></p>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;margin:12px 0;background:#f9fafb;border-radius:10px;">
+        <tr><td colspan="2" style="padding:10px 12px;font-weight:800;color:#2563eb;border-bottom:1px solid #eef2f7;">Candidate details</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;width:42%;">Name</td><td style="padding:6px 12px;font-weight:600;">{{candidateName}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Email</td><td style="padding:6px 12px;">{{candidateEmail}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Phone</td><td style="padding:6px 12px;">{{candidatePhone}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">RH ID</td><td style="padding:6px 12px;">{{rhId}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Current employer</td><td style="padding:6px 12px;">{{currentEmployer}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Highest education</td><td style="padding:6px 12px;">{{highestEducation}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Relevant experience</td><td style="padding:6px 12px;">{{relExp}} yrs</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Total experience</td><td style="padding:6px 12px;">{{totalExp}} yrs</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Current CTC</td><td style="padding:6px 12px;">{{currentCTC}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Expected CTC</td><td style="padding:6px 12px;">{{expectedCTC}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Notice period</td><td style="padding:6px 12px;">{{noticePeriod}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Current location</td><td style="padding:6px 12px;">{{currentLocation}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Preferred location</td><td style="padding:6px 12px;">{{preferredLocation}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Technical skills</td><td style="padding:6px 12px;">{{techSkills}}</td></tr>
+        <tr><td style="padding:6px 12px;color:#6b7280;">Other skills</td><td style="padding:6px 12px;">{{nonTechSkills}}</td></tr>
+      </table>
+      <p style="margin:14px 0;"><a href="{{resumeUrl}}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Download resume</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'candidateSubmitted', name: 'Candidate submitted', recipient: 'ClientSPOC',
+    subject: 'New candidate submitted — {{candidateName}} | {{positionName}}',
+    variables: ['candidateName', 'positionName', 'dashboardUrl'],
+    sample: { candidateName: 'Rohan Mehta', positionName: 'Java Developer', dashboardUrl: 'https://www.recruiterv.com/ad_panel#candidates' },
+    body: brandWrap(`
+      <p>Hello,</p>
+      <p>A new candidate <b>{{candidateName}}</b> has been submitted for <b>{{positionName}}</b>.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Review candidate</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'otpCode', name: 'OTP verification code', recipient: 'Any user',
+    subject: 'Your RecruiterV OTP Code',
+    variables: ['otp'],
+    sample: { otp: '482913' },
+    body: brandWrap(`
+      <p>Welcome to RecruiterV! Use the code below to verify your account:</p>
+      <div style="font-size:34px;font-weight:800;letter-spacing:8px;text-align:center;padding:18px;background:#eff6ff;border-radius:12px;color:#1d4ed8;margin:18px 0;">{{otp}}</div>
+      <p style="color:#6b7280;font-size:13px;">This code expires in 5 minutes. Do not share it with anyone.</p>`),
+  },
+  {
+    key: 'applicationStatusUpdate', name: 'Application status update', recipient: 'Candidate',
+    subject: 'Application status update — {{position}}',
+    variables: ['candidateName', 'position', 'client', 'oldStatus', 'newStatus'],
+    sample: { candidateName: 'Neha Gupta', position: 'Frontend Developer', client: 'Acme Corp', oldStatus: 'Submitted', newStatus: 'L1 Scheduled' },
+    body: brandWrap(`
+      <p>Dear {{candidateName}},</p>
+      <p>Your application status has been updated:</p>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;margin:8px 0;">
+        <tr><td style="padding:4px 0;color:#6b7280;">Position</td><td style="padding:4px 0;font-weight:600;">{{position}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Client</td><td style="padding:4px 0;">{{client}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Current status</td><td style="padding:4px 0;font-weight:700;color:#2563eb;">{{newStatus}}</td></tr>
+      </table>
+      <p style="margin-top:18px;">Best regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'aiAutoReject', name: 'AI screening — not selected', recipient: 'Candidate',
+    subject: 'Update on your application — {{position}}',
+    variables: ['candidateName', 'position'],
+    sample: { candidateName: 'Neha Gupta', position: 'Frontend Developer' },
+    body: brandWrap(`
+      <p>Dear {{candidateName}},</p>
+      <p>Thank you for applying for <b>{{position}}</b> at RecruiterV.</p>
+      <p>After reviewing your profile against the job requirements, we're sorry to share that your profile is not a match for this role at this time.</p>
+      <p>We've kept your resume on file and will reach out if a suitable position appears.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'coachHelpRequest', name: 'Coach/Expert help request', recipient: 'Coach / Expert',
+    subject: 'New help request — {{positionTitle}}',
+    variables: ['coachExpertName', 'positionTitle', 'client', 'recruiterName', 'recruiterEmail'],
+    sample: { coachExpertName: 'Priya', positionTitle: 'DevOps Engineer', client: 'Globex', recruiterName: 'Aisha', recruiterEmail: 'aisha@example.com' },
+    body: brandWrap(`
+      <p>Dear {{coachExpertName}},</p>
+      <p>A recruiter has requested your assistance for the position below:</p>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;margin:8px 0;">
+        <tr><td style="padding:4px 0;color:#6b7280;">Position</td><td style="padding:4px 0;font-weight:600;">{{positionTitle}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Client</td><td style="padding:4px 0;">{{client}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Recruiter</td><td style="padding:4px 0;">{{recruiterName}} ({{recruiterEmail}})</td></tr>
+      </table>
+      <p>Log in to your dashboard to respond.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'directCoachRequestClientspoc', name: 'Direct coach/expert request (to SPOC)', recipient: 'ClientSPOC',
+    subject: 'New coach/expert request — {{positionTitle}}',
+    variables: ['coachExpertName', 'coachExpertEmail', 'coachExpertPhone', 'specialization', 'positionTitle', 'client'],
+    sample: { coachExpertName: 'Priya', coachExpertEmail: 'priya@example.com', coachExpertPhone: '9876543210', specialization: 'Cloud / DevOps', positionTitle: 'DevOps Engineer', client: 'Globex' },
+    body: brandWrap(`
+      <p>Hello,</p>
+      <p>A coach/expert has requested to work on your position:</p>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;margin:8px 0;">
+        <tr><td style="padding:4px 0;color:#6b7280;">Name</td><td style="padding:4px 0;font-weight:600;">{{coachExpertName}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Email</td><td style="padding:4px 0;">{{coachExpertEmail}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Phone</td><td style="padding:4px 0;">{{coachExpertPhone}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Specialization</td><td style="padding:4px 0;">{{specialization}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Position</td><td style="padding:4px 0;">{{positionTitle}} ({{client}})</td></tr>
+      </table>
+      <p>Open your ClientSPOC dashboard → Direct Coach/Expert Requests to Approve, Reject, or Waitlist.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'directCoachRequestStatus', name: 'Coach/expert request decision', recipient: 'Coach / Expert',
+    subject: 'Your request for "{{positionTitle}}" — {{statusLabel}}',
+    variables: ['coachExpertName', 'positionTitle', 'client', 'statusLabel'],
+    sample: { coachExpertName: 'Priya', positionTitle: 'DevOps Engineer', client: 'Globex', statusLabel: 'Approved' },
+    body: brandWrap(`
+      <p>Dear {{coachExpertName}},</p>
+      <p>Your request for the position below has been <b>{{statusLabel}}</b>:</p>
+      <table style="width:100%;font-size:13px;border-collapse:collapse;margin:8px 0;">
+        <tr><td style="padding:4px 0;color:#6b7280;">Position</td><td style="padding:4px 0;font-weight:600;">{{positionTitle}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Client</td><td style="padding:4px 0;">{{client}}</td></tr>
+        <tr><td style="padding:4px 0;color:#6b7280;">Status</td><td style="padding:4px 0;font-weight:700;color:#2563eb;">{{statusLabel}}</td></tr>
+      </table>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+];
+
+const TEMPLATE_MAP = Object.fromEntries(TEMPLATES.map(t => [t.key, t]));
+
+// Replace {{var}} tokens. Unknown vars become empty strings.
+const substitute = (str, vars = {}) =>
+  (str || '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k) => (vars[k] !== undefined && vars[k] !== null ? String(vars[k]) : ''));
+
+// Recipient types selectable when creating a template.
+const RECIPIENT_OPTIONS = [
+  'Recruiter', 'Coach', 'Expert', 'Coach / Expert', 'Vendor', 'ClientSPOC',
+  'Candidate', 'Admin', 'SuperAdmin', 'New user', 'New registrant', 'Any user', 'Custom',
+];
+
+// Master catalog of variables available across email templates. Shown in the
+// designer so admins know what {{tokens}} they can insert.
+const VARIABLE_CATALOG = [
+  { name: 'candidateName', desc: 'Candidate full name' },
+  { name: 'candidateEmail', desc: 'Candidate email' },
+  { name: 'candidatePhone', desc: 'Candidate phone' },
+  { name: 'positionTitle', desc: 'Position title' },
+  { name: 'position', desc: 'Position title (alt)' },
+  { name: 'positionName', desc: 'Position name (alt)' },
+  { name: 'client', desc: 'Client name' },
+  { name: 'clientName', desc: 'Client name (alt)' },
+  { name: 'recruiterName', desc: 'Recruiter name' },
+  { name: 'recruiterEmail', desc: 'Recruiter email' },
+  { name: 'coachExpertName', desc: 'Coach / Expert name' },
+  { name: 'coachExpertEmail', desc: 'Coach / Expert email' },
+  { name: 'coachExpertPhone', desc: 'Coach / Expert phone' },
+  { name: 'specialization', desc: 'Coach / Expert specialization' },
+  { name: 'clientspocName', desc: 'ClientSPOC name' },
+  { name: 'recipientName', desc: 'Recipient name' },
+  { name: 'userName', desc: 'Recipient name (alt)' },
+  { name: 'name', desc: 'Recipient name (alt)' },
+  { name: 'userType', desc: 'Recipient role / type' },
+  { name: 'roleCategory', desc: 'Recipient role category' },
+  { name: 'newStatus', desc: 'New / current status' },
+  { name: 'oldStatus', desc: 'Previous status' },
+  { name: 'statusLabel', desc: 'Status label (Approved / Rejected / …)' },
+  { name: 'submitterName', desc: 'Recruiter/Coach/Expert who submitted' },
+  { name: 'submitterRole', desc: 'Submitter role (Recruiter/Coach/Expert)' },
+  { name: 'positionLink', desc: 'Role-aware position/JD share link (attributed to submitter)' },
+  { name: 'positionId', desc: 'Position ID' },
+  { name: 'resumeUrl', desc: 'Candidate resume download link' },
+  { name: 'relExp', desc: 'Relevant experience (yrs)' },
+  { name: 'totalExp', desc: 'Total experience (yrs)' },
+  { name: 'currentCTC', desc: 'Current CTC' },
+  { name: 'expectedCTC', desc: 'Expected CTC' },
+  { name: 'noticePeriod', desc: 'Notice period' },
+  { name: 'currentEmployer', desc: 'Current employer' },
+  { name: 'currentLocation', desc: 'Current location' },
+  { name: 'preferredLocation', desc: 'Preferred location' },
+  { name: 'highestEducation', desc: 'Highest education' },
+  { name: 'techSkills', desc: 'Technical skills' },
+  { name: 'nonTechSkills', desc: 'Other / non-technical skills' },
+  { name: 'rhId', desc: 'RH ID' },
+  { name: 'dateSubmitted', desc: 'Submission date/time' },
+  { name: 'dashboardUrl', desc: 'Link to the dashboard' },
+  { name: 'loginUrl', desc: 'Link to sign in' },
+  { name: 'resetLink', desc: 'Password reset link' },
+  { name: 'otp', desc: 'One-time verification code' },
+];
+
+module.exports = { TEMPLATES, TEMPLATE_MAP, substitute, brandWrap, RECIPIENT_OPTIONS, VARIABLE_CATALOG };

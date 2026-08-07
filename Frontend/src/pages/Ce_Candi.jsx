@@ -1,8 +1,9 @@
 import axios from 'axios';
 import React, { useState, useEffect, useMemo } from 'react';
 import { MaterialReactTable, useMaterialReactTable } from 'material-react-table';
-import { Users, Download, TrendingUp, Eye, Phone, Mail, MapPin, Calendar } from 'lucide-react';
+import { Users, Download, TrendingUp, Eye, Phone, Mail, MapPin, Calendar, Camera } from 'lucide-react';
 import { Box, IconButton, Tooltip } from '@mui/material';
+import CvViewButton from '../components/CvViewButton';
 
 const Ce_Candi = () => {
   const [particle, setParticle] = useState([]);
@@ -195,17 +196,28 @@ const Ce_Candi = () => {
         enableColumnFilter: false,
         Cell: ({ cell }) => (
           cell.getValue() ? (
-            <button
-              onClick={() => window.open(cell.getValue(), "_blank")}
-              className="inline-flex items-center gap-2 px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-all font-medium text-sm"
-            >
-              <Eye size={16} />
-              View
-            </button>
+            <CvViewButton url={cell.getValue()} />
           ) : (
             <span className="text-gray-400 text-sm">No CV</span>
           )
         ),
+      },
+      {
+        accessorKey: 'photo_url',
+        header: 'Photo',
+        size: 80,
+        enableSorting: false,
+        enableColumnFilter: false,
+        Cell: ({ cell }) => {
+          const url = cell.getValue();
+          return url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer" title="View candidate photo">
+              <img src={url} alt="Photo" className="w-8 h-8 rounded-full object-cover border-2 border-gray-200 hover:border-blue-400 transition-colors" />
+            </a>
+          ) : (
+            <span className="text-gray-300 text-sm">—</span>
+          );
+        },
       },
     ],
     []

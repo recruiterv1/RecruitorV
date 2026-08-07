@@ -346,7 +346,7 @@
 import axios from 'axios';
 import React, { useState, useEffect, useMemo } from 'react';
 import { MaterialReactTable, useMaterialReactTable } from 'material-react-table';
-import { Users, Download, TrendingUp, Eye, Phone, Mail, MapPin, Calendar, Filter, X, RotateCcw } from 'lucide-react';
+import { Users, Download, TrendingUp, Eye, Phone, Mail, MapPin, Calendar, Filter, X, RotateCcw, Info } from 'lucide-react';
 import { Box, IconButton, Tooltip } from '@mui/material';
 
 const Dash_Candi = () => {
@@ -365,7 +365,7 @@ const Dash_Candi = () => {
   const fetchCandidate = async () => {
     setLoading(true);
     try {
-      const res = await axios.get("/addit/show/candi", { withCredentials: true });
+      const res = await axios.get("/addit/show/recruiter/candi", { withCredentials: true });
       setParticle(res.data);
     } catch (err) {
       console.error("Error fetching candidates:", err);
@@ -426,6 +426,12 @@ const Dash_Candi = () => {
       } else if (filters.status === 'reject') {
         // Reject: Include only statuses containing "reject"
         if (!candidate.statusa?.toLowerCase().includes('reject')) {
+          return false;
+        }
+      } else if (filters.status === 'available') {
+        // Available: candidates with no status or still at initial "Submitted" state
+        const s = (candidate.statusa || '').trim().toLowerCase();
+        if (s !== '' && s !== 'submitted') {
           return false;
         }
       }
@@ -522,7 +528,9 @@ const Dash_Candi = () => {
             </div>
             <div>
               <p className="font-semibold text-gray-900">{cell.getValue()}</p>
-              <p className="text-xs text-gray-500">{row.original.hr_name}</p>
+              {row.original.emails && (
+                <p className="text-xs text-blue-600">{row.original.emails}</p>
+              )}
             </div>
           </div>
         ),
@@ -600,12 +608,27 @@ const Dash_Candi = () => {
       {
         accessorKey: 'statusa',
         header: 'Status',
-        size: 140,
-        Cell: ({ cell }) => (
-          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border-2 ${getStatusColor(cell.getValue())}`}>
-            {cell.getValue()}
-          </span>
-        ),
+        size: 150,
+        Cell: ({ cell, row }) => {
+          const reason = row.original.rejectReason;
+          return (
+            <span className="inline-flex items-center gap-1">
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border-2 ${getStatusColor(cell.getValue())}`}>
+                {cell.getValue()}
+              </span>
+              {reason && (
+                <Tooltip
+                  arrow
+                  title={<span style={{ whiteSpace: 'pre-wrap', fontSize: 12.5, lineHeight: 1.5 }}><b>Rejection reason</b><br />{reason}</span>}
+                >
+                  <span style={{ display: 'inline-flex', cursor: 'help' }}>
+                    <Info size={15} color="#dc2626" />
+                  </span>
+                </Tooltip>
+              )}
+            </span>
+          );
+        },
         filterVariant: 'select',
         filterSelectOptions: [
           { text: 'Pending', value: 'pending' },
@@ -846,6 +869,7 @@ const Dash_Candi = () => {
                 <option value="all">Show All</option>
                 <option value="active">Active (No Reject)</option>
                 <option value="reject">Reject (All)</option>
+                <option value="available">Available</option>
               </select>
             </div>
           </div>

@@ -507,6 +507,8 @@ const RecruiterPositionStatsContent = () => {
   );
 };
 
+export { RecruiterPositionStatsContent };
+
 const RecruiterPositionStats = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 

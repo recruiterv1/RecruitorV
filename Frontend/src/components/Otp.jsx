@@ -1,93 +1,172 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { getRouteFromCategory } from "../../utils/routeMapping";
-import { Mail, ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
+import { Mail, ShieldCheck, ArrowRight, Loader2, RotateCcw, Clock, CheckCircle } from "lucide-react";
+
+const RESEND_COOLDOWN = 60;
+
+// ── Under-review modal shown after successful OTP ─────────────────────────────
+const PendingModal = ({ email, onClose }) => (
+  <div style={{
+    position:'fixed', inset:0, zIndex:9999,
+    background:'rgba(15,23,42,0.65)', backdropFilter:'blur(6px)',
+    display:'flex', alignItems:'center', justifyContent:'center', padding:16,
+  }}>
+    <div style={{
+      background:'#fff', borderRadius:24, maxWidth:480, width:'100%',
+      boxShadow:'0 24px 64px rgba(0,0,0,0.22)', overflow:'hidden',
+      animation:'modalIn 0.35s cubic-bezier(0.34,1.56,0.64,1)',
+    }}>
+      {/* Gradient header */}
+      <div style={{ background:'linear-gradient(135deg,#1e3a5f 0%,#2563eb 60%,#f97316 100%)', padding:'32px 32px 28px', textAlign:'center', position:'relative' }}>
+        <div style={{ width:72, height:72, borderRadius:'50%', background:'rgba(255,255,255,0.2)', margin:'0 auto 16px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:36 }}>
+          🎉
+        </div>
+        <h2 style={{ margin:0, fontSize:'1.45rem', fontWeight:800, color:'#fff', lineHeight:1.25 }}>
+          Registration Received!
+        </h2>
+        <p style={{ margin:'8px 0 0', fontSize:13, color:'rgba(255,255,255,0.85)' }}>
+          Your account is now under review
+        </p>
+      </div>
+
+      {/* Body */}
+      <div style={{ padding:'28px 32px 24px' }}>
+        <p style={{ margin:'0 0 20px', fontSize:15, color:'#374151', lineHeight:1.75, textAlign:'center' }}>
+          Thank you for registering on <strong style={{ color:'#2563eb' }}>RecruiterV</strong>. We have received your registration request.
+        </p>
+
+        {/* Status badge */}
+        <div style={{ display:'flex', alignItems:'center', gap:12, background:'#fffbeb', border:'1.5px solid #fde68a', borderRadius:14, padding:'14px 18px', marginBottom:20 }}>
+          <Clock size={22} color="#d97706" style={{ flexShrink:0 }} />
+          <div>
+            <p style={{ margin:0, fontWeight:700, fontSize:14, color:'#92400e' }}>Under Review — 24 hours</p>
+            <p style={{ margin:'2px 0 0', fontSize:12, color:'#a16207', lineHeight:1.5 }}>
+              Our technical team is reviewing your details. You'll get an email at <strong>{email}</strong> once approved.
+            </p>
+          </div>
+        </div>
+
+        {/* Steps */}
+        {[
+          ['📧', 'Check your email', 'A confirmation email has been sent with details of next steps.'],
+          ['✅', 'Admin approval', 'Once approved you will receive another email and can log in immediately.'],
+          ['🚀', 'Get started', 'After approval, complete your profile and start using RecruiterV.'],
+        ].map(([ico, title, desc], i) => (
+          <div key={i} style={{ display:'flex', gap:12, marginBottom:12, alignItems:'flex-start' }}>
+            <span style={{ fontSize:20, flexShrink:0, marginTop:1 }}>{ico}</span>
+            <div>
+              <p style={{ margin:0, fontWeight:700, fontSize:13, color:'#1f2937' }}>{title}</p>
+              <p style={{ margin:'2px 0 0', fontSize:12, color:'#6b7280', lineHeight:1.5 }}>{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Footer button */}
+      <div style={{ padding:'0 32px 28px' }}>
+        <button
+          onClick={onClose}
+          style={{
+            width:'100%', padding:'13px', borderRadius:12, border:'none', fontWeight:700, fontSize:15,
+            background:'linear-gradient(135deg,#2563eb,#f97316)', color:'#fff', cursor:'pointer',
+            boxShadow:'0 4px 14px rgba(37,99,235,0.3)', display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          }}
+        >
+          <CheckCircle size={18} /> Got it — Back to Login
+        </button>
+      </div>
+    </div>
+    <style>{`@keyframes modalIn{from{opacity:0;transform:scale(0.88) translateY(20px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
+  </div>
+);
 
 const OtpVerification = () => {
   const [otp, setOtp] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(RESEND_COOLDOWN);
+  const [showPendingModal, setShowPendingModal] = useState(false);
+  const timerRef = useRef(null);
   const navigate = useNavigate();
   const email = localStorage.getItem("pendingEmail");
+
+  // Start countdown on mount
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setCooldown(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, []);
+
+  const formatTime = (secs) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const handleResend = async () => {
+    setResendLoading(true);
+    setMessage("");
+    try {
+      await axios.post("/auth/resend_otp", { email });
+      setMessage("A new OTP has been sent to your email.");
+      setCooldown(RESEND_COOLDOWN);
+      clearInterval(timerRef.current);
+      timerRef.current = setInterval(() => {
+        setCooldown(prev => {
+          if (prev <= 1) { clearInterval(timerRef.current); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      setMessage(err.response?.data?.message || "Failed to resend OTP. Please try again.");
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  const cleanLocalStorage = () => {
+    ["pendingEmail","experienceCategory","planType","roleCategory","userType","specialization"].forEach(k => localStorage.removeItem(k));
+  };
 
   const handleVerify = async (e) => {
     e.preventDefault();
     setLoading(true);
     setMessage("");
-
     try {
-      const res = await axios.post("/auth/otp_verify/", {
-        email,
-        otp,
-      }, { withCredentials: true });
+      const res = await axios.post("/auth/otp_verify/", { email, otp }, { withCredentials: true });
 
-      setMessage(res.data.message || "Verified successfully! Redirecting...");
-
-      // Get role info from backend response and localStorage
-      const roleCategory = res.data.roleCategory || localStorage.getItem("roleCategory");
-      const userType = res.data.userType || localStorage.getItem("userType");
-
-      // Determine redirect route based on role and userType
-      let redirectRoute;
-
-      if (roleCategory === "Coach") {
-        if (userType === "free") {
-          // Free Coach → Login page
-          redirectRoute = "/log_rec";
-          console.log("Free Coach user, redirecting to login page");
-        } else {
-          // Paid Coach → Coach dashboard with sidebar
-          redirectRoute = "/coach";
-          console.log("Paid Coach user, redirecting to Coach dashboard");
-        }
-      } else if (roleCategory === "Expert") {
-        if (userType === "free") {
-          // Free Expert → Login page
-          redirectRoute = "/log_rec";
-          console.log("Free Expert user, redirecting to login page");
-        } else {
-          // Paid Expert → Expert dashboard with sidebar
-          redirectRoute = "/expert";
-          console.log("Paid Expert user, redirecting to Expert dashboard");
-        }
+      if (res.data.showPendingModal) {
+        cleanLocalStorage();
+        setShowPendingModal(true);
       } else {
-        // Recruiter or other roles - use existing logic
-        const planType = localStorage.getItem("planType");
-        const experienceCategory = localStorage.getItem("experienceCategory");
-
-        if (planType === "0") {
-          redirectRoute = "/log_rec";
-          console.log("Free plan user (planType: 0), redirecting to login page");
-        } else if (experienceCategory === "N/A" || !experienceCategory) {
-          redirectRoute = "/log_rec";
-          console.log("Experience category is N/A, redirecting to login page");
-        } else {
-          redirectRoute = getRouteFromCategory(experienceCategory);
-          console.log(`Paid plan user, redirecting to route for category: ${experienceCategory}`);
-        }
+        // fallback for any non-pending response
+        setMessage(res.data.message || "Verified successfully!");
+        setTimeout(() => { cleanLocalStorage(); navigate("/log_rec"); }, 2000);
       }
-
-      setTimeout(() => {
-        // Clean up localStorage
-        localStorage.removeItem("pendingEmail");
-        localStorage.removeItem("experienceCategory");
-        localStorage.removeItem("planType");
-        localStorage.removeItem("roleCategory");
-        localStorage.removeItem("userType");
-        localStorage.removeItem("specialization");
-
-        // Navigate to the appropriate page
-        navigate(redirectRoute);
-      }, 2000);
     } catch (err) {
-      setMessage(err.response?.data?.message || "Invalid or expired OTP \n Go Register Again");
+      setMessage(err.response?.data?.message || "Invalid or expired OTP. Please try again.");
     }
-
     setLoading(false);
   };
 
+  const handleModalClose = () => {
+    setShowPendingModal(false);
+    navigate("/log_rec");
+  };
+
   return (
+    <>
+    {showPendingModal && <PendingModal email={email} onClose={handleModalClose} />}
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-orange-50 px-4 py-8">
       <div className="bg-white shadow-2xl rounded-2xl w-full max-w-md overflow-hidden">
         
@@ -173,29 +252,34 @@ const OtpVerification = () => {
             </button>
           </form>
 
-          {/* Additional Info */}
-          <div className="mt-6 text-center space-y-4">
-            <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
-              <div className="h-px flex-1 bg-gray-300"></div>
-              <span>Need Help?</span>
-              <div className="h-px flex-1 bg-gray-300"></div>
+          {/* Resend Section */}
+          <div className="mt-6 text-center space-y-3">
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+              <div className="h-px flex-1 bg-gray-200"></div>
+              <span>Didn't receive the code?</span>
+              <div className="h-px flex-1 bg-gray-200"></div>
             </div>
 
-            {/* <div className="space-y-2">
-              <p className="text-xs text-gray-500">
-                Didn't receive the code?
+            {cooldown > 0 ? (
+              <p className="text-sm text-gray-500">
+                Resend available in{" "}
+                <span className="font-semibold text-blue-600">{formatTime(cooldown)}</span>
               </p>
+            ) : (
               <button
                 type="button"
-                onClick={() => {
-                  // Backend logic remains same - this is just UI
-                  setMessage("Resend feature coming soon!");
-                }}
-                className="text-sm text-blue-600 hover:text-orange-500 font-semibold hover:underline transition-colors"
+                onClick={handleResend}
+                disabled={resendLoading}
+                className="inline-flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-orange-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Resend OTP
+                {resendLoading ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <RotateCcw size={15} />
+                )}
+                {resendLoading ? "Sending..." : "Resend OTP"}
               </button>
-            </div> */}
+            )}
           </div>
         </div>
 
@@ -208,6 +292,7 @@ const OtpVerification = () => {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

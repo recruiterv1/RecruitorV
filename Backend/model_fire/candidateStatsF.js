@@ -3,6 +3,33 @@ const { db } = require("../router/firebase_ad");
 const candidateDb = db.collection('candidate_db');
 const positionsDb = db.collection('admin_AddPos');
 
+// getAllCandidates/getCandidateStatistics/getUniqueStatuses each independently read
+// the entire candidate_db collection on every call. A single dashboard load fires
+// several of these back to back (list + statuses, then again on every filter/page
+// change), so on a large collection that repeated full scan was slow enough to
+// time out ("Failed to load candidate activity"). Cache the raw snapshot briefly
+// so those calls share one Firestore read instead of one each.
+const CANDIDATES_CACHE_TTL_MS = 30 * 1000;
+let candidatesCache = { data: null, timestamp: 0 };
+
+const getCachedCandidates = async () => {
+  const now = Date.now();
+  if (candidatesCache.data && (now - candidatesCache.timestamp) < CANDIDATES_CACHE_TTL_MS) {
+    return candidatesCache.data;
+  }
+  // Candidate docs also carry resumeText/cv_data/matchTokens (many KB each); none of the
+  // stats/list functions below use them, so project down to just what they read.
+  const snapshot = await candidateDb
+    .select('candidate', 'name', 'mob', 'emails', 'pos_id', 'statusa', 'client', 'datePosted', 'updatedAt', 'recName', 'recId')
+    .get();
+  const candidates = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+  candidatesCache = { data: candidates, timestamp: now };
+  return candidates;
+};
+
 /**
  * Get all candidates with filtering and pagination
  * @param {Object} filters - Filter options
@@ -13,14 +40,10 @@ const positionsDb = db.collection('admin_AddPos');
 const getAllCandidates = async (filters = {}, page = 1, limit = 50) => {
   try {
     const offset = (page - 1) * limit;
-    
-    // Get all candidates first
-    const snapshot = await candidateDb.get();
-    let candidates = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
+
+    // Get all candidates first (copy so filter/sort below never mutates the shared cache)
+    let candidates = [...(await getCachedCandidates())];
+
     // Apply filters
     if (filters.name) {
       const searchTerm = filters.name.toLowerCase();
@@ -135,12 +158,8 @@ const getAllCandidates = async (filters = {}, page = 1, limit = 50) => {
  */
 const getCandidateStatistics = async () => {
   try {
-    const snapshot = await candidateDb.get();
-    const candidates = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
+    const candidates = await getCachedCandidates();
+
     // Calculate statistics
     const totalCandidates = candidates.length;
     
@@ -199,16 +218,15 @@ const getCandidateStatistics = async () => {
  */
 const getUniqueStatuses = async () => {
   try {
-    const snapshot = await candidateDb.get();
+    const candidates = await getCachedCandidates();
     const statuses = new Set();
-    
-    snapshot.docs.forEach(doc => {
-      const status = doc.data().statusa;
-      if (status) {
-        statuses.add(status);
+
+    candidates.forEach(c => {
+      if (c.statusa) {
+        statuses.add(c.statusa);
       }
     });
-    
+
     return {
       success: true,
       data: Array.from(statuses).sort()

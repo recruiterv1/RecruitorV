@@ -31,18 +31,14 @@ const Header = () => {
     try {
       if (isAdmin) {
         await axios.post("/admin/adlogout", {}, { withCredentials: true });
-      } else if (isRecruiter) {
+      } else {
         await axios.post("/auth/logout", {}, { withCredentials: true });
       }
     } catch (err) {
       console.error("Logout failed:", err);
-    }
-
-    dispatch({ type: "LOGOUT" });
-    if(isAdmin){
-      navigate('/clientspoc',{replace: true})
-    }else{
-      navigate('/',{replace: true})
+    } finally {
+      dispatch({ type: "LOGOUT" });
+      window.location.href = '/log_rec';
     }
   };
 
@@ -53,10 +49,10 @@ const Header = () => {
         {/* Logo Section */}
         <div className="flex items-center">
           <div className="relative h-14 w-48 sm:h-16 sm:w-64 transition-all">
-            <img 
-              src="/recruitorV.png" 
-              alt="RecruiterV Logo" 
-              className="h-full w-full object-contain hover:scale-105 transition-transform duration-300" 
+            <img
+              src="/recuiterv-logo.png"
+              alt="RecruiterV Logo"
+              className="h-full w-full object-contain hover:scale-105 transition-transform duration-300"
             />
           </div>
         </div>

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/recruitorV.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>RecruiterV</title>
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-H5ZLYTT55X"></script>
@@ -13,12 +13,42 @@
       gtag('js', new Date());
       gtag('config', 'G-H5ZLYTT55X');
     </script>
+    <script type='text/javascript' src='https://platform-api.sharethis.com/js/sharethis.js#property=6a37e292a46843a3ae37492b&product=inline-share-buttons' async='async'></script>
   </head>
   <body>
-    
+
+    <!-- Branded boot splash: shown instantly, removed once React mounts -->
+    <style>
+      #boot-splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;
+        align-items:center;justify-content:center;gap:22px;
+        background:radial-gradient(120% 120% at 50% 0%,#1b1033 0%,#0b0f1e 60%);
+        transition:opacity .4s ease;}
+      #boot-splash.hide{opacity:0;pointer-events:none;}
+      #boot-splash .bs-mark{background:#fff;border-radius:16px;padding:14px 20px;
+        box-shadow:0 18px 40px -10px rgba(124,58,237,.5);}
+      #boot-splash .bs-mark img{display:block;height:54px;width:auto;}
+      #boot-splash .bs-tag{font:600 12px/1 system-ui,Arial,sans-serif;color:#8b8fa3;letter-spacing:.18em;text-transform:uppercase;}
+      #boot-splash .bs-dots{display:flex;gap:7px;margin-top:4px;}
+      #boot-splash .bs-dots i{width:8px;height:8px;border-radius:50%;background:#7c3aed;
+        animation:bsb 1s infinite ease-in-out;}
+      #boot-splash .bs-dots i:nth-child(2){animation-delay:.15s;}
+      #boot-splash .bs-dots i:nth-child(3){animation-delay:.3s;}
+      @keyframes bsb{0%,80%,100%{transform:scale(.6);opacity:.4;}40%{transform:scale(1);opacity:1;}}
+    </style>
+    <div id="boot-splash">
+      <div class="bs-mark"><img src="/recuiterv-logo.png" alt="Recruiterv" /></div>
+      <div class="bs-tag">Hire Smarter · Earn Together</div>
+      <div class="bs-dots"><i></i><i></i><i></i></div>
+    </div>
+    <script>
+      window.__hideBootSplash=function(){var s=document.getElementById('boot-splash');
+        if(s){s.classList.add('hide');setTimeout(function(){s.remove();},450);}};
+      window.addEventListener('load',function(){setTimeout(window.__hideBootSplash,600);});
+    </script>
+
     <div id="root"></div>
     <!--Start of Tawk.to Script-->
-<script type="text/javascript">
+<!--script type="text/javascript">
 var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
 (function(){
 var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
@@ -28,7 +58,7 @@ s1.charset='UTF-8';
 s1.setAttribute('crossorigin','*');
 s0.parentNode.insertBefore(s1,s0);
 })();
-</script>
+</script-->
 <!--End of Tawk.to Script-->
     <script type="module" src="/src/main.jsx"></script>
   </body> 

@@ -1,9 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import axios from "axios";
 import { useEffect } from "react";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-
 
 export const indiaStatesAndCities = {
   "Andhra Pradesh": [
@@ -86,7 +85,7 @@ export const indiaStatesAndCities = {
   "Puducherry": ["Puducherry"]
 };
 
-const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
+const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name, prefill = null, onSubmitted = null }) => {
 
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -97,7 +96,24 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
   const [accessStatus, setAccessStatus] = useState(null);
   const [accessCheckLoading, setAccessCheckLoading] = useState(false);
   const [positionStatus, setPositionStatus] = useState(null);
+  const [emailLookupLoading, setEmailLookupLoading] = useState(false);
+  const [emailLookupMsg, setEmailLookupMsg] = useState(''); // '' | 'found' | 'not_found'
   const [positionValidationError, setPositionValidationError] = useState(null);
+  const [photoRequired, setPhotoRequired] = useState(false);
+  const [photoFile, setPhotoFile] = useState(null);
+  // Client-requirement questions — company-level (from Company_Overview) + this
+  // position's own, shown so recruiters see them while submitting a candidate.
+  const [companyQuestions, setCompanyQuestions] = useState([]);
+  const [positionQuestions, setPositionQuestions] = useState([]);
+  // Recruiter's answers to the merged [...companyQuestions, ...positionQuestions]
+  // list, keyed by index. subjective → string, yesno → 'Yes'|'No', multiselect → string[].
+  const [clientAnswers, setClientAnswers] = useState({});
+  const clientRequirements = [...companyQuestions, ...positionQuestions];
+  const setClientAnswer = (i, val) => setClientAnswers(a => ({ ...a, [i]: val }));
+  const toggleClientMultiAnswer = (i, opt) => setClientAnswers(a => {
+    const cur = Array.isArray(a[i]) ? a[i] : [];
+    return { ...a, [i]: cur.includes(opt) ? cur.filter(o => o !== opt) : [...cur, opt] };
+  });
 
   const defaultData = {
     pos_id: pos_id || "",
@@ -112,12 +128,17 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
     curr_loc: "",
     pref_state:"",
     pref_loc: "",
+    dob: "",
+    jr_number: "",
+    pan_number: "",
     rel_exp: "",
     total_exp:"",
     offer_hand: "",
     offer_amt: "",
     cv_data: "",
     curr_emp: "",
+    rh_id: "",
+    highest_education: "",
     skill_type: "",
     rel_exp_year:"",
     rel_exp_months:"",
@@ -139,85 +160,6 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
   };
 
 
-  const nonTechCategoryData = { 
-    "Banking & Financial Services": { 
-      "Liability Products": [ "Current Account (CA) Management", "Savings Account (SA) Management", "CASA Operations", "Fixed Deposits / Term Deposits" ], 
-      "Asset Products": [ "Wealth Management", "Investment Products (MF, Bonds, PMS)", "Insurance Products (LI/GI/Health)", "Working Capital Loans", "Business Loans / SME Lending" ], 
-      "Compliance": [ "KYC / AML Compliance", "Customer Onboarding & Documentation", "Regulatory Compliance" ],
-      "Operations": [ "Branch Banking Operations", "Retail Banking Processes", "Portfolio Management (Liability/Asset/AUM)" ],
-      "Sales & RM": [ "Lead Generation & Sourcing", "Cross-selling & Up-selling", "Financial Planning & Advisory", "Sales Target Management", "Client Lifecycle Management" ] },
-    "Logistics / Supply Chain": {
-       "Warehousing": [ "Inventory Management", "Warehouse Management", "Warehouse Automation Tools" ],
-       "Transportation": [ "Last-mile Delivery Operations", "Reverse Logistics", "Transportation / Fleet Management", "Route Optimization" ], 
-       "Procurement / Vendor": [ "Procurement & Vendor Management", "Sourcing & Negotiation", "Freight & Cargo Handling", "3PL / 4PL Coordination", "Customs Clearance & Export/Import Processes" ],
-       "Planning & Analytics": [ "Supply Planning", "Demand Forecasting", "Supply Chain Analytics", "Stock Reconciliation", "Risk Management in Supply Chain", "Lean Logistics & Waste Reduction" ] },
-    "E-Commerce / Retail": { 
-       "Marketplace / Fulfillment": [ "E-commerce Operations", "Order Processing & Tracking", "Returns/Refund/Replacement Operations", "D2C Fulfillment Processes", "Partner/Marketplace SLAs" ], 
-       "Customer Experience": [ "Customer Experience (CX)", "Traffic/Conversion Analytics", "Cart Abandonment Analysis" ],
-       "Catalog / Inventory": [ "SKU & Catalogue Management", "Inventory Sync (Omni-channel)", "Product Listing (SEO-Optimized)" ],
-       "Payments & Finance": [ "Digital Payments & Fraud Checks", "Payment Gateway Coordination" ],
-       "Marketing / Growth": [ "Online Merchandising", "Pricing Strategy & Promotions", "Consumer Behavior Analysis", "Campaign Performance Reporting" ] }, 
-     "Manufacturing / Production": { 
-        "Production": [ "Production Planning", "MRP (Material Requirements Planning)", "SAP PP / SAP MM Operations", "Factory Operations Management", "Workforce Scheduling", "Production Line Balancing" ],
-        "Quality": [ "Quality Control (QC)", "Health & Safety Compliance", "ISO/GMP/HACCP Standards Knowledge" ], 
-        "Materials / Costing": [ "Raw Material Procurement", "Product Costing & BOM Analysis", "Inventory Control in Plants", "Vendor Development" ],
-       "Process Improvement": [ "Process Improvement / Lean Manufacturing", "6S / Kaizen / TPM Methods", "Machine Efficiency (OEE) Improvement", "Maintenance & Utilities Monitoring" ] },
-      "Media / Digital / Marketing": { 
-        "Content": [ "Content Strategy", "Copywriting", "Video Content Planning" ],
-        "Digital Marketing": [ "Digital Marketing", "SEO (Search Engine Optimization)", "SEM / Google Ads", "Social Media Management", "Email/SMS Marketing", "Lead Generation", "Performance Marketing Optimization" ],
-        "Campaign / Brand": [ "Brand Campaign Planning", "Influencer Coordination", "Creative Briefing & Content Calendar", "Media Buying & Budget Planning" ], 
-        "Analytics / Research": [ "Web Analytics (GA4 etc.)", "Market Research & Insights", "Audience Segmentation", "Ad Copy & Creative Optimization" ] } 
-      };
-  
-
-  const techData = {
-    "Cloud & DevOps": {
-      "Cloud Providers": ["Amazon Web Services (AWS)", "Microsoft Azure", "Google Cloud Platform (GCP)"],
-      "AWS Services": ["EC2", "S3", "Lambda", "CloudFormation", "EKS", "RDS", "CloudWatch"],
-      "Azure Services": ["Azure DevOps", "Azure Functions", "App Service", "AKS", "Blob Storage"],
-      "GCP Services": ["Compute Engine", "BigQuery", "Cloud Storage", "Cloud Run", "Pub/Sub"],
-      "DevOps Tools": ["Docker", "Kubernetes", "Helm", "Terraform", "Ansible", "Jenkins", "GitHub Actions", "GitLab CI"],
-      "CI/CD & Monitoring": ["CircleCI", "Prometheus", "Grafana", "ELK Stack", "Datadog"]
-    },
-    "Data Science & Analytics": {
-      "Machine Learning": ["Scikit-learn", "TensorFlow", "PyTorch", "Keras", "spaCy", "NLTK", "Hugging Face"],
-      "ML Ops": ["MLflow", "Kubeflow", "SageMaker", "OpenAI APIs", "LangChain", "Llama", "Gemini"],
-      "Data Tools": ["Pandas", "NumPy", "Matplotlib", "Seaborn", "Apache Spark", "Hadoop", "Kafka", "Airflow"],
-      "BI & Analytics": ["Power BI", "Tableau", "Looker", "Qlik", "Talend", "Informatica"]
-    },
-    "Web Development": {
-      Frontend: ["React.js", "Angular", "Vue.js", "Svelte", "Next.js", "HTML5", "CSS3", "SCSS","Tailwind CSS", "Bootstrap", "Material UI", "Redux", "MobX", "Zustand", "Webpack", "Vite", "Babel"],
-      Backend: ["Spring", "Spring Boot", "Django", "Flask", "FastAPI", "Node.js", "Express.js", "NestJS", ".NET Core", "Ruby on Rails", "REST APIs", "GraphQL", "gRPC", "PHP", "CMS", "WordPress", "Shopify", "Drupal", "Magento"]
-    },
-    "Programming Languages": {
-      "Prgramming Languages": ["Java","Python","C","C++","C#","Go","Rust","Kotlin","Scala","JavaScript","TypeScript","Swift","PHP","Dart","Ruby","Laravel","MATLAB","COBOL","Fortran","Perl","VB.NET"]
-    },
-    "Mobile App Technologies": {
-      "Mobile Development": ["Android (Java)", "Android (Kotlin)", "iOS (Swift)", "iOS (Objective-C)", "Flutter", "React Native", "Xamarin", "Ionic"]
-    },
-    "Database Technologies": {
-      "Database Technologies": ["MySQL", "PostgreSQL", "Oracle", "MS SQL Server", "MongoDB", "Cassandra", "DynamoDB", "CouchDB", "Redis", "Memcached", "Snowflake", "BigQuery", "Redshift"]
-    },
-    "Testing & Quality Assurance": {
-      "Testing Types": ["Functional Testing", "Regression Testing", "UAT"],
-      "Test Automation": ["Selenium", "Cypress", "Playwright", "TestNG", "Postman", "RestAssured"],
-      "Performance Testing": ["JMeter", "LoadRunner"]
-    },
-    "Security Technologies": {
-      "Security Concepts": ["OWASP", "IAM", "OAuth", "SSO"],
-      "Security Tools": ["Snyk", "Veracode", "Firewalls", "VPN", "IDS", "IPS", "Okta", "Prisma", "Wiz", "Aqua"]
-    },
-    "Enterprise Systems": {
-      "ERP Systems": ["SAP S/4HANA", "ABAP", "Oracle ERP", "Microsoft Dynamics", "Workday", "SuccessFactors", "Darwinbox"],
-      "CRM Systems": ["Salesforce", "Zoho", "HubSpot"]
-    },
-    "Emerging Technologies": {
-      "Blockchain": ["Ethereum", "Solidity", "Hyperledger"],
-      "IoT": ["MQTT", "Arduino", "Raspberry Pi"],
-      "Game Development": ["Unity", "Unreal Engine"],
-      "No-Code/Low-Code": ["OutSystems", "Mendix", "Power Apps"]
-    }
-  };
 
   const generateCTCOptions = () => {
     const options = [];
@@ -234,6 +176,159 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
   const [candi, setCandi] = useState(defaultData);
   const [emailError, setEmailError] = useState("");
   const [phoneError, setPhoneError] = useState("");
+  const [dupError, setDupError] = useState("");
+  const [autoFilled, setAutoFilled] = useState("");
+
+  // ── Skill selection driven by the skill_categories hierarchy ────────────────
+  // The PARENT category comes from the position itself, so it is shown read-only.
+  // The recruiter picks up to 2 children (limited to the children the position
+  // selected) and up to 2 sub-children under each of those.
+  const MAX_CHILDREN = 2;
+  const MAX_SUBS_PER_CHILD = 2;
+
+  const [skillHierarchy, setSkillHierarchy] = useState([]);   // [{ parent, children:[{name, subChildren:[]}] }]
+  const [posSkill, setPosSkill] = useState({ parent: "", children: [] });  // from the position
+  const [selChildren, setSelChildren] = useState([]);          // e.g. ['Development','Cloud']
+  const [selSubs, setSelSubs] = useState({});                  // { [child]: string[] }
+  const [subExp, setSubExp] = useState({});                    // { 'child||sub': 'experience' }
+
+  // Load the category hierarchy (same source the position wizard uses)
+  useEffect(() => {
+    axios.get('/candidate/skill-categories-hierarchical')
+      .then(res => { if (res.data?.success) setSkillHierarchy(res.data.categories || []); })
+      .catch(err => console.error('Failed to fetch skill categories:', err));
+  }, []);
+
+  // Load this position's parent category + the children it was created with
+  useEffect(() => {
+    if (!pos_id) return;
+    let live = true;
+    axios.get(`/candidate/position/${pos_id}`)
+      .then(res => {
+        if (!live) return;
+        const p = res.data || {};
+        const toList = (v) => Array.isArray(v)
+          ? v.map(x => String(x).trim()).filter(Boolean)
+          : String(v || '').split(',').map(x => x.trim()).filter(Boolean);
+        setPosSkill({ parent: p.skill_category || '', children: toList(p.skill_sub_category) });
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [pos_id]);
+
+  // Child options = the position's children, resolved against the hierarchy so we
+  // also get each child's subChildren list.
+  const parentObj = skillHierarchy.find(c => c.parent === posSkill.parent);
+  const childOptions = (parentObj?.children || []).filter(ch =>
+    posSkill.children.some(pc => pc.toLowerCase() === String(ch.name || '').toLowerCase())
+  );
+
+  const toggleChild = (childName) => {
+    setSelChildren(prev => {
+      if (prev.includes(childName)) {
+        // Deselecting a child clears its sub-children too
+        setSelSubs(s => { const n = { ...s }; delete n[childName]; return n; });
+        setSubExp(e => {
+          const n = { ...e };
+          Object.keys(n).forEach(k => { if (k.startsWith(childName + '||')) delete n[k]; });
+          return n;
+        });
+        return prev.filter(c => c !== childName);
+      }
+      if (prev.length >= MAX_CHILDREN) {
+        alert(`You can select up to ${MAX_CHILDREN} sub-categories only`);
+        return prev;
+      }
+      return [...prev, childName];
+    });
+  };
+
+  const toggleSub = (childName, subName) => {
+    setSelSubs(prev => {
+      const cur = prev[childName] || [];
+      if (cur.includes(subName)) {
+        setSubExp(e => { const n = { ...e }; delete n[`${childName}||${subName}`]; return n; });
+        return { ...prev, [childName]: cur.filter(s => s !== subName) };
+      }
+      if (cur.length >= MAX_SUBS_PER_CHILD) {
+        alert(`You can select up to ${MAX_SUBS_PER_CHILD} skills under "${childName}"`);
+        return prev;
+      }
+      return { ...prev, [childName]: [...cur, subName] };
+    });
+  };
+
+  // Flat list of the chosen sub-children, in child order — the source for the
+  // experience inputs and for the tech_skill / tech_exp payload arrays.
+  const selectedSubList = selChildren.flatMap(ch => (selSubs[ch] || []).map(sub => ({ child: ch, sub })));
+
+  // Mirror the selections onto the candidate record so the existing submit
+  // payload (tech_category / tech_subcategory / tech_skill / tech_exp) keeps working.
+  useEffect(() => {
+    setCandi(c => ({
+      ...c,
+      skill_type: 'tech',
+      tech_category: posSkill.parent || '',
+      tech_subcategory: selChildren.join(', '),
+      tech_skill: selectedSubList.map(x => x.sub),
+      tech_exp: selectedSubList.map(x => subExp[`${x.child}||${x.sub}`] || ''),
+      nontech_category: '',
+      nontech_subcategory: '',
+      nontech_skill: [],
+      nontech_exp: [],
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posSkill.parent, selChildren, selSubs, subExp]);
+
+  // Live duplicate check — flags if a candidate with the same email, phone or
+  // PAN already exists in the system (runs on blur of those fields).
+  const checkDuplicate = async () => {
+    const emails = (candi.emails || '').trim().toLowerCase();
+    const mob = String(candi.mob || '').trim();
+    const pan_number = String(candi.pan_number || '').trim();
+    if (!emails && !mob && !pan_number) { setDupError(''); setAutoFilled(''); return; }
+    try {
+      const res = await axios.post('/addit/data/check',
+        { emails, mob, pan_number, pos_id }, { withCredentials: true });
+      const d = res.data || {};
+
+      // A clash on THIS position is the real blocker — the same candidate existing
+      // elsewhere is expected (e.g. one they referred) and is what we autofill from.
+      if (d.duplicateOnPosition) {
+        const info = d.duplicateInfo || {};
+        setDupError(`Already submitted for this position by ${info.submittedBy || 'another user'}${info.status ? ` (status: ${info.status})` : ''}. You cannot submit the same candidate again.`);
+        setAutoFilled('');
+        return;
+      }
+      setDupError('');
+
+      // Known candidate → prefill everything we already have, leaving whatever the
+      // user has typed untouched. They just complete the remaining fields.
+      if (d.match) {
+        const m = d.match;
+        const filled = [];
+        setCandi(prev => {
+          const next = { ...prev };
+          Object.entries(m).forEach(([k, v]) => {
+            if (v === '' || v === null || v === undefined) return;
+            if (k === 'source') return;
+            const cur = next[k];
+            const isEmpty = cur === '' || cur === null || cur === undefined ||
+              (Array.isArray(cur) && cur.length === 0);
+            if (isEmpty) { next[k] = v; filled.push(k); }
+          });
+          return next;
+        });
+        if (filled.length) {
+          setAutoFilled(m.source === 'referred'
+            ? 'Details auto-filled from the candidate you referred. Please complete the remaining fields.'
+            : 'Details auto-filled from this candidate’s existing record. Please complete the remaining fields.');
+        }
+      } else {
+        setAutoFilled('');
+      }
+    } catch { /* ignore network errors for the live check */ }
+  };
 
 
   const handleCategoryChange = (e) => {
@@ -298,15 +393,27 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
     });
   };
 
-  const uploadCV = async (file) => {
-    // Try backend endpoint first (if deployed)
-    const storage = getStorage();
-  const fileRef = ref(storage, `resumes/${Date.now()}_${file.name}`);
-
-  await uploadBytes(fileRef, file);
-  const url = await getDownloadURL(fileRef);
-  return url;
+  // Upload a file via the backend (base64 JSON) instead of the Firebase Storage
+  // client SDK. Recruiters signed in with the backend JWT (not Firebase Auth)
+  // can't write to Storage directly — the server-side upload works for everyone.
+  const uploadViaBackend = async (file, prefix = '') => {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]); // strip data:...;base64,
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const res = await axios.post('/api/direct-apply/upload-cv', {
+      filename: `${prefix}${file.name}`,
+      contentType: file.type || 'application/octet-stream',
+      base64,
+    });
+    if (!res.data?.success || !res.data.url) throw new Error(res.data?.message || 'Upload failed');
+    return res.data.url;
   };
+
+  const uploadCV = (file) => uploadViaBackend(file);
+  const uploadPhoto = (file) => uploadViaBackend(file, 'photo_');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -316,7 +423,139 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
     } else {
       setCandi({ ...candi, [name]: value });
     }
+    // Reset lookup message when email is edited
+    if (name === "emails") setEmailLookupMsg('');
   };
+
+  // Auto-fill form from candidate_db when email is entered
+  const fetchCandidateByEmail = async (email) => {
+    const trimmed = (email || '').trim().toLowerCase();
+    if (!trimmed || !trimmed.includes('@')) return;
+    setEmailLookupLoading(true);
+    setEmailLookupMsg('');
+    try {
+      const res = await axios.get(`/addit/lookup-by-email?email=${encodeURIComponent(trimmed)}`, { withCredentials: true });
+      if (res.data.found && res.data.candidate) {
+        const c = res.data.candidate;
+        // Parse total_exp / rel_exp strings like "3 yr 2 mo" back into year/month parts
+        const parseExp = (str) => {
+          const yrMatch  = (str || '').match(/(\d+)\s*yr/i);
+          const moMatch  = (str || '').match(/(\d+)\s*mo/i);
+          return { year: yrMatch ? yrMatch[1] : '', months: moMatch ? moMatch[1] : '' };
+        };
+        const totalExp = parseExp(c.total_exp);
+        const relExp   = parseExp(c.rel_exp);
+        setCandi(prev => ({
+          ...prev,
+          candidate:        c.candidate        || prev.candidate,
+          mob:              c.mob              || prev.mob,
+          dob:              c.dob              || prev.dob,
+          curr_emp:         c.curr_emp         || prev.curr_emp,
+          highest_education: c.highest_education || prev.highest_education,
+          current_ctc:      c.current_ctc      || prev.current_ctc,
+          exp_ctc:          c.exp_ctc          || prev.exp_ctc,
+          total_exp_year:   totalExp.year      || prev.total_exp_year,
+          total_exp_months: totalExp.months    || prev.total_exp_months,
+          rel_exp_year:     relExp.year        || prev.rel_exp_year,
+          rel_exp_months:   relExp.months      || prev.rel_exp_months,
+          notice_period:    c.notice_period    || prev.notice_period,
+          curr_state:       c.curr_state       || prev.curr_state,
+          curr_loc:         c.curr_loc         || prev.curr_loc,
+          pref_state:       c.pref_state       || prev.pref_state,
+          pref_loc:         c.pref_loc         || prev.pref_loc,
+          skill_type:       c.skill_type       || prev.skill_type,
+          tech_category:    c.tech_category    || prev.tech_category,
+          tech_subcategory: c.tech_subcategory || prev.tech_subcategory,
+          tech_skill:       c.tech_skill?.length ? c.tech_skill : prev.tech_skill,
+          tech_exp:         c.tech_exp?.length  ? c.tech_exp  : prev.tech_exp,
+          nontech_category:    c.nontech_category    || prev.nontech_category,
+          nontech_subcategory: c.nontech_subcategory || prev.nontech_subcategory,
+          nontech_skill:    c.nontech_skill?.length ? c.nontech_skill : prev.nontech_skill,
+          nontech_exp:      c.nontech_exp?.length  ? c.nontech_exp  : prev.nontech_exp,
+          self_rate:        c.self_rate        || prev.self_rate,
+          pan_number:       c.pan_number       || prev.pan_number,
+          cv_data:          c.cv_data          || prev.cv_data,
+        }));
+        setEmailLookupMsg('found');
+      } else {
+        setEmailLookupMsg('not_found');
+      }
+    } catch {
+      setEmailLookupMsg('not_found');
+    } finally {
+      setEmailLookupLoading(false);
+    }
+  };
+
+  // Prefill the form from an existing candidate (used by the "View details"
+  // modal so the form is exactly the submission form, pre-populated).
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (!prefill || prefilledRef.current) return;
+    prefilledRef.current = true;
+    const c = prefill;
+    const parseExp = (str) => {
+      const y = (String(str || '').match(/(\d+)\s*(?:y|yr|year)/i) || [])[1] || '';
+      const m = (String(str || '').match(/(\d+)\s*(?:m|mo|month)/i) || [])[1] || '';
+      return { year: y, months: m };
+    };
+    const totalExp = parseExp(c.total_exp);
+    const relExp = parseExp(c.rel_exp);
+    setCandi(prev => ({
+      ...prev,
+      candidate: c.candidate || prev.candidate,
+      emails: c.emails || prev.emails,
+      mob: c.mob || prev.mob,
+      dob: c.dob || prev.dob,
+      curr_emp: c.curr_emp || prev.curr_emp,
+      highest_education: c.highest_education || prev.highest_education,
+      current_ctc: c.current_ctc || prev.current_ctc,
+      exp_ctc: c.exp_ctc || prev.exp_ctc,
+      total_exp_year: totalExp.year || prev.total_exp_year,
+      total_exp_months: totalExp.months || prev.total_exp_months,
+      rel_exp_year: relExp.year || prev.rel_exp_year,
+      rel_exp_months: relExp.months || prev.rel_exp_months,
+      notice_period: c.notice_period || prev.notice_period,
+      last_day: c.last_day || prev.last_day,
+      offer_hand: c.offer_hand || prev.offer_hand,
+      offer_amt: c.offer_amt || prev.offer_amt,
+      self_rate: c.self_rate || prev.self_rate,
+      curr_state: c.curr_state || prev.curr_state,
+      curr_loc: c.curr_loc || prev.curr_loc,
+      pref_state: c.pref_state || prev.pref_state,
+      pref_loc: c.pref_loc || prev.pref_loc,
+      skill_type: c.skill_type || prev.skill_type,
+      tech_category: c.tech_category || prev.tech_category,
+      tech_subcategory: c.tech_subcategory || prev.tech_subcategory,
+      tech_skill: c.tech_skill?.length ? c.tech_skill : (c.skills?.length ? c.skills : prev.tech_skill),
+      tech_exp: c.tech_exp?.length ? c.tech_exp : prev.tech_exp,
+      nontech_category: c.nontech_category || prev.nontech_category,
+      nontech_subcategory: c.nontech_subcategory || prev.nontech_subcategory,
+      nontech_skill: c.nontech_skill?.length ? c.nontech_skill : prev.nontech_skill,
+      nontech_exp: c.nontech_exp?.length ? c.nontech_exp : prev.nontech_exp,
+      pan_number: c.pan_number || prev.pan_number,
+      jr_number: c.jr_number || prev.jr_number,
+      rh_id: c.rh_id || prev.rh_id,
+      cv_data: c.cv_data || c.cv_url || prev.cv_data,
+    }));
+
+    // Prefilled fields never fire a blur, so run the duplicate check explicitly.
+    // This is what surfaces the "already submitted for this position" banner when
+    // a referred resume has already been used on this position by someone else.
+    const emails = (c.emails || '').trim().toLowerCase();
+    const mob = String(c.mob || '').trim();
+    const pan_number = String(c.pan_number || '').trim();
+    if (emails || mob || pan_number) {
+      axios.post('/addit/data/check', { emails, mob, pan_number, pos_id }, { withCredentials: true })
+        .then(({ data: d }) => {
+          if (d?.duplicateOnPosition) {
+            const info = d.duplicateInfo || {};
+            setDupError(`Already submitted for this position by ${info.submittedBy || 'another user'}${info.status ? ` (status: ${info.status})` : ''}. You cannot submit the same candidate again.`);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [prefill]);
 
   useEffect(() => {
   if (sameLocation) {
@@ -518,6 +757,34 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
     }
   }, [user, pos_id]);
 
+  // Fetch company settings (e.g. photoRequired) when the client/company is known
+  useEffect(() => {
+    if (!client) return;
+    axios.get(`/clientspoc/company-settings?name=${encodeURIComponent(client)}`)
+      .then(res => setPhotoRequired(res.data?.photoRequired === true))
+      .catch(() => setPhotoRequired(false));
+  }, [client]);
+
+  // Fetch the company's client-requirement questions.
+  useEffect(() => {
+    if (!client) { setCompanyQuestions([]); return; }
+    let live = true;
+    axios.get(`/addit/overview/${encodeURIComponent(client)}`)
+      .then(res => { if (live && res.data?.found) setCompanyQuestions(Array.isArray(res.data.data.questions) ? res.data.data.questions : []); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [client]);
+
+  // Fetch this position's own client-requirement questions.
+  useEffect(() => {
+    if (!pos_id) { setPositionQuestions([]); return; }
+    let live = true;
+    axios.get(`/candidate/position/${pos_id}`)
+      .then(res => { if (live) setPositionQuestions(Array.isArray(res.data?.client_questions) ? res.data.client_questions : []); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [pos_id]);
+
   
 
 
@@ -599,27 +866,38 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
       setEmailError("");
       setPhoneError("");
 
-      // Check for duplicate email/phone
-      // Note: axios interceptor automatically adds Authorization header
-      const check = await axios.post(
-        "/addit/data/check",
-        { 
-          emails: candi.emails.trim().toLowerCase(), 
-          mob: String(candi.mob).trim() 
-        },
-        { withCredentials: true }
-      );
-
-      if (check.data.emailExists) {
-        setEmailError("Email already exists!");
-        alert("Email Already Exists!");
+      // PAN number and resume are mandatory
+      if (!String(candi.pan_number || '').trim()) {
+        setDupError("PAN number is required.");
+        alert("PAN number is required.");
+        setSubmitting(false);
+        return;
+      }
+      if (!candi.cv_data) {
+        alert("Please attach the candidate's resume — it is required.");
         setSubmitting(false);
         return;
       }
 
-      if (check.data.phoneExists) {
-        setPhoneError("Phone number already exists!");
-        alert("Phone number Already Exists!");
+      // Check for duplicate email/phone
+      // Note: axios interceptor automatically adds Authorization header
+      const check = await axios.post(
+        "/addit/data/check",
+        {
+          emails: candi.emails.trim().toLowerCase(),
+          mob: String(candi.mob).trim(),
+          pan_number: String(candi.pan_number || '').trim(),
+        },
+        { withCredentials: true }
+      );
+
+      if (check.data.exists) {
+        const which = [];
+        if (check.data.emailExists) { setEmailError("Email already exists!"); which.push('email'); }
+        if (check.data.phoneExists) { setPhoneError("Phone number already exists!"); which.push('phone'); }
+        if (check.data.panExists) which.push('PAN');
+        setDupError(`Candidate already exists in system (matched ${which.join(', ')}).`);
+        alert(`Candidate already exists in system (matched ${which.join(', ')}).`);
         setSubmitting(false);
         return;
       }
@@ -629,19 +907,41 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
       // Upload CV to Firebase Storage
       let cv_url = "";
       if (candi.cv_data) {
-        try {
-          cv_url = await uploadCV(candi.cv_data);
-          console.log("CV URL received:", cv_url);
-          
-          if (!cv_url) {
-            throw new Error("CV upload did not return a URL");
+        if (typeof candi.cv_data === "string") {
+          // Already-uploaded CV URL (prefilled from an existing candidate) — use as-is.
+          cv_url = candi.cv_data;
+        } else {
+          try {
+            cv_url = await uploadCV(candi.cv_data);
+            console.log("CV URL received:", cv_url);
+
+            if (!cv_url) {
+              throw new Error("CV upload did not return a URL");
+            }
+          } catch (uploadError) {
+            console.error("CV upload failed:", uploadError);
+            alert("Failed to upload CV. Please try again.");
+            setSubmitting(false);
+            return;
           }
-        } catch (uploadError) {
-          console.error("CV upload failed:", uploadError);
-          alert("Failed to upload CV. Please try again.");
+        }
+      }
+
+      // Upload candidate photo if provided or required
+      let photo_url = "";
+      if (photoFile) {
+        try {
+          photo_url = await uploadPhoto(photoFile);
+        } catch (photoErr) {
+          console.error("Photo upload failed:", photoErr);
+          alert("Failed to upload candidate photo. Please try again.");
           setSubmitting(false);
           return;
         }
+      } else if (photoRequired) {
+        alert("A candidate photo is required for this company. Please upload a photo before submitting.");
+        setSubmitting(false);
+        return;
       }
 
       // Prepare form payload - remove undefined values
@@ -666,6 +966,8 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
         offer_hand: candi.offer_hand || "",
         offer_amt: candi.offer_amt || "",
         curr_emp: candi.curr_emp || "",
+        rh_id: candi.rh_id || "",
+        highest_education: candi.highest_education || "",
         skill_type: candi.skill_type || "",
         tech_category: candi.tech_category || "",
         tech_subcategory: candi.tech_subcategory || "",
@@ -677,7 +979,16 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
         nontech_exp: JSON.stringify(candi.nontech_exp || []),
         mob: candi.mob || "",
         emails: candi.emails || "",
-        cv_url: cv_url || ""
+cv_url: cv_url || "",
+        photo_url: photo_url || "",
+        dob: candi.dob || "",
+        jr_number: candi.jr_number || "",
+        pan_number: candi.pan_number || "",
+        client_answers: JSON.stringify(clientRequirements.map((q, i) => ({
+          question: q.question,
+          type: q.type,
+          answer: q.type === 'multiselect' ? (Array.isArray(clientAnswers[i]) ? clientAnswers[i] : []) : (clientAnswers[i] || ''),
+        })))
       };
 
       console.log("Payload to be sent:", payload);
@@ -693,11 +1004,16 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
         ...defaultData,
         pos_id: pos_id || "",
         pos_name: pos_name || "",
+        dob: "",
+        jr_number: "",
+        pan_number: "",
         client: client || "",
         clientspoc: clientspoc || ""
       });
+      setClientAnswers({});
       e.target.reset();
       alert("Candidate Added Successfully!");
+      if (typeof onSubmitted === "function") onSubmitted();
 
     } catch (err) {
       console.error("Form Submission Error:", err);
@@ -708,7 +1024,15 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
       });
       
       // Handle specific error cases
-      if (err.response?.status === 401 || err.response?.status === 403) {
+      if (err.response?.status === 403 &&
+          (err.response?.data?.errorCode === 'REQUEST_LIMIT_REACHED' ||
+           (err.response?.data?.message || '').toLowerCase().includes('free plan limit'))) {
+        // Free-plan 4-position limit reached on submission
+        alert(err.response.data.message);
+      } else if (err.response?.status === 409) {
+        // Candidate already submitted to this position
+        alert(err.response?.data?.message || "This candidate has already been submitted to this position.");
+      } else if (err.response?.status === 401 || err.response?.status === 403) {
         alert("Authentication failed. Please log out and log in again, then try submitting the form.");
       } else if (err.response?.status === 400) {
         const errorMessage = err.response?.data?.message;
@@ -744,6 +1068,24 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
           </p>
           <p className="text-sm text-red-600 mt-2">
             Please contact the Client SPOC if you believe this is an error.
+          </p>
+        </div>
+      )}
+
+      {dupError && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-300 rounded-lg">
+          <p className="text-red-800 font-semibold flex items-center gap-2">
+            <span className="text-xl">⚠️</span>
+            {dupError}
+          </p>
+        </div>
+      )}
+
+      {!dupError && autoFilled && (
+        <div className="mb-6 p-4 bg-green-50 border border-green-300 rounded-lg">
+          <p className="text-green-800 font-semibold flex items-center gap-2">
+            <span className="text-xl">✓</span>
+            {autoFilled}
           </p>
         </div>
       )}
@@ -855,7 +1197,7 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
       // Validate only on blur
            if (candi.mob.length !== 10) {
            setPhoneError("Phone number must be exactly 10 digits.");
-          }
+          } else { checkDuplicate(); }
          }}
         placeholder="Enter 10-digit phone number"
         className="w-full mt-1 border rounded-lg p-2 focus:ring-2 focus:ring-blue-400"
@@ -867,31 +1209,175 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
         <div>
           <label className="text-gray-700 font-medium">Email *</label>
           {emailError && (
-           <p className="text-red-600 font-semibold mb-1">{emailError}</p>
+            <p className="text-red-600 font-semibold mb-1">{emailError}</p>
           )}
+          <div className="relative">
+            <input
+              type="email"
+              name="emails"
+              required
+              value={candi.emails}
+              onChange={handleChange}
+              onBlur={e => { fetchCandidateByEmail(e.target.value); checkDuplicate(); }}
+              placeholder="Enter email — existing details will auto-fill"
+              className="w-full mt-1 border rounded-lg p-2 focus:ring-2 focus:ring-blue-400 pr-10"
+            />
+            {emailLookupLoading && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 mt-0.5">
+                <svg className="animate-spin h-4 w-4 text-blue-500" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                </svg>
+              </span>
+            )}
+          </div>
+          {emailLookupMsg === 'found' && (
+            <p className="mt-1 text-xs font-semibold text-green-600 flex items-center gap-1">
+              ✅ Existing profile found — fields auto-filled. Review and update if needed.
+            </p>
+          )}
+          {emailLookupMsg === 'not_found' && (
+            <p className="mt-1 text-xs text-gray-400">No existing profile found — please fill in the details manually.</p>
+          )}
+        </div>
 
+        {/* New Personal Details Fields - FIXED VISIBILITY */}
+        {/* DOB */}
+        <div className="md:col-span-1">
+          <label className="text-gray-700 font-medium">Date of Birth *</label>
           <input
-            type="email"
-            name="emails"
+            type="date"
+            name="dob"
             required
-            value={candi.emails}
+            value={candi.dob}
             onChange={handleChange}
-            placeholder="Enter email"
+            max={new Date().toISOString().split('T')[0]}
             className="w-full mt-1 border rounded-lg p-2 focus:ring-2 focus:ring-blue-400"
           />
         </div>
 
-        {/* Upload CV */}
-        <div>
-          <label className="text-gray-700 font-medium">Upload CV *</label>
+        {/* JR # */}
+        <div className="md:col-span-1">
+          <label className="text-gray-700 font-medium">JR # *</label>
           <input
-            type="file"
-            name="cv_data"
+            type="text"
+            name="jr_number"
             required
+            value={candi.jr_number}
             onChange={handleChange}
-            className="w-full mt-1 border border-dashed rounded-lg p-2"
+            placeholder="Enter JR Number"
+            className="w-full mt-1 border rounded-lg p-2 focus:ring-2 focus:ring-blue-400"
           />
         </div>
+
+        {/* PAN Number */}
+        <div className="md:col-span-1">
+          <label className="text-gray-700 font-medium">PAN Number *</label>
+          <input
+            type="text"
+            name="pan_number"
+            required
+            value={candi.pan_number}
+            onChange={handleChange}
+            onBlur={checkDuplicate}
+            placeholder="Enter PAN (e.g. ABCDE1234F)"
+            maxLength="10"
+            className="w-full mt-1 border rounded-lg p-2 focus:ring-2 focus:ring-blue-400"
+          />
+        </div>
+
+        {/* RH ID */}
+        <div className="md:col-span-1">
+          <label className="text-gray-700 font-medium">RH ID</label>
+          <input
+            type="text"
+            name="rh_id"
+            value={candi.rh_id}
+            onChange={handleChange}
+            placeholder="Enter RH ID"
+            className="w-full mt-1 border rounded-lg p-2 focus:ring-2 focus:ring-blue-400"
+          />
+        </div>
+
+        {/* Current Employer */}
+        <div className="md:col-span-1">
+          <label className="text-gray-700 font-medium">Current Employer</label>
+          <input
+            type="text"
+            name="curr_emp"
+            value={candi.curr_emp}
+            onChange={handleChange}
+            placeholder="Enter current employer"
+            className="w-full mt-1 border rounded-lg p-2 focus:ring-2 focus:ring-blue-400"
+          />
+        </div>
+
+        {/* Highest Education */}
+        <div className="md:col-span-1">
+          <label className="text-gray-700 font-medium">Highest Education</label>
+          <input
+            type="text"
+            name="highest_education"
+            value={candi.highest_education}
+            onChange={handleChange}
+            placeholder="e.g. B.Tech, MBA, MCA"
+            className="w-full mt-1 border rounded-lg p-2 focus:ring-2 focus:ring-blue-400"
+          />
+        </div>
+
+        {/* Upload CV — a prefilled candidate already has one attached. A file input
+            can't be given a value by script, so show the existing resume instead of
+            an empty (and `required`) picker the user can't satisfy. */}
+        <div>
+          <label className="text-gray-700 font-medium">Upload CV *</label>
+          {typeof candi.cv_data === "string" && candi.cv_data ? (
+            <div className="mt-1 border-2 border-green-300 bg-green-50 rounded-lg p-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <span className="text-sm text-green-800 font-semibold flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  Resume attached from the referred candidate
+                </span>
+                <div className="flex items-center gap-3">
+                  <a href={candi.cv_data} target="_blank" rel="noopener noreferrer"
+                    className="text-sm text-blue-700 underline font-medium">View</a>
+                  <button type="button"
+                    onClick={() => setCandi(prev => ({ ...prev, cv_data: "" }))}
+                    className="text-sm text-red-600 underline font-medium">Replace</button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <input
+              type="file"
+              name="cv_data"
+              required
+              onChange={handleChange}
+              className="w-full mt-1 border border-dashed rounded-lg p-2"
+            />
+          )}
+        </div>
+
+        {/* Candidate Photo — shown only when the company requires it */}
+        {photoRequired && (
+          <div>
+            <label className="text-gray-700 font-medium">
+              Candidate Photo <span className="text-red-500">*</span>
+              <span className="ml-2 text-xs text-blue-600 font-normal">(required by this company)</span>
+            </label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => setPhotoFile(e.target.files[0] || null)}
+              className="w-full mt-1 border border-dashed border-blue-400 rounded-lg p-2"
+            />
+            {photoFile && (
+              <p className="text-xs text-green-600 mt-1">Selected: {photoFile.name}</p>
+            )}
+          </div>
+        )}
 
         {/* Current CTC */}
         <div>
@@ -1104,243 +1590,124 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
 
 
 
-        {/* Technical Category */}
-{/* Skill Type (Tech / Non Tech) */}
-<div className="md:col-span-2">
-  <label className="text-gray-700 font-medium">Skill Type *</label>
-
-  <div className="flex gap-6 mt-2">
-    <label className="flex items-center gap-2">
-      <input
-        type="radio"
-        name="skill_type"
-        value="tech"
-        checked={candi.skill_type === "tech"}
-        onChange={handleChange}
-      />
-      Technical
-    </label>
-
-    <label className="flex items-center gap-2">
-      <input
-        type="radio"
-        name="skill_type"
-        value="nontech"
-        checked={candi.skill_type === "nontech"}
-        onChange={handleChange}
-      />
-      Non-Technical
-    </label>
-  </div>
-</div>
-
-
-
-{/* ----------- TECHNICAL SECTION ----------- */}
-{candi.skill_type === "tech" && (
-  <>
-    {/* Technical Category */}
-    <div>
-      <label className="text-gray-700 font-medium">Technical Category *</label>
-      <select
-        name="tech_category"
-        required={candi.skill_type === "tech"}
-        value={candi.tech_category}
-        onChange={handleCategoryChange}
-        className="w-full mt-1 border rounded-lg p-2"
-      >
-        <option value="">Select Category</option>
-        {Object.keys(techData).map((cat) => (
-          <option key={cat}>{cat}</option>
-        ))}
-      </select>
-    </div>
-
-    {/* Subcategory */}
-    {candi.tech_category && (
-      <div>
-        <label className="text-gray-700 font-medium">Subcategory *</label>
-        <select
-          name="tech_subcategory"
-          required={candi.skill_type === "tech"}
-          value={candi.tech_subcategory}
-          onChange={handleSubcategoryChange}
-          className="w-full mt-1 border rounded-lg p-2"
-        >
-          <option value="">Select Subcategory</option>
-          {Object.keys(techData[candi.tech_category]).map((sub) => (
-            <option key={sub}>{sub}</option>
-          ))}
-        </select>
-      </div>
-    )}
-
-    {/* Multi Skill Selector */}
-    {candi.tech_subcategory && (
-      <div className="md:col-span-2">
-        <label className="text-gray-700 font-medium">Select Skill (up to 10)</label>
-        <select
-          onChange={handleSkillSelect}
-          className="w-full mt-1 border rounded-lg p-2"
-        >
-          <option value="">Select Skill</option>
-          {techData[candi.tech_category][candi.tech_subcategory].map((skill) => (
-            <option key={skill}>{skill}</option>
-          ))}
-        </select>
-
-        {/* Selected Skills */}
-        <div className="mt-3 space-y-3">
-          {candi.tech_skill.map((skill, index) => (
-            <div key={index} className="p-3 border rounded-lg bg-gray-50">
-              <div className="flex justify-between">
-                <span className="font-semibold text-blue-700">{skill}</span>
-                <button
-                  type="button"
-                  onClick={() => removeSkill(index)}
-                  className="text-red-500 font-bold"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <input
-                type="text"
-                placeholder={`Experience in ${skill}`}
-                value={candi.tech_exp[index]}
-                onChange={(e) => updateSkillExp(index, e.target.value)}
-                className="border rounded-lg p-2"
-                required={candi.skill_type === "tech"}
-              />
-            </div>
-          ))}
+        {/* ── Skill Category (parent — comes from the position) ─────────── */}
+        <div className="md:col-span-2">
+          <label className="text-gray-700 font-medium">Skill Category *</label>
+          <div className="mt-1 border rounded-lg p-2 bg-gray-100 text-gray-700 text-sm">
+            {posSkill.parent || "—"}
+            <span className="ml-2 text-xs text-gray-500">(from this position)</span>
+          </div>
         </div>
-      </div>
-    )}
-  </>
-)}
 
-
-{/* ----------- NON-TECHNICAL SECTION ----------- */}
-{candi.skill_type === "nontech" && (
-  <>
-    {/* Non-Tech Category */}
-    <div>
-      <label className="text-gray-700 font-medium">Non-Technical Category *</label>
-      <select
-        name="nontech_category"
-        required={candi.skill_type === "nontech"}
-        value={candi.nontech_category}
-        onChange={(e) =>
-          setCandi({
-            ...candi,
-            nontech_category: e.target.value,
-            nontech_subcategory: "",
-            nontech_skill: [],
-            nontech_exp: []
-          })
-        }
-        className="w-full mt-1 border rounded-lg p-2"
-      >
-        <option value="">Select Category</option>
-        {Object.keys(nonTechCategoryData).map((cat) => (
-          <option key={cat}>{cat}</option>
-        ))}
-      </select>
-    </div>
-
-    {/* Non-Tech Subcategory */}
-    {candi.nontech_category && (
-      <div>
-        <label className="text-gray-700 font-medium">Subcategory *</label>
-        <select
-          name="nontech_subcategory"
-          required={candi.skill_type === "nontech"}
-          value={candi.nontech_subcategory}
-          onChange={(e) =>
-            setCandi({
-              ...candi,
-              nontech_subcategory: e.target.value,
-              nontech_skill: [],
-              nontech_exp: []
-            })
-          }
-          className="w-full mt-1 border rounded-lg p-2"
-        >
-          <option value="">Select Subcategory</option>
-          {Object.keys(
-            nonTechCategoryData[candi.nontech_category]
-          ).map((sub) => (
-            <option key={sub}>{sub}</option>
-          ))}
-        </select>
-      </div>
-    )}
-
-    {/* Non-Tech Skills */}
-    {candi.nontech_subcategory && (
-      <div className="md:col-span-2">
-        <label className="text-gray-700 font-medium">Select Skill (up to 10)</label>
-        <select
-          onChange={(e) => {
-            const sk = e.target.value;
-            if (!candi.nontech_skill.includes(sk)) {
-              setCandi({
-                ...candi,
-                nontech_skill: [...candi.nontech_skill, sk],
-                nontech_exp: [...candi.nontech_exp, ""]
-              });
-            }
-          }}
-          className="w-full mt-1 border rounded-lg p-2"
-        >
-          <option value="">Select Skill</option>
-          {nonTechCategoryData[candi.nontech_category][
-            candi.nontech_subcategory
-          ].map((skill) => (
-            <option key={skill}>{skill}</option>
-          ))}
-        </select>
-
-        <div className="mt-3 space-y-3">
-          {candi.nontech_skill.map((skill, index) => (
-            <div key={index} className="p-3 border rounded-lg bg-gray-50">
-              <div className="flex justify-between">
-                <span className="font-semibold text-blue-700">{skill}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    let ns = [...candi.nontech_skill];
-                    let ne = [...candi.nontech_exp];
-                    ns.splice(index, 1);
-                    ne.splice(index, 1);
-                    setCandi({ ...candi, nontech_skill: ns, nontech_exp: ne });
-                  }}
-                  className="text-red-500 font-bold"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <input
-                type="text"
-                placeholder={`Experience in ${skill}`}
-                value={candi.nontech_exp[index]}
-                onChange={(e) => {
-                  let ne = [...candi.nontech_exp];
-                  ne[index] = e.target.value;
-                  setCandi({ ...candi, nontech_exp: ne });
-                }}
-                className="border rounded-lg p-2"
-                required={candi.skill_type === "nontech"}
-              />
+        {/* Child / sub-category — multi-select, limited to the position's children */}
+        <div className="md:col-span-2">
+          <label className="text-gray-700 font-medium">
+            Sub-Category *{" "}
+            <span className="text-xs font-normal text-gray-500">(select up to {MAX_CHILDREN})</span>
+          </label>
+          {childOptions.length === 0 ? (
+            <p className="mt-1 text-sm text-gray-400 italic">
+              No sub-categories are configured for this position.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {childOptions.map((ch) => {
+                const active = selChildren.includes(ch.name);
+                return (
+                  <button
+                    type="button"
+                    key={ch.name}
+                    onClick={() => toggleChild(ch.name)}
+                    className={`px-3 py-1.5 rounded-lg border text-sm transition-all ${
+                      active
+                        ? "bg-blue-600 border-blue-600 text-white font-semibold"
+                        : "bg-white border-gray-300 text-gray-700 hover:border-blue-400"
+                    }`}
+                  >
+                    {ch.name}
+                  </button>
+                );
+              })}
             </div>
-          ))}
+          )}
         </div>
-      </div>
-    )}
-  </>
-)}
+
+        {/* Sub-child / skills for each selected child — multi-select, max 2 each */}
+        {selChildren.map((childName) => {
+          const childObj = childOptions.find((c) => c.name === childName);
+          const subs = childObj?.subChildren || [];
+          const chosen = selSubs[childName] || [];
+          return (
+            <div className="md:col-span-2" key={childName}>
+              <label className="text-gray-700 font-medium">
+                {childName} — Skills *{" "}
+                <span className="text-xs font-normal text-gray-500">
+                  (select up to {MAX_SUBS_PER_CHILD})
+                </span>
+              </label>
+              {subs.length === 0 ? (
+                <p className="mt-1 text-sm text-gray-400 italic">
+                  No skills are configured under {childName}.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {subs.map((sub) => {
+                    const active = chosen.includes(sub);
+                    return (
+                      <button
+                        type="button"
+                        key={sub}
+                        onClick={() => toggleSub(childName, sub)}
+                        className={`px-3 py-1.5 rounded-lg border text-sm transition-all ${
+                          active
+                            ? "bg-green-600 border-green-600 text-white font-semibold"
+                            : "bg-white border-gray-300 text-gray-700 hover:border-green-400"
+                        }`}
+                      >
+                        {sub}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Experience for each selected skill */}
+        {selectedSubList.length > 0 && (
+          <div className="md:col-span-2">
+            <label className="text-gray-700 font-medium">Experience *</label>
+            <div className="mt-2 space-y-3">
+              {selectedSubList.map(({ child, sub }) => (
+                <div key={`${child}||${sub}`} className="p-3 border rounded-lg bg-gray-50">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-blue-700">
+                      {sub} <span className="text-xs font-normal text-gray-500">({child})</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleSub(child, sub)}
+                      className="text-red-500 font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder={`Experience in ${sub}`}
+                    value={subExp[`${child}||${sub}`] || ""}
+                    onChange={(e) =>
+                      setSubExp((s) => ({ ...s, [`${child}||${sub}`]: e.target.value }))
+                    }
+                    className="border rounded-lg p-2 mt-2 w-full"
+                    required
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
 
 
@@ -1498,6 +1865,47 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name }) => {
             <p className="text-sm text-red-600">
               Please log in to your account and try again. If you're already logged in, try refreshing the page.
             </p>
+          </div>
+        )}
+
+        {/* Client Requirements — answer the company's + position's own questions */}
+        {clientRequirements.length > 0 && (
+          <div className="md:col-span-2 mb-2 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg">
+            <h3 className="text-blue-800 font-bold mb-3">Client Requirements</h3>
+            <div className="space-y-4">
+              {clientRequirements.map((q, i) => (
+                <div key={i} className="bg-white border border-blue-100 rounded-lg p-3">
+                  <p className="text-gray-800 font-medium mb-2">{q.question}</p>
+                  {q.type === 'yesno' && (
+                    <div className="flex gap-5">
+                      {['Yes', 'No'].map(opt => (
+                        <label key={opt} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                          <input type="radio" name={`client-req-${i}`} checked={clientAnswers[i] === opt}
+                            onChange={() => setClientAnswer(i, opt)} />
+                          {opt}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {q.type === 'multiselect' && (
+                    <div className="flex flex-wrap gap-x-5 gap-y-2">
+                      {(q.options || []).map((opt, oi) => (
+                        <label key={oi} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                          <input type="checkbox" checked={Array.isArray(clientAnswers[i]) && clientAnswers[i].includes(opt)}
+                            onChange={() => toggleClientMultiAnswer(i, opt)} />
+                          {opt}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {(!q.type || q.type === 'subjective') && (
+                    <textarea rows={3} value={clientAnswers[i] || ''} onChange={e => setClientAnswer(i, e.target.value)}
+                      placeholder="Type your answer…"
+                      className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 outline-none" />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

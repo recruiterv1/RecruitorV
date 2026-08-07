@@ -3,20 +3,86 @@ const {db}=require('../router/firebase_ad')
 const adminData=db.collection('admin_db');
 const bcrypt=require('bcryptjs')
 
+// Case-insensitive admin lookup:
+// 1. Try the fast lowercase query first (newer accounts are stored lowercase).
+// 2. If not found, scan all admin_db docs and match email case-insensitively
+//    (legacy accounts may be stored with mixed-case emails, e.g.
+//    "Jayashree.prakash@changeleaders.in").
+const findAdminByEmailCi = async (email) => {
+  const normalized = (email || '').toLowerCase().trim();
+  if (!normalized) return null;
+
+  // Fast path: exact lowercase query
+  const snap = await adminData.where('email', '==', normalized).limit(1).get();
+  if (!snap.empty) {
+    const doc = snap.docs[0];
+    return { id: doc.id, ...doc.data() };
+  }
+
+  // Fallback: scan all (admin_db is small) for case-insensitive match
+  const all = await adminData.get();
+  for (const doc of all.docs) {
+    const d = doc.data();
+    if (d.email && String(d.email).toLowerCase().trim() === normalized) {
+      return { id: doc.id, ...d };
+    }
+  }
+  return null;
+};
+
+// Password check that tolerates stray leading/trailing whitespace from browser
+// autofill/paste (a very common "works in curl, fails in the browser" cause).
+// Tries the EXACT value first (so nothing that used to work changes), then a
+// trimmed retry — this only ever ADMITS more inputs, never rejects a prior match.
+const pwMatch = async (pass, storedPass) => {
+    const p = pass == null ? '' : String(pass);
+    const s = storedPass == null ? '' : String(storedPass);
+    const isBcrypt = s.startsWith('$2') && s.length >= 60;
+    if (isBcrypt) {
+        if (await bcrypt.compare(p, s)) return true;
+        if (p !== p.trim() && await bcrypt.compare(p.trim(), s)) return true;
+        return false;
+    }
+    return p === s || p.trim() === s.trim();
+};
 
 const checkCredentials = async(email,pass)=>{
     try{
-        
-        const snap= await adminData.where("email","==",email).limit(1).get()
+        const admin= await findAdminByEmailCi(email);
 
-        if(snap.empty) {
+        // Fallback: SuperAdmin may live in recruiter_db (e.g. roshan@freepathshala.org)
+        // with no password in admin_db. Resolve them here so they can sign in.
+        // This triggers when: (a) no admin found in admin_db, OR (b) the admin
+        // exists in admin_db but has no password field set.
+        const recruiterF = require('./recruiterF');
+
+        if (!admin) {
+            const rec = await recruiterF.findRecruiterByEmail((email || '').toLowerCase().trim());
+            if (rec && (rec.roleCategory === 'Super Admin' || rec.roleCategory === 'SuperAdmin' || rec.role === 'SuperAdmin')) {
+                const stored = rec.password || rec.codPass;
+                if (stored && await pwMatch(pass, stored)) {
+                    return { success: true, message: "Verified Successfully", admin: rec };
+                }
+            }
             return { success: false, message: "Invalid Credentials" };
         }
 
-        const admin= snap.docs[0].data();
-        const hashedPass= admin.codPass;
+        // Support both codPass (new) and password (legacy) field names
+        const storedPass = admin.codPass || admin.password;
 
-        const ismatch= await bcrypt.compare(pass,hashedPass)
+        // Admin found in admin_db but has no password — try recruiter_db SuperAdmin fallback
+        if (!storedPass) {
+            const rec = await recruiterF.findRecruiterByEmail((email || '').toLowerCase().trim());
+            if (rec && (rec.roleCategory === 'Super Admin' || rec.roleCategory === 'SuperAdmin' || rec.role === 'SuperAdmin')) {
+                const stored = rec.password || rec.codPass;
+                if (stored && await pwMatch(pass, stored)) {
+                    return { success: true, message: "Verified Successfully", admin: rec };
+                }
+            }
+            return { success: false, message: "Invalid Credentials" };
+        }
+
+        const ismatch = await pwMatch(pass, storedPass);
 
         if(!ismatch){
             return { success: false, message: "Invalid Credentials"}
@@ -34,13 +100,13 @@ const checkCredentials = async(email,pass)=>{
 
 const checkData = async (email)=>{
     try{
-        const snap= await adminData.where("email","==",email).limit(1).get()
+        const admin= await findAdminByEmailCi(email);
 
-        if (snap.empty) {
+        if (!admin) {
             return { success: false, message: "Admin not found" };
         }
 
-        return {success: true, admin:snap.docs[0].data()}
+        return {success: true, admin}
 
     } catch (error){
         console.error("Error verifying admin:", error);
@@ -51,14 +117,13 @@ const checkData = async (email)=>{
 
 const updateAdmin = async (email, data) => {
     try {
-        const snap = await adminData.where("email", "==", email).limit(1).get();
+        const admin= await findAdminByEmailCi(email);
         
-        if (snap.empty) {
+        if (!admin) {
             return { success: false, message: "Admin not found" };
         }
 
-        const docId = snap.docs[0].id;
-        await adminData.doc(docId).update(data);
+        await adminData.doc(admin.id).update(data);
         
         return { success: true, message: "Admin updated successfully" };
     } catch (error) {
@@ -70,15 +135,15 @@ const updateAdmin = async (email, data) => {
 // New function to get user by email
 const getAdminByEmail = async (email) => {
     try {
-        const snap = await adminData.where("email", "==", email).limit(1).get();
+        const admin= await findAdminByEmailCi(email);
         
-        if (snap.empty) {
+        if (!admin) {
             return { success: false, message: "Admin not found" };
         }
 
         return { 
             success: true, 
-            admin: { id: snap.docs[0].id, ...snap.docs[0].data() } 
+            admin
         };
     } catch (error) {
         console.error("Error getting admin:", error);

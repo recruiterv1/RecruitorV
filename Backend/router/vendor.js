@@ -1,0 +1,720 @@
+const express = require('express');
+const router = express.Router();
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+
+const { db } = require('./firebase_ad');
+const adminVerify = require('../model_fire/adminCF');
+const recruiterModel = require('../model_fire/recruiterF');
+const ad_Pos = require('../model_fire/adminF');
+
+// Auth middleware: validates JWT and confirms user is in admin_db
+const vendorAuth = async (req, res, next) => {
+  const token = req.cookies?.__session;
+  if (!token) {
+    console.log('[vendorAuth] No token cookie found');
+    return res.status(401).json({ success: false, message: 'Unauthorized - no session cookie' });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.SECKEY);
+    const email = decoded.email || '';
+    console.log(`[vendorAuth] Token email: ${email}`);
+
+    // Try exact email first, then lowercase
+    let result = await adminVerify.getAdminByEmail(email);
+    if (!result.success) {
+      result = await adminVerify.getAdminByEmail(email.toLowerCase());
+    }
+
+    if (!result.success) {
+      console.log(`[vendorAuth] Email not found in admin_db: ${email}`);
+      return res.status(403).json({ success: false, message: 'Not found in admin_db' });
+    }
+
+    const admin = result.admin;
+    console.log(`[vendorAuth] Found user: roleCategory="${admin.roleCategory}" role="${admin.role}" recruiterQuantity=${admin.recruiterQuantity}`);
+
+    // Accept any admin_db user on vendor routes — vendor dashboard is already frontend-gated
+    req.vendor = { ...admin, email: (admin.email || email).toLowerCase() };
+    next();
+  } catch (err) {
+    console.error('[vendorAuth] Error:', err.message);
+    return res.status(403).json({ success: false, message: 'Invalid token' });
+  }
+};
+
+// GET /vendor/me — vendor profile + usage stats
+router.get('/me', vendorAuth, async (req, res) => {
+  try {
+    console.log(`[vendor/me] vendor: ${JSON.stringify({ email: req.vendor?.email, qty: req.vendor?.recruiterQuantity, rc: req.vendor?.roleCategory })}`);
+    const vendor = req.vendor;
+    const snap = await db.collection('recruiter_db')
+      .where('vendorEmail', '==', vendor.email.toLowerCase())
+      .get();
+    const used = snap.size;
+    return res.json({
+      success: true,
+      data: {
+        id: vendor.id,
+        name: vendor.name,
+        email: vendor.email,
+        recruiterQuantity: vendor.recruiterQuantity || 0,
+        recruitersUsed: used,
+        recruitersRemaining: Math.max(0, (vendor.recruiterQuantity || 0) - used),
+      }
+    });
+  } catch (err) {
+    console.error('vendor/me error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /vendor/recruiters — list all recruiters created by this vendor
+router.get('/recruiters', vendorAuth, async (req, res) => {
+  try {
+    const snap = await db.collection('recruiter_db')
+      .where('vendorEmail', '==', req.vendor.email.toLowerCase())
+      .get();
+    const recruiters = snap.docs.map(doc => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        name: d.name,
+        email: d.email,
+        mobile: d.mobile || d.phone || '',
+        roleCategory: d.roleCategory || 'Recruiter',
+        planType: d.planType,
+        accountStatus: d.accountStatus || 'approved',
+        createdAt: d.createdAt || d.registrationDate || null,
+        lastActive: d.lastActive || null,
+      };
+    });
+    return res.json({ success: true, data: recruiters });
+  } catch (err) {
+    console.error('vendor/recruiters error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /vendor/recruiter-access — grant or decline a recruiter's dashboard access.
+// Body: { recruiterId, action: 'block' | 'unblock' }
+// A vendor may only change recruiters that belong to them (vendorEmail match).
+router.post('/recruiter-access', vendorAuth, async (req, res) => {
+  try {
+    const { recruiterId, action } = req.body || {};
+    if (!recruiterId || !['block', 'unblock'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'recruiterId and action (block|unblock) are required' });
+    }
+    const docRef = db.collection('recruiter_db').doc(recruiterId);
+    const snap = await docRef.get();
+    if (!snap.exists) return res.status(404).json({ success: false, message: 'Recruiter not found' });
+
+    // Ownership check — never let a vendor touch someone else's recruiter.
+    const rec = snap.data();
+    if ((rec.vendorEmail || '').toLowerCase() !== req.vendor.email.toLowerCase()) {
+      return res.status(403).json({ success: false, message: 'This recruiter does not belong to your account' });
+    }
+
+    const newStatus = action === 'block' ? 'blocked' : 'approved';
+    await docRef.update({
+      accountStatus: newStatus,
+      accountStatusUpdatedAt: new Date(),
+      ...(action === 'block'
+        ? { accessBlockedAt: new Date(), accessBlockedBy: req.vendor.email }
+        : { accessBlockedAt: null, accessBlockedBy: null }),
+    });
+
+    return res.json({
+      success: true,
+      accountStatus: newStatus,
+      message: action === 'block' ? 'Access declined for this recruiter' : 'Access granted',
+    });
+  } catch (err) {
+    console.error('vendor/recruiter-access error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /vendor/remove-recruiter — detach a recruiter from this vendor's group.
+// Body: { recruiterId }
+// The recruiter keeps their account and carries on as an independent recruiter:
+// only the vendor link is cleared. This also frees a slot in the vendor's quota
+// (which is counted by vendorEmail).
+router.post('/remove-recruiter', vendorAuth, async (req, res) => {
+  try {
+    const { recruiterId } = req.body || {};
+    if (!recruiterId) return res.status(400).json({ success: false, message: 'recruiterId is required' });
+
+    const docRef = db.collection('recruiter_db').doc(recruiterId);
+    const snap = await docRef.get();
+    if (!snap.exists) return res.status(404).json({ success: false, message: 'Recruiter not found' });
+
+    const rec = snap.data();
+    if ((rec.vendorEmail || '').toLowerCase() !== req.vendor.email.toLowerCase()) {
+      return res.status(403).json({ success: false, message: 'This recruiter does not belong to your account' });
+    }
+
+    // Access status is deliberately NOT touched here. If the vendor had declined
+    // this recruiter, that decline persists after they leave the group — only an
+    // admin/superadmin can grant access back from the Users dashboard.
+    const wasBlocked = (rec.accountStatus || '') === 'blocked';
+
+    await docRef.update({
+      vendorEmail: null,
+      vendorName: null,
+      removedFromVendorAt: new Date(),
+      removedFromVendorBy: req.vendor.email,
+    });
+
+    return res.json({
+      success: true,
+      stillBlocked: wasBlocked,
+      message: wasBlocked
+        ? 'Recruiter removed from your group. Their access remains declined — only an admin can grant it back.'
+        : 'Recruiter removed from your group. They continue as an independent recruiter.',
+    });
+  } catch (err) {
+    console.error('vendor/remove-recruiter error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /vendor/candidates — all candidates submitted by this vendor's recruiters,
+// in the same flat shape as the admin candidate panel (Ad_Candi table).
+router.get('/candidates', vendorAuth, async (req, res) => {
+  try {
+    const recruiterSnap = await db.collection('recruiter_db')
+      .where('vendorEmail', '==', req.vendor.email.toLowerCase())
+      .get();
+    const emails = [...new Set(
+      recruiterSnap.docs.map(d => (d.data().email || '').toLowerCase().trim()).filter(Boolean)
+    )];
+    if (!emails.length) return res.json([]);
+
+    const byId = {};
+    for (let i = 0; i < emails.length; i += 10) {
+      const batch = emails.slice(i, i + 10);
+      const snap = await db.collection('candidate_db').where('recEmail', 'in', batch).get();
+      snap.docs.forEach(doc => { byId[doc.id] = { id: doc.id, ...doc.data() }; });
+    }
+    // Strip heavy fields (full resume text / match tokens) to keep the response small.
+    const slim = Object.values(byId).map(({ resumeText, matchTokens, skillsTextTokens, ...rest }) => rest);
+    return res.json(slim);
+  } catch (err) {
+    console.error('vendor/candidates error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /vendor/register-recruiter — create a new paid recruiter under this vendor
+router.post('/register-recruiter', vendorAuth, async (req, res) => {
+  try {
+    const vendor = req.vendor;
+    const { name, email, password, mobile, experienceCategory, specialization, skillCategory } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Name, email, and password are required' });
+    }
+
+    // Check quota
+    const snap = await db.collection('recruiter_db')
+      .where('vendorEmail', '==', vendor.email.toLowerCase())
+      .get();
+    const used = snap.size;
+    const allowed = vendor.recruiterQuantity || 0;
+    if (used >= allowed) {
+      return res.status(403).json({
+        success: false,
+        message: `Recruiter limit reached (${used}/${allowed}). Contact administrator to increase your quota.`,
+        errorCode: 'RECRUITER_LIMIT_REACHED'
+      });
+    }
+
+    // Check duplicate email
+    const existing = await recruiterModel.findRecruiterByEmail(email.toLowerCase().trim());
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'A recruiter with this email already exists' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashPass = await bcrypt.hash(password, salt);
+
+    const newRecruiter = await recruiterModel.createRecruiter({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      password: hashPass,
+      mobile: mobile || '',
+      experienceCategory: experienceCategory || '',
+      skillCategory: Array.isArray(skillCategory) ? skillCategory : [],
+      specialization: Array.isArray(skillCategory) && skillCategory.length ? skillCategory.join(', ') : (specialization || ''),
+      roleCategory: 'Recruiter',
+      role: 'recruiter',
+      planType: 1, // paid
+      userType: 'paid',
+      isVerified: true,
+      accountStatus: 'approved',
+      vendorEmail: vendor.email.toLowerCase(),
+      vendorId: vendor.id,
+      vendorName: vendor.name || '',
+      createdAt: new Date(),
+    });
+
+    // Send welcome email
+    try {
+      const { sendEmailFull } = require('../utils/email');
+      await sendEmailFull({
+        to: email.toLowerCase().trim(),
+        subject: 'Your RecruiterV Recruiter Account is Ready',
+        htmlContent: `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.10);">
+        <tr><td style="background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 60%,#f97316 100%);padding:40px;text-align:center;">
+          <div style="font-size:48px;margin-bottom:12px;">&#x1F4BC;</div>
+          <h1 style="margin:0;font-size:26px;font-weight:800;color:#fff;">Welcome to RecruiterV!</h1>
+          <p style="margin:10px 0 0;font-size:14px;color:rgba(255,255,255,0.85);">Your Recruiter account has been created.</p>
+        </td></tr>
+        <tr><td style="padding:36px 40px;">
+          <p style="font-size:15px;color:#374151;">Hi <strong>${name}</strong>,</p>
+          <p style="font-size:15px;color:#374151;line-height:1.6;">
+            Your recruiter account has been created by <strong>${vendor.name || vendor.email}</strong>. Your account is activated with a <strong>Paid plan</strong>.
+          </p>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin:24px 0;">
+            <p style="margin:0 0 6px;font-size:14px;color:#166534;font-weight:600;">Login Credentials</p>
+            <p style="margin:0;font-size:13px;color:#374151;">Email: <strong>${email.toLowerCase().trim()}</strong></p>
+            <p style="margin:4px 0 0;font-size:13px;color:#374151;">Password: <strong>${password}</strong></p>
+          </div>
+          <div style="text-align:center;margin-top:28px;">
+            <a href="https://www.recruiterv.com/log_rec" style="display:inline-block;background:linear-gradient(135deg,#2563eb,#f97316);color:#fff;text-decoration:none;padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;">Login Now</a>
+          </div>
+          <p style="font-size:13px;color:#9ca3af;margin-top:32px;text-align:center;">If you have questions, contact support at support@recruiterv.com</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`
+      });
+    } catch (emailErr) { console.error('Vendor register-recruiter email failed:', emailErr.message); }
+
+    return res.json({ success: true, message: 'Recruiter registered successfully', data: { id: newRecruiter.id, name, email: email.toLowerCase().trim() } });
+  } catch (err) {
+    console.error('vendor/register-recruiter error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /vendor/reports/positions — positions worked by vendor's recruiters (via access requests + candidate submissions)
+router.get('/reports/positions', vendorAuth, async (req, res) => {
+  try {
+    // Step 1: get vendor's recruiters (by email, case-normalised)
+    const recruiterSnap = await db.collection('recruiter_db')
+      .where('vendorEmail', '==', req.vendor.email.toLowerCase())
+      .get();
+
+    if (recruiterSnap.empty) return res.json({ success: true, data: [], count: 0 });
+
+    const recruiterEmails = [
+      ...new Set(
+        recruiterSnap.docs
+          .map(d => (d.data().email || '').toLowerCase().trim())
+          .filter(Boolean)
+      )
+    ];
+
+    if (!recruiterEmails.length) return res.json({ success: true, data: [], count: 0 });
+
+    // Step 2: get distinct pos_ids from position_access_requests for these recruiters
+    const posIdsFromAccess = new Set();
+    for (let i = 0; i < recruiterEmails.length; i += 10) {
+      const batch = recruiterEmails.slice(i, i + 10);
+      const snap = await db.collection('position_access_requests')
+        .where('recruiterEmail', 'in', batch)
+        .get();
+      snap.docs.forEach(doc => {
+        const posId = doc.data().positionId;
+        if (posId) posIdsFromAccess.add(posId);
+      });
+    }
+
+    // Step 3: also collect pos_ids from candidate_db (handles recruiters added via 'associate' who may not have access records)
+    const posIdsFromCandidates = new Set();
+    for (let i = 0; i < recruiterEmails.length; i += 10) {
+      const batch = recruiterEmails.slice(i, i + 10);
+      const snap = await db.collection('candidate_db')
+        .where('recEmail', 'in', batch)
+        .select('pos_id')
+        .limit(1000)
+        .get();
+      snap.docs.forEach(doc => {
+        const posId = doc.data().pos_id;
+        if (posId) posIdsFromCandidates.add(posId);
+      });
+    }
+
+    // Union of both sets
+    const allPosIds = new Set([...posIdsFromAccess, ...posIdsFromCandidates]);
+
+    if (!allPosIds.size) return res.json({ success: true, data: [], count: 0 });
+
+    // Step 4: fetch position details from admin_AddPos for the collected pos_ids
+    const positionsMap = new Map();
+    const posIdArr = Array.from(allPosIds);
+    for (let i = 0; i < posIdArr.length; i += 10) {
+      const batch = posIdArr.slice(i, i + 10);
+      const snap = await db.collection('admin_AddPos').where('pos_id', 'in', batch).get();
+      snap.docs.forEach(doc => {
+        const d = doc.data();
+        if (!positionsMap.has(d.pos_id)) {
+          positionsMap.set(d.pos_id, {
+            pos_id: d.pos_id,
+            pos_name: d.position || 'Unnamed',
+            client: d.client || 'N/A',
+            clientspoc: d.clientspoc || 'N/A',
+            status: d.status || 'active',
+          });
+        }
+      });
+    }
+
+    return res.json({ success: true, data: Array.from(positionsMap.values()), count: positionsMap.size });
+  } catch (err) {
+    console.error('vendor/reports/positions error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /vendor/reports/candidates — candidates submitted by vendor's recruiters, grouped by recruiter
+router.get('/reports/candidates', vendorAuth, async (req, res) => {
+  try {
+    const { pos_id, pos_ids } = req.query;
+
+    const recruiterSnap = await db.collection('recruiter_db')
+      .where('vendorEmail', '==', req.vendor.email.toLowerCase())
+      .get();
+
+    // Build a lowercase set for fast membership check
+    const recruiterEmailSet = new Set(
+      recruiterSnap.docs
+        .map(d => (d.data().email || '').toLowerCase().trim())
+        .filter(Boolean)
+    );
+
+    if (!recruiterEmailSet.size) return res.json({ success: true, data: [], totalCandidates: 0 });
+
+    const posIdList = pos_ids
+      ? pos_ids.split(',').map(s => s.trim()).filter(Boolean)
+      : pos_id ? [pos_id] : [];
+
+    let allCandidates = [];
+
+    if (posIdList.length) {
+      // Firestore only supports one `in` per query, so query by pos_id batches
+      // and filter by recruiter email in memory.
+      for (let j = 0; j < posIdList.length; j += 10) {
+        const posBatch = posIdList.slice(j, j + 10);
+        const snap = await db.collection('candidate_db')
+          .where('pos_id', 'in', posBatch)
+          .limit(1000)
+          .get();
+        snap.docs.forEach(doc => {
+          const c = { id: doc.id, ...doc.data() };
+          if (recruiterEmailSet.has((c.recEmail || '').toLowerCase().trim())) {
+            allCandidates.push(c);
+          }
+        });
+      }
+    } else {
+      // No position filter — query by recruiter email batches
+      const recruiterEmails = Array.from(recruiterEmailSet);
+      for (let i = 0; i < recruiterEmails.length; i += 10) {
+        const emailBatch = recruiterEmails.slice(i, i + 10);
+        const snap = await db.collection('candidate_db')
+          .where('recEmail', 'in', emailBatch)
+          .limit(500)
+          .get();
+        allCandidates = allCandidates.concat(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }
+    }
+
+    // Sort by submission date descending (in memory to avoid composite index requirement)
+    allCandidates.sort((a, b) => {
+      const aTs = a.datePosted?._seconds ?? 0;
+      const bTs = b.datePosted?._seconds ?? 0;
+      return bTs - aTs;
+    });
+
+    // Group by recruiter
+    const groups = {};
+    allCandidates.forEach(c => {
+      const key = c.recName || c.recEmail || 'Unknown Recruiter';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(c);
+    });
+
+    const mapCandidate = (c) => ({
+      id: c.id,
+      name: c.candidate,
+      email: c.emails,
+      phone: c.mob,
+      currentCTC: c.current_ctc,
+      expectedCTC: c.exp_ctc,
+      experience: `${c.rel_exp || 'N/A'} (Total: ${c.total_exp || 'N/A'})`,
+      status: c.statusa || 'Submitted',
+      submittedDate: c.datePosted?._seconds ? new Date(c.datePosted._seconds * 1000).toLocaleDateString() : 'N/A',
+      cvUrl: c.cv_data,
+      pos_id: c.pos_id,
+      pos_name: c.pos_name,
+      client: c.client,
+      hr_name: c.hr_name,
+      skills: Array.isArray(c.tech_skill) ? c.tech_skill.join(', ') : (c.tech_skill || Array.isArray(c.nontech_skill) ? (c.nontech_skill || []).join(', ') : (c.nontech_skill || 'N/A')),
+      notice_period: c.notice_period,
+      last_day: c.last_day,
+      curr_loc: c.curr_loc,
+      curr_state: c.curr_state,
+      pref_loc: c.pref_loc,
+      pref_state: c.pref_state,
+      self_rate: c.self_rate,
+      offer_hand: c.offer_hand,
+      offer_amt: c.offer_amt,
+      curr_emp: c.curr_emp,
+      rh_id: c.rh_id,
+      highest_education: c.highest_education,
+      skill_type: c.skill_type,
+      tech_category: c.tech_category,
+      tech_subcategory: c.tech_subcategory,
+      tech_skill: c.tech_skill,
+      tech_exp: c.tech_exp,
+      nontech_category: c.nontech_category,
+      nontech_subcategory: c.nontech_subcategory,
+      nontech_skill: c.nontech_skill,
+      nontech_exp: c.nontech_exp,
+      dob: c.dob,
+      jr_number: c.jr_number,
+      pan_number: c.pan_number,
+    });
+
+    const data = Object.entries(groups).map(([recruiterName, candidates]) => ({
+      recruiterName,
+      candidateCount: candidates.length,
+      candidates: candidates.map(mapCandidate)
+    }));
+
+    return res.json({ success: true, data, totalCandidates: allCandidates.length });
+  } catch (err) {
+    console.error('vendor/reports/candidates error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /vendor/skill-categories — parent category names for recruiter registration
+router.get('/skill-categories', vendorAuth, async (req, res) => {
+  try {
+    const snap = await db.collection('skill_categories').get();
+    const parents = snap.docs
+      .map(d => d.data().parent)
+      .filter(Boolean)
+      .sort();
+    return res.json({ success: true, data: [...new Set(parents)] });
+  } catch (err) {
+    console.error('vendor/skill-categories error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /vendor/open-positions — all visible positions for vendor to browse
+router.get('/open-positions', vendorAuth, async (req, res) => {
+  try {
+    console.log(`[vendor/open-positions] Request from: ${req.vendor?.email}`);
+    const all = await ad_Pos.getAllPosition();
+    console.log(`[vendor/open-positions] getAllPosition returned ${all.length} positions`);
+
+    // Collect unique clientspoc emails to batch-fetch their details
+    const spocEmails = [...new Set(all.map(p => (p.clientspoc || '').toLowerCase()).filter(Boolean))];
+    const spocMap = {};
+    if (spocEmails.length) {
+      for (let i = 0; i < spocEmails.length; i += 10) {
+        const batch = spocEmails.slice(i, i + 10);
+        const snap = await db.collection('admin_db').where('email', 'in', batch).get();
+        snap.docs.forEach(doc => {
+          const d = doc.data();
+          const email = (d.email || '').toLowerCase();
+          spocMap[email] = {
+            name: d.name || '',
+            email: d.email || '',
+            phone: d.mobile || d.phone || d.contact || '',
+          };
+        });
+      }
+    }
+
+    const positions = all.map(pos => {
+      const spocEmail = (pos.clientspoc || '').toLowerCase();
+      const spoc = spocMap[spocEmail] || null;
+      return {
+        id: pos.id,
+        pos_id: pos.pos_id,
+        position: pos.position,
+        client: pos.client || 'N/A',
+        hr_name: pos.hr_name || 'N/A',
+        clientspoc: pos.clientspoc || '',
+        clientspocName: spoc?.name || '',
+        clientspocPhone: spoc?.phone || '',
+        clientspocEmail: spoc?.email || pos.clientspoc || '',
+        experience: pos.experience || '',
+        ctcStart: pos.ctcStart || '',
+        ctcEnd: pos.ctcEnd || '',
+        state: pos.state || [],
+        location: pos.location || [],
+        job_desc: pos.job_desc || '',
+        key_res: pos.key_res || '',
+        m_have: pos.m_have || '',
+        g_have: pos.g_have || '',
+        pos_cat: pos.pos_cat || '',
+        skill_category: pos.skill_category || '',
+        maxCandidate: pos.maxCandidate || 10,
+        status: pos.status || 'active',
+        datePosted: pos.datePosted || null,
+      };
+    });
+    return res.json({ success: true, data: positions, count: positions.length });
+  } catch (err) {
+    console.error('vendor/open-positions error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /vendor/assign-recruiter — assign one of vendor's recruiters to a position
+router.post('/assign-recruiter', vendorAuth, async (req, res) => {
+  try {
+    const { pos_id, recruiterId } = req.body;
+    if (!pos_id || !recruiterId) {
+      return res.status(400).json({ success: false, message: 'pos_id and recruiterId are required' });
+    }
+
+    // Verify recruiter belongs to this vendor
+    const recDoc = await db.collection('recruiter_db').doc(recruiterId).get();
+    if (!recDoc.exists) return res.status(404).json({ success: false, message: 'Recruiter not found' });
+    const recData = recDoc.data();
+    if ((recData.vendorEmail || '').toLowerCase() !== req.vendor.email.toLowerCase()) {
+      return res.status(403).json({ success: false, message: 'This recruiter is not under your vendor account' });
+    }
+
+    // Verify position exists
+    const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', pos_id).limit(1).get();
+    if (posSnap.empty) return res.status(404).json({ success: false, message: 'Position not found' });
+
+    // Use positionAccess model to create the assign request
+    const positionAccess = require('../model_fire/positionAccessF');
+    const assignRequest = await positionAccess.createAssignRequest(
+      recruiterId,
+      (recData.email || '').toLowerCase(),
+      pos_id,
+      `Assigned by vendor ${req.vendor.name || req.vendor.email}`
+    );
+
+    return res.json({
+      success: true,
+      message: assignRequest.status === 'approved'
+        ? `${recData.name} has been assigned to this position`
+        : `Assignment request sent for ${recData.name} — awaiting ClientSPOC approval`,
+      status: assignRequest.status,
+    });
+  } catch (err) {
+    if (err.message?.includes('already have')) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
+    console.error('vendor/assign-recruiter error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /vendor/recruiter-detail?recruiterId=xxx — positions & candidates for one recruiter
+router.get('/recruiter-detail', vendorAuth, async (req, res) => {
+  try {
+    const { recruiterId } = req.query;
+    if (!recruiterId) return res.status(400).json({ success: false, message: 'recruiterId required' });
+
+    const recDoc = await db.collection('recruiter_db').doc(recruiterId).get();
+    if (!recDoc.exists) return res.status(404).json({ success: false, message: 'Recruiter not found' });
+    const recData = recDoc.data();
+
+    // Verify recruiter belongs to this vendor
+    if ((recData.vendorEmail || '').toLowerCase() !== req.vendor.email.toLowerCase()) {
+      return res.status(403).json({ success: false, message: 'This recruiter is not under your vendor account' });
+    }
+
+    const recruiterEmail = (recData.email || '').toLowerCase();
+
+    // Get all candidates submitted by this recruiter
+    // Note: no .orderBy() here to avoid requiring a composite index;
+    // we sort in memory below instead.
+    const snap = await db.collection('candidate_db')
+      .where('recEmail', '==', recruiterEmail)
+      .limit(1000)
+      .get();
+    const allCandidates = snap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => {
+        const aTs = a.datePosted?._seconds ?? 0;
+        const bTs = b.datePosted?._seconds ?? 0;
+        return bTs - aTs;
+      });
+
+    // Group by position
+    const posMap = {};
+    allCandidates.forEach(c => {
+      const posId = c.pos_id || 'Unknown';
+      if (!posMap[posId]) {
+        posMap[posId] = {
+          pos_id: posId,
+          pos_name: c.pos_name || c.position || 'N/A',
+          client: c.client || 'N/A',
+          candidates: [],
+        };
+      }
+      posMap[posId].candidates.push({
+        id: c.id,
+        name: c.candidate || 'N/A',
+        email: c.emails || 'N/A',
+        phone: c.mob || 'N/A',
+        status: c.statusa || 'Submitted',
+        currentCTC: c.current_ctc || 'N/A',
+        expectedCTC: c.exp_ctc || 'N/A',
+        experience: `${c.rel_exp || 'N/A'} (Total: ${c.total_exp || 'N/A'})`,
+        submittedDate: c.datePosted?._seconds ? new Date(c.datePosted._seconds * 1000).toLocaleDateString('en-IN') : 'N/A',
+        skills: Array.isArray(c.tech_skill) ? c.tech_skill.join(', ') : (c.tech_skill || 'N/A'),
+        cvUrl: c.cv_data || null,
+        curr_loc: c.curr_loc || 'N/A',
+        notice_period: c.notice_period || 'N/A',
+      });
+    });
+
+    const positions = Object.values(posMap).sort((a, b) => b.candidates.length - a.candidates.length);
+
+    return res.json({
+      success: true,
+      recruiter: {
+        id: recruiterId,
+        name: recData.name,
+        email: recData.email,
+        mobile: recData.mobile || recData.phone || '',
+        specialization: recData.specialization || '',
+        skillCategory: recData.skillCategory || [],
+        experienceCategory: recData.experienceCategory || '',
+        planType: recData.planType,
+        accountStatus: recData.accountStatus || 'approved',
+        createdAt: recData.createdAt || null,
+        lastActive: recData.lastActive || null,
+      },
+      positions,
+      totalCandidates: allCandidates.length,
+    });
+  } catch (err) {
+    console.error('vendor/recruiter-detail error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+module.exports = router;

@@ -9,7 +9,7 @@ if (!admin.apps.length) {
       
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        storageBucket: "recruitorv-1291c.appspot.com"
+        storageBucket: "recruitorv-1291c.firebasestorage.app"
       });
       
       console.log("✅ Firebase Admin initialized with service account (local dev)");
@@ -17,7 +17,7 @@ if (!admin.apps.length) {
       // Fallback to default credentials (for Firebase Functions)
       // When running on Firebase, credentials are automatically provided
       admin.initializeApp({
-        storageBucket: "recruitorv-1291c.appspot.com"
+        storageBucket: "recruitorv-1291c.firebasestorage.app"
       });
       
       console.log("✅ Firebase Admin initialized with default credentials (Firebase Functions)");
@@ -29,6 +29,8 @@ if (!admin.apps.length) {
 }
 
 var db = admin.firestore();
+// Drop undefined fields silently instead of throwing (coaches/experts don't have all recruiter fields)
+db.settings({ ignoreUndefinedProperties: true });
 
 // Test Firestore connection - NON-BLOCKING
 // Don't wait for this as it can cause startup delays with Eventarc/PubSub
@@ -37,10 +39,7 @@ setTimeout(() => {
     .then(() => {
       console.log("✅ Firestore connection successful");
     })
-    .catch(err => {
-      console.warn("⚠️ Firestore connection check failed (will retry on actual requests):", err.message);
-      // This is normal during cold starts - actual requests will trigger proper connection
-    });
+    .catch(() => {});
 }, 1000);
 
 module.exports = { admin, db };

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { 
-  Briefcase, Users, TrendingUp, TrendingDown, Search, RefreshCw, Download,
+import * as XLSX from 'xlsx';
+import {
+  Briefcase, Users, TrendingUp, Search, RefreshCw, Download,
   Calendar, ChevronDown, ChevronRight, Clock, XCircle, Loader2, FileText
 } from 'lucide-react';
 
@@ -17,6 +18,7 @@ const PositionStats = () => {
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [positionDetails, setPositionDetails] = useState({});
   const [loadingDetails, setLoadingDetails] = useState({});
+  const [isExporting, setIsExporting] = useState(false);
 
   // Get API base URL - use Firebase Function URL in production
   const getApiUrl = () => {
@@ -155,19 +157,97 @@ const PositionStats = () => {
     return formatDate(dateString);
   };
 
-  const exportToCSV = () => {
-    const headers = ['Position', 'Client', 'HR', 'Recruiters', 'Submissions', 'Success Rate', 'Last Updated'];
-    const csvData = sortedPositions.map(p => [
-      p.positionName, p.client, p.hrName, p.recruiterCount, p.totalSubmissions, p.successRate, formatDate(p.lastUpdated)
-    ]);
-    const csvContent = [headers.join(','), ...csvData.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `position-stats-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+  const exportToExcel = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      const wb = XLSX.utils.book_new();
+      const apiUrl = getApiUrl();
+
+      // Sheet 1: Position summary (always works — data already loaded)
+      const summaryRows = sortedPositions.map((p, i) => ({
+        'S.No.': i + 1,
+        'Position ID': p.posId || '',
+        'Position': p.positionName,
+        'Client': p.client,
+        'HR Name': p.hrName,
+        'ClientSPOC Name': p.clientspocName || '',
+        'ClientSPOC Email': p.clientspocEmail || '',
+        'Coach(es)': p.coachNames || '',
+        'Expert(s)': p.expertNames || '',
+        'Recruiters': p.recruiterCount,
+        'Total Submissions': p.totalSubmissions,
+        'Successful': p.successful,
+        'On Process': p.onProcess,
+        'Rejected': p.rejected,
+        'Success Rate': p.successRate,
+        'Last Updated': formatDate(p.lastUpdated),
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Position Summary');
+
+      // Sheet 2: Candidate details — fetch all in parallel (faster than sequential)
+      const candidateRows = [];
+      const positionsWithIds = sortedPositions.filter(p => p.posId);
+
+      const detailResults = await Promise.all(
+        positionsWithIds.map(async (p) => {
+          // Use cached detail if already expanded by user
+          if (positionDetails[p.posId]) return { p, detail: positionDetails[p.posId] };
+          try {
+            const res = await axios.get(`${apiUrl}/positionstats/${p.posId}`);
+            if (res.data.success) return { p, detail: res.data.data };
+          } catch (_) {}
+          return { p, detail: null };
+        })
+      );
+
+      detailResults.forEach(({ p, detail }) => {
+        if (!detail) return;
+        const pos = detail.position || {};
+        (detail.submissions || []).forEach((sub) => {
+          candidateRows.push({
+            'S.No.': candidateRows.length + 1,
+            'Position ID': p.posId || '',
+            'Position': pos.positionName || p.positionName,
+            'Client': pos.client || p.client,
+            'ClientSPOC Name': pos.clientspocName || p.clientspocName || '',
+            'ClientSPOC Email': pos.clientspocEmail || p.clientspocEmail || '',
+            'Coach(es)': pos.coachNames || p.coachNames || '',
+            'Expert(s)': pos.expertNames || p.expertNames || '',
+            'Candidate Name': sub.candidateName,
+            'Candidate Email': sub.candidateEmail,
+            'Candidate Phone': sub.candidatePhone,
+            'Recruiter Name': sub.recruiterName,
+            'Recruiter Email': sub.recruiterEmail,
+            'Recruiter Phone': sub.recruiterPhone,
+            'Status': sub.status,
+            'Submitted Date': formatDate(sub.submittedDate),
+            'Last Updated': formatDate(sub.lastUpdated),
+          });
+        });
+      });
+
+      if (candidateRows.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(candidateRows), 'All Candidates');
+      }
+
+      // Use Blob + anchor approach (works reliably across all browsers)
+      const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `position-stats-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Export failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (loading) {
@@ -213,9 +293,15 @@ const PositionStats = () => {
               <RefreshCw size={18} />
               <span className="hidden sm:inline">Refresh</span>
             </button>
-            <button onClick={exportToCSV} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md">
-              <Download size={18} />
-              <span className="hidden sm:inline">Export</span>
+            <button
+              onClick={exportToExcel}
+              disabled={isExporting || positions.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isExporting
+                ? <Loader2 size={18} className="animate-spin" />
+                : <Download size={18} />}
+              <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Export Excel'}</span>
             </button>
           </div>
         </div>
@@ -306,6 +392,9 @@ const PositionStats = () => {
                   Position {sortConfig.key === 'positionName' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                 </th>
                 <th className="px-6 py-4 text-left text-sm font-semibold">Client</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold">ClientSPOC</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold">Coach</th>
+                <th className="px-6 py-4 text-left text-sm font-semibold">Expert</th>
                 <th className="px-6 py-4 text-center text-sm font-semibold cursor-pointer hover:bg-blue-700" onClick={() => handleSort('recruiterCount')}>
                   Recruiters {sortConfig.key === 'recruiterCount' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                 </th>
@@ -324,7 +413,7 @@ const PositionStats = () => {
             <tbody className="divide-y divide-gray-200">
               {paginatedPositions.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">No positions found</td>
+                  <td colSpan="10" className="px-6 py-12 text-center text-gray-500">No positions found</td>
                 </tr>
               ) : (
                 paginatedPositions.map((position) => (
@@ -344,6 +433,16 @@ const PositionStats = () => {
                       <td className="px-6 py-4">
                         <p className="font-medium text-gray-900">{position.client}</p>
                         <p className="text-xs text-gray-500">{position.hrName}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-medium text-gray-900">{position.clientspocName || '—'}</p>
+                        <p className="text-xs text-gray-400">{position.clientspocEmail && position.clientspocEmail !== 'N/A' ? position.clientspocEmail : ''}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm text-gray-700">{position.coachNames && position.coachNames !== 'N/A' ? position.coachNames : '—'}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm text-gray-700">{position.expertNames && position.expertNames !== 'N/A' ? position.expertNames : '—'}</p>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-semibold">
@@ -383,7 +482,7 @@ const PositionStats = () => {
                     </tr>
                     {expandedRows.has(position.posId) && (
                       <tr className="bg-gray-50">
-                        <td colSpan="7" className="px-6 py-4">
+                        <td colSpan="10" className="px-6 py-4">
                           {loadingDetails[position.posId] ? (
                             <div className="flex items-center justify-center py-8">
                               <Loader2 className="w-6 h-6 text-blue-600 animate-spin mr-3" />
@@ -412,7 +511,11 @@ const PositionStats = () => {
                                   <thead className="bg-gray-100">
                                     <tr>
                                       <th className="px-3 py-2 text-left">Candidate</th>
+                                      <th className="px-3 py-2 text-left">Cand. Email</th>
+                                      <th className="px-3 py-2 text-left">Cand. Phone</th>
                                       <th className="px-3 py-2 text-left">Recruiter</th>
+                                      <th className="px-3 py-2 text-left">Rec. Email</th>
+                                      <th className="px-3 py-2 text-left">Rec. Phone</th>
                                       <th className="px-3 py-2 text-left">Status</th>
                                       <th className="px-3 py-2 text-left">Submitted</th>
                                     </tr>
@@ -420,8 +523,12 @@ const PositionStats = () => {
                                   <tbody className="divide-y">
                                     {positionDetails[position.posId].submissions.map((sub, idx) => (
                                       <tr key={idx} className="hover:bg-gray-50">
-                                        <td className="px-3 py-2">{sub.candidateName}</td>
+                                        <td className="px-3 py-2 font-medium">{sub.candidateName}</td>
+                                        <td className="px-3 py-2 text-gray-600">{sub.candidateEmail}</td>
+                                        <td className="px-3 py-2 text-gray-600">{sub.candidatePhone}</td>
                                         <td className="px-3 py-2">{sub.recruiterName}</td>
+                                        <td className="px-3 py-2 text-gray-600">{sub.recruiterEmail}</td>
+                                        <td className="px-3 py-2 text-gray-600">{sub.recruiterPhone}</td>
                                         <td className="px-3 py-2">
                                           <span className={`px-2 py-1 rounded-full text-xs ${
                                             ['Offer Accepted', 'Joining'].includes(sub.status) ? 'bg-green-100 text-green-700' :

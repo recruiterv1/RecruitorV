@@ -1,0 +1,315 @@
+/* ===========================================================================
+   Dark theme — global override layer.
+
+   Applied only when <html data-theme="dark"> is set (see ThemeContext).
+   This remaps the light Tailwind palette the app is built on, so NO component
+   markup or logic has to change: nothing here can alter behaviour, only colour.
+
+   Scoping rule: every selector is prefixed with [data-theme="dark"], so with the
+   attribute absent the app renders exactly as it does today.
+
+   Print/PDF is deliberately excluded at the bottom — agreements and printed
+   documents must stay light.
+   =========================================================================== */
+
+[data-theme="dark"] {
+  --d-bg:        #0d1117;  /* page background            */
+  --d-surface:   #151b26;  /* cards, panels, headers     */
+  --d-surface-2: #1a2130;  /* raised / hover surfaces    */
+  --d-input:     #121826;  /* form controls              */
+  --d-line:      #232b3a;  /* borders + dividers         */
+  --d-ink:       #e8ecf3;  /* primary text               */
+  --d-ink-soft:  #9aa6b8;  /* secondary text             */
+  --d-ink-faint: #8b98ad;  /* tertiary / placeholder     */
+  --d-accent:    #6366f1;
+  color-scheme: dark;
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] body { background: var(--d-bg); color: var(--d-ink); }
+
+/* ── Surfaces ─────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .bg-white { background-color: var(--d-surface) !important; }
+[data-theme="dark"] .bg-gray-50,
+[data-theme="dark"] .bg-slate-50,
+[data-theme="dark"] .bg-neutral-50 { background-color: var(--d-bg) !important; }
+[data-theme="dark"] .bg-gray-100,
+[data-theme="dark"] .bg-slate-100,
+[data-theme="dark"] .bg-gray-200,
+[data-theme="dark"] .bg-slate-200 { background-color: var(--d-surface-2) !important; }
+
+/* Hover states that assume a light surface */
+[data-theme="dark"] .hover\:bg-gray-50:hover,
+[data-theme="dark"] .hover\:bg-gray-100:hover,
+[data-theme="dark"] .hover\:bg-slate-50:hover,
+[data-theme="dark"] .hover\:bg-slate-100:hover { background-color: var(--d-surface-2) !important; }
+[data-theme="dark"] .hover\:bg-white:hover { background-color: var(--d-surface) !important; }
+
+/* ── Text ─────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .text-gray-900,
+[data-theme="dark"] .text-gray-800,
+[data-theme="dark"] .text-slate-900,
+[data-theme="dark"] .text-slate-800,
+[data-theme="dark"] .text-black { color: var(--d-ink) !important; }
+[data-theme="dark"] .text-gray-700,
+[data-theme="dark"] .text-gray-600,
+[data-theme="dark"] .text-slate-700,
+[data-theme="dark"] .text-slate-600 { color: var(--d-ink-soft) !important; }
+[data-theme="dark"] .text-gray-500,
+[data-theme="dark"] .text-gray-400,
+[data-theme="dark"] .text-slate-500,
+[data-theme="dark"] .text-slate-400 { color: var(--d-ink-faint) !important; }
+
+/* ── Borders ──────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .border-gray-100,
+[data-theme="dark"] .border-gray-200,
+[data-theme="dark"] .border-gray-300,
+[data-theme="dark"] .border-slate-100,
+[data-theme="dark"] .border-slate-200,
+[data-theme="dark"] .border-slate-300,
+[data-theme="dark"] .divide-gray-100 > * + *,
+[data-theme="dark"] .divide-gray-200 > * + * { border-color: var(--d-line) !important; }
+
+/* ── Form controls ────────────────────────────────────────────────────────── */
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background-color: var(--d-input) !important;
+  border-color: var(--d-line) !important;
+  color: var(--d-ink) !important;
+}
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder { color: var(--d-ink-faint) !important; }
+[data-theme="dark"] select option { background: var(--d-input); color: var(--d-ink); }
+/* File inputs keep a readable button */
+[data-theme="dark"] input[type="file"]::file-selector-button {
+  background: var(--d-surface-2); color: var(--d-ink-soft);
+  border: 1px solid var(--d-line); border-radius: 6px;
+}
+
+/* ── Soft tinted panels (info/success/warning/error blocks) ───────────────── */
+[data-theme="dark"] .bg-blue-50   { background-color: rgba(99,102,241,.12) !important; }
+[data-theme="dark"] .bg-green-50, [data-theme="dark"] .bg-emerald-50 { background-color: rgba(52,211,153,.12) !important; }
+[data-theme="dark"] .bg-red-50,   [data-theme="dark"] .bg-rose-50    { background-color: rgba(244,63,94,.12) !important; }
+[data-theme="dark"] .bg-yellow-50,[data-theme="dark"] .bg-amber-50   { background-color: rgba(251,191,36,.12) !important; }
+[data-theme="dark"] .bg-orange-50 { background-color: rgba(249,115,22,.12) !important; }
+[data-theme="dark"] .bg-purple-50,[data-theme="dark"] .bg-indigo-50  { background-color: rgba(129,140,248,.12) !important; }
+
+[data-theme="dark"] .border-blue-100,  [data-theme="dark"] .border-blue-200   { border-color: rgba(99,102,241,.3) !important; }
+[data-theme="dark"] .border-green-100, [data-theme="dark"] .border-green-200,
+[data-theme="dark"] .border-emerald-200 { border-color: rgba(52,211,153,.3) !important; }
+[data-theme="dark"] .border-red-100,   [data-theme="dark"] .border-red-200,
+[data-theme="dark"] .border-red-300    { border-color: rgba(244,63,94,.35) !important; }
+[data-theme="dark"] .border-yellow-200,[data-theme="dark"] .border-amber-200  { border-color: rgba(251,191,36,.3) !important; }
+[data-theme="dark"] .border-indigo-100,[data-theme="dark"] .border-indigo-200 { border-color: rgba(129,140,248,.3) !important; }
+
+/* Keep tinted text legible on dark tinted panels */
+[data-theme="dark"] .text-blue-700,  [data-theme="dark"] .text-blue-800,  [data-theme="dark"] .text-blue-900   { color: #a5b4fc !important; }
+[data-theme="dark"] .text-green-700, [data-theme="dark"] .text-green-800, [data-theme="dark"] .text-emerald-700 { color: #6ee7b7 !important; }
+[data-theme="dark"] .text-red-700,   [data-theme="dark"] .text-red-800,   [data-theme="dark"] .text-red-600     { color: #fda4af !important; }
+[data-theme="dark"] .text-yellow-700,[data-theme="dark"] .text-yellow-800,[data-theme="dark"] .text-amber-800   { color: #fcd34d !important; }
+[data-theme="dark"] .text-indigo-700,[data-theme="dark"] .text-indigo-900 { color: #a5b4fc !important; }
+[data-theme="dark"] .text-purple-700,[data-theme="dark"] .text-purple-800 { color: #c4b5fd !important; }
+
+
+/* Muted text sitting on a tinted panel (bg-*-50) is too dim to read on dark —
+   the panel is already darkened, so lift the text back up. */
+[data-theme="dark"] :is(.bg-blue-50,.bg-green-50,.bg-emerald-50,.bg-red-50,.bg-rose-50,
+  .bg-yellow-50,.bg-amber-50,.bg-orange-50,.bg-purple-50,.bg-indigo-50)
+  :is(.text-gray-500,.text-gray-600,.text-gray-700,.text-slate-500,.text-slate-600) {
+  color: var(--d-ink-soft) !important;
+}
+
+/* ── Shadows read as halos on dark; soften them ──────────────────────────── */
+[data-theme="dark"] .shadow-sm,[data-theme="dark"] .shadow,[data-theme="dark"] .shadow-md,
+[data-theme="dark"] .shadow-lg,[data-theme="dark"] .shadow-xl,[data-theme="dark"] .shadow-2xl {
+  box-shadow: 0 8px 26px -12px rgba(0,0,0,.65) !important;
+}
+
+/* ── Tables ───────────────────────────────────────────────────────────────── */
+[data-theme="dark"] table { color: var(--d-ink); }
+[data-theme="dark"] thead tr,
+[data-theme="dark"] thead th { background-color: var(--d-surface-2) !important; color: var(--d-ink-soft) !important; }
+[data-theme="dark"] td, [data-theme="dark"] th { border-color: var(--d-line) !important; }
+[data-theme="dark"] tbody tr:hover { background-color: var(--d-surface-2) !important; }
+
+
+/* ── Tailwind variant + opacity classes ───────────────────────────────────────
+   `even:bg-gray-50/50`, `hover:bg-blue-50/60`, `hover:bg-white` etc. are DISTINCT
+   class names from `bg-gray-50`, so the base-class rules above never matched them.
+   That left striped table rows and hover states rendering light on dark.
+
+   Note `[class*="bg-gray-50/"]` can't collide with `bg-gray-500` — after
+   "bg-gray-50" that class has "0", not "/". */
+[data-theme="dark"] [class*="bg-white/"],
+[data-theme="dark"] [class*="bg-gray-50/"],
+[data-theme="dark"] [class*="bg-gray-100/"],
+[data-theme="dark"] [class*="bg-slate-50/"],
+[data-theme="dark"] [class*=":bg-white"],
+[data-theme="dark"] [class*=":bg-gray-50"]:not([class*=":bg-gray-500"]),
+[data-theme="dark"] [class*=":bg-gray-100"],
+[data-theme="dark"] [class*=":bg-slate-50"] {
+  background-color: var(--d-surface-2) !important;
+}
+/* Tinted hover washes (hover:bg-blue-50/60 …) stay tinted, just dark */
+[data-theme="dark"] [class*="bg-blue-50/"],   [data-theme="dark"] [class*=":bg-blue-50"] { background-color: rgba(99,102,241,.14) !important; }
+[data-theme="dark"] [class*="bg-green-50/"],  [data-theme="dark"] [class*=":bg-green-50"] { background-color: rgba(52,211,153,.14) !important; }
+[data-theme="dark"] [class*="bg-orange-50/"], [data-theme="dark"] [class*=":bg-orange-50"] { background-color: rgba(249,115,22,.14) !important; }
+[data-theme="dark"] [class*="bg-red-50/"],    [data-theme="dark"] [class*=":bg-red-50"] { background-color: rgba(244,63,94,.14) !important; }
+
+/* ── Striped tables ───────────────────────────────────────────────────────────
+   Applied to the row element so it works no matter how the stripe is expressed
+   (even:/odd: variants, opacity modifiers, or inline styles). */
+[data-theme="dark"] tbody tr { background-color: transparent !important; }
+[data-theme="dark"] tbody tr:nth-child(even) { background-color: rgba(255,255,255,.028) !important; }
+[data-theme="dark"] tbody tr:hover { background-color: rgba(99,102,241,.12) !important; }
+[data-theme="dark"] tbody tr > td { color: var(--d-ink-soft); }
+
+/* ── MUI (35 files) — components render outside Tailwind's classes ───────── */
+[data-theme="dark"] .MuiPaper-root,
+[data-theme="dark"] .MuiDialog-paper,
+[data-theme="dark"] .MuiMenu-paper,
+[data-theme="dark"] .MuiPopover-paper { background-color: var(--d-surface) !important; color: var(--d-ink) !important; }
+[data-theme="dark"] .MuiTableCell-root { color: var(--d-ink) !important; border-color: var(--d-line) !important; }
+[data-theme="dark"] .MuiTableHead-root .MuiTableCell-root,
+[data-theme="dark"] .MuiTableCell-head { background-color: var(--d-surface-2) !important; color: var(--d-ink-soft) !important; }
+[data-theme="dark"] .MuiTableRow-root:hover { background-color: var(--d-surface-2) !important; }
+[data-theme="dark"] .MuiInputBase-root,
+[data-theme="dark"] .MuiOutlinedInput-root { background-color: var(--d-input) !important; color: var(--d-ink) !important; }
+[data-theme="dark"] .MuiOutlinedInput-notchedOutline { border-color: var(--d-line) !important; }
+[data-theme="dark"] .MuiInputLabel-root,
+[data-theme="dark"] .MuiFormLabel-root,
+[data-theme="dark"] .MuiTablePagination-root,
+[data-theme="dark"] .MuiTypography-root { color: var(--d-ink-soft) !important; }
+[data-theme="dark"] .MuiSvgIcon-root { color: var(--d-ink-soft); }
+[data-theme="dark"] .MuiChip-root { background-color: var(--d-surface-2) !important; color: var(--d-ink) !important; }
+[data-theme="dark"] .MuiTab-root { color: var(--d-ink-soft) !important; }
+[data-theme="dark"] .MuiTab-root.Mui-selected { color: #a5b4fc !important; }
+[data-theme="dark"] .MuiDivider-root { border-color: var(--d-line) !important; }
+[data-theme="dark"] .MuiBackdrop-root { background-color: rgba(3,6,12,.7) !important; }
+
+
+/* ── Gradients ────────────────────────────────────────────────────────────── */
+/* Light tinted gradients (the -50 / -100 shades) are used as page and panel
+   backgrounds. On dark they render as bright orange/blue washes, so flatten
+   them to normal dark surfaces. Saturated brand gradients on buttons are left
+   alone further down so CTAs keep the RecruiterV identity. */
+[data-theme="dark"] .bg-gradient-to-r.from-blue-50,
+[data-theme="dark"] .bg-gradient-to-br.from-blue-50,
+[data-theme="dark"] .bg-gradient-to-b.from-blue-50,
+[data-theme="dark"] .bg-gradient-to-r.from-blue-100,
+[data-theme="dark"] .bg-gradient-to-br.from-blue-100,
+[data-theme="dark"] .bg-gradient-to-r.from-orange-50,
+[data-theme="dark"] .bg-gradient-to-br.from-orange-50,
+[data-theme="dark"] .bg-gradient-to-r.from-orange-100,
+[data-theme="dark"] .bg-gradient-to-r.from-green-50,
+[data-theme="dark"] .bg-gradient-to-br.from-green-50,
+[data-theme="dark"] .bg-gradient-to-r.from-purple-50,
+[data-theme="dark"] .bg-gradient-to-br.from-purple-50,
+[data-theme="dark"] .bg-gradient-to-r.from-indigo-50,
+[data-theme="dark"] .bg-gradient-to-r.from-gray-50,
+[data-theme="dark"] .bg-gradient-to-br.from-gray-50,
+[data-theme="dark"] .bg-gradient-to-b.from-gray-50,
+[data-theme="dark"] .bg-gradient-to-r.from-slate-50,
+[data-theme="dark"] .bg-gradient-to-br.from-white,
+[data-theme="dark"] .bg-gradient-to-r.from-white {
+  background-image: none !important;
+  background-color: var(--d-surface) !important;
+}
+
+/* Page-level light gradient washes → flat page background */
+[data-theme="dark"] .min-h-screen.bg-gradient-to-br.from-blue-50,
+[data-theme="dark"] .min-h-screen.bg-gradient-to-r.from-blue-50,
+[data-theme="dark"] .min-h-screen.bg-gradient-to-br.from-gray-50,
+[data-theme="dark"] .min-h-screen.bg-gradient-to-br.from-orange-50 {
+  background-image: none !important;
+  background-color: var(--d-bg) !important;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+/* The nav rail is a navy gradient (from-blue-900 to-blue-800). Bring it into
+   the dark palette so it doesn't sit as a blue block against the dark app. */
+[data-theme="dark"] .bg-gradient-to-b.from-blue-900,
+[data-theme="dark"] .bg-gradient-to-br.from-blue-900,
+[data-theme="dark"] .bg-gradient-to-b.from-blue-800 {
+  background-image: none !important;
+  background-color: var(--d-surface) !important;
+  border-right: 1px solid var(--d-line);
+}
+/* Sidebar hover/selected states that assume the navy background */
+[data-theme="dark"] .hover\:bg-blue-800:hover,
+[data-theme="dark"] .hover\:bg-blue-700:hover,
+[data-theme="dark"] .bg-blue-800\/50,
+[data-theme="dark"] .bg-blue-900\/50 { background-color: var(--d-surface-2) !important; }
+
+
+/* Saturated brand gradients are used two ways:
+     • containers  — page header / banner slabs (46 orange, 71 blue→orange divs)
+     • CTAs & text — buttons, links, and bg-clip-text headings
+   On dark the container slabs read as glaring orange blocks, so flatten those.
+   Buttons, <a>, gradient text, and the small avatar (blue-400→orange-400) are
+   deliberately untouched so the brand survives. */
+[data-theme="dark"] :is(div,header,section,footer,aside)[class*="bg-gradient-to-"]:not([class*="bg-clip-text"]):is(
+  [class*="from-orange-5"],[class*="from-orange-6"],[class*="from-orange-7"],
+  [class*="from-blue-5"],[class*="from-blue-6"],[class*="from-blue-7"],[class*="from-blue-8"],[class*="from-blue-9"],
+  [class*="from-indigo-5"],[class*="from-indigo-6"],[class*="from-indigo-7"],
+  [class*="from-purple-5"],[class*="from-purple-6"],[class*="from-purple-7"],
+  [class*="from-green-5"],[class*="from-green-6"],[class*="from-emerald-5"],[class*="from-emerald-6"],
+  [class*="from-red-5"],[class*="from-red-6"],[class*="from-rose-5"],[class*="from-rose-6"],
+  [class*="from-gray-8"],[class*="from-gray-9"],[class*="from-slate-8"],[class*="from-slate-9"],
+  [class*="from-teal-5"],[class*="from-teal-6"],[class*="from-cyan-5"],[class*="from-cyan-6"]
+) {
+  background-image: none !important;
+  background-color: var(--d-surface) !important;
+  border: 1px solid var(--d-line);
+}
+
+/* Those banners set white text on orange; restore readable colours on dark. */
+[data-theme="dark"] :is(div,header,section,footer)[class*="bg-gradient-to-"] .text-white { color: var(--d-ink) !important; }
+/* Muted-on-colour text (blue-100 / orange-100 / white-70 etc.) */
+[data-theme="dark"] .text-blue-100,[data-theme="dark"] .text-blue-200,
+[data-theme="dark"] .text-orange-100,[data-theme="dark"] .text-indigo-100,
+[data-theme="dark"] .text-purple-100,[data-theme="dark"] .text-green-100,
+[data-theme="dark"] .text-gray-300,[data-theme="dark"] .text-slate-300,
+[data-theme="dark"] [class*="text-white/"] { color: var(--d-ink-soft) !important; }
+
+/* Translucent white chips/controls designed to sit on coloured banners —
+   on dark they render as pale washes with unreadable white text. */
+[data-theme="dark"] [class*="bg-white/"] {
+  background-color: var(--d-surface-2) !important;
+  border-color: var(--d-line) !important;
+}
+[data-theme="dark"] div[class*="from-orange-500"] .text-white\/75,
+[data-theme="dark"] div[class*="from-orange-500"] .text-white\/80,
+[data-theme="dark"] div[class*="from-orange-500"] .text-orange-100,
+[data-theme="dark"] div[class*="from-blue-600"][class*="to-orange"] .text-blue-100,
+[data-theme="dark"] div[class*="from-blue-600"][class*="to-orange"] .text-white\/75 {
+  color: var(--d-ink-soft) !important;
+}
+/* Translucent controls inside those banners (search box, Refresh/Filters) */
+[data-theme="dark"] div[class*="from-orange-500"] .bg-white\/20,
+[data-theme="dark"] div[class*="from-orange-500"] .bg-white\/10,
+[data-theme="dark"] div[class*="from-blue-600"][class*="to-orange"] .bg-white\/20,
+[data-theme="dark"] div[class*="from-blue-600"][class*="to-orange"] .bg-white\/10 {
+  background-color: var(--d-surface-2) !important;
+  border-color: var(--d-line) !important;
+}
+
+/* ── Opt-outs ─────────────────────────────────────────────────────────────── */
+/* Anything already designed dark (Refer & Earn hub, dash_view_v2) manages its
+   own palette — don't double-apply. */
+[data-theme="dark"] .rne-root .bg-white,
+[data-theme="dark"] .jdv2-root .bg-white { background-color: inherit !important; }
+
+/* Brand gradients, buttons and status pills keep their own colours: we never
+   override bg-gradient-*, bg-blue-600, bg-green-600 etc. so CTAs stay intact. */
+
+/* ── Print / PDF stays light (agreements, printed reports) ────────────────── */
+@media print {
+  [data-theme="dark"] * {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #ddd !important;
+    box-shadow: none !important;
+  }
+}

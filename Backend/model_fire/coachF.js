@@ -34,7 +34,7 @@ const findCoachByEmail = async (email) => {
     const snap = await coachDb.where("email", "==", email.toLowerCase()).limit(1).get();
     if (snap.empty) return null;
     const doc = snap.docs[0];
-    return { id: doc.id, ...doc.data() };
+    return { id: doc.id, ...doc.data(), source: 'Coach' };
   } catch (error) {
     console.error("Error finding coach by email:", error);
     throw error;

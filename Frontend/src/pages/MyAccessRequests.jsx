@@ -408,23 +408,20 @@ const MyAccessRequestsContent = () => {
         {stats && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-6 border-b border-gray-200">
             <div className="bg-blue-50 rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-blue-600">{stats.totalRequested}</p>
-              <p className="text-xs text-gray-600">Total Requested</p>
-              <p className="text-xs text-gray-500">Max: 4</p>
+              <p className="text-2xl font-bold text-blue-600">{stats.currentlyWorking ?? 0}/{stats.maxPositions ?? 4}</p>
+              <p className="text-xs text-gray-600">Positions In Use</p>
             </div>
             <div className="bg-green-50 rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">{stats.currentlyApproved}</p>
-              <p className="text-xs text-gray-600">Currently Active</p>
-              <p className="text-xs text-gray-500">Max: 2</p>
+              <p className="text-2xl font-bold text-green-600">{Math.max(0, (stats.maxPositions ?? 4) - (stats.currentlyWorking ?? 0))}</p>
+              <p className="text-xs text-gray-600">Slots Remaining</p>
             </div>
-            <div className="bg-yellow-50 rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-yellow-600">{stats.totalPending}</p>
-              <p className="text-xs text-gray-600">Pending</p>
+            <div className="bg-orange-50 rounded-xl p-4 text-center">
+              <p className="text-2xl font-bold text-orange-600">{requests.filter(r => r.status === 'released').length}</p>
+              <p className="text-xs text-gray-600">Released</p>
             </div>
             <div className="bg-purple-50 rounded-xl p-4 text-center">
-              <p className="text-2xl font-bold text-purple-600">{stats.daysRemaining}</p>
-              <p className="text-xs text-gray-600">Days Left</p>
-              <p className="text-xs text-gray-500">Plan: 30 days</p>
+              <p className="text-2xl font-bold text-purple-600">{requests.length}</p>
+              <p className="text-xs text-gray-600">Total (History)</p>
             </div>
           </div>
         )}
@@ -434,8 +431,8 @@ const MyAccessRequestsContent = () => {
           <div className="flex items-center gap-3 text-sm">
             <AlertCircle size={16} className="text-blue-600 flex-shrink-0" />
             <div className="text-blue-800">
-              <p className="font-semibold">Free Plan Limits:</p>
-              <p>You can request access to up to 4 positions total and have 2 approved positions active at any time during your 30-day free plan period.</p>
+              <p className="font-semibold">Free Plan:</p>
+              <p>You can work on up to {stats?.maxPositions ?? 4} positions at a time (positions with at least 1 active candidate). Release a position any time to free a slot — your work history is preserved, and you can re-assign it later if a slot is free.</p>
             </div>
           </div>
         </div>
@@ -476,7 +473,7 @@ const MyAccessRequests = () => {
         )}
 
         {/* Main Content Area */}
-        <div className="transition-all duration-300 lg:pl-10">
+        <div className="transition-all duration-300 lg:pl-64">
           
           {/* Header */}
           <header className="sticky top-0 z-30 bg-white shadow-sm">

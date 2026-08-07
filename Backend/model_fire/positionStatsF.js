@@ -2,6 +2,7 @@ const { db } = require("../router/firebase_ad");
 const positions = db.collection('admin_AddPos');
 const candidates = db.collection("candidate_db");
 const recruiters = db.collection('recruiter_db');
+const clientspocs = db.collection('admin_db');
 
 /**
  * Get position statistics with recruiter counts and submission data
@@ -28,6 +29,14 @@ const getPositionStats = async () => {
     const recruiterMap = {};
     recruitersSnap.docs.forEach(doc => {
       recruiterMap[doc.id] = doc.data().name || 'Unknown';
+    });
+
+    // 3b. Get all clientspocs for name mapping (keyed by email)
+    const spocSnap = await clientspocs.get();
+    const spocEmailToName = {};
+    spocSnap.docs.forEach(doc => {
+      const d = doc.data();
+      if (d.email) spocEmailToName[d.email.toLowerCase()] = d.name || d.email;
     });
 
     // 4. Build position stats
@@ -109,12 +118,17 @@ const getPositionStats = async () => {
         }
       }
 
+      const clientspocEmail = (posData.clientspoc || '').toLowerCase();
       positionStats.push({
         id: posDoc.id,
         posId: posId,
         positionName: posData.position || 'N/A',
         client: posData.client || 'N/A',
         hrName: posData.hr_name || 'N/A',
+        clientspocEmail: clientspocEmail || 'N/A',
+        clientspocName: spocEmailToName[clientspocEmail] || clientspocEmail || 'N/A',
+        coachNames: posData.coach_ids || 'N/A',
+        expertNames: posData.expert_ids || 'N/A',
         recruiterCount: recruiterCount,
         totalSubmissions: totalSubmissions,
         onProcess: onProcessCount,
@@ -122,7 +136,7 @@ const getPositionStats = async () => {
         rejected: rejectedCount,
         successRate: successRate,
         lastUpdated: lastUpdated,
-        datePosted: posData.datePosted ? 
+        datePosted: posData.datePosted ?
           (posData.datePosted._seconds ? new Date(posData.datePosted._seconds * 1000).toISOString() :
            posData.datePosted.seconds ? new Date(posData.datePosted.seconds * 1000).toISOString() :
            posData.datePosted.toDate ? posData.datePosted.toDate().toISOString() :
@@ -172,20 +186,27 @@ const getPositionDetailedStats = async (posId) => {
     // 3. Get recruiter details
     const recruiterIds = [...new Set(candidatesData.map(c => c.recId))].filter(Boolean);
     const recruiterMap = {};
-    
+
     for (const recId of recruiterIds) {
       const recDoc = await recruiters.doc(recId).get();
       if (recDoc.exists) {
+        const rd = recDoc.data();
         recruiterMap[recId] = {
-          name: recDoc.data().name || 'Unknown',
-          email: recDoc.data().email || 'N/A'
+          name: rd.name || 'Unknown',
+          email: rd.email || 'N/A',
+          phone: rd.phone || rd.mobile || rd.mob || 'N/A'
         };
       } else {
-        recruiterMap[recId] = {
-          name: 'Unknown',
-          email: 'N/A'
-        };
+        recruiterMap[recId] = { name: 'Unknown', email: 'N/A', phone: 'N/A' };
       }
+    }
+
+    // 3b. Resolve ClientSPOC name
+    const clientspocEmail = (posData.clientspoc || '').toLowerCase();
+    let clientspocName = clientspocEmail || 'N/A';
+    if (clientspocEmail) {
+      const spocSnap = await clientspocs.where('email', '==', clientspocEmail).limit(1).get();
+      if (!spocSnap.empty) clientspocName = spocSnap.docs[0].data().name || clientspocEmail;
     }
 
     // 4. Build submission details
@@ -221,19 +242,20 @@ const getPositionDetailedStats = async (posId) => {
         }
       }
 
-      const recruiterInfo = recruiterMap[c.recId] || { name: 'Unknown', email: 'N/A' };
+      const recruiterInfo = recruiterMap[c.recId] || { name: 'Unknown', email: 'N/A', phone: 'N/A' };
 
       return {
         candidateId: c.id,
         candidateName: c.candidate || c.name || 'N/A',
+        candidateEmail: c.emails || 'N/A',
+        candidatePhone: c.mob || 'N/A',
         recruiterName: recruiterInfo.name,
         recruiterEmail: recruiterInfo.email,
+        recruiterPhone: recruiterInfo.phone,
         recruiterId: c.recId || 'N/A',
         status: c.statusa || 'N/A',
         submittedDate: submittedDate,
         lastUpdated: updatedDate || submittedDate,
-        email: c.emails || 'N/A',
-        phone: c.mob || 'N/A'
       };
     });
 
@@ -268,7 +290,11 @@ const getPositionDetailedStats = async (posId) => {
         positionName: posData.position || 'N/A',
         client: posData.client || 'N/A',
         hrName: posData.hr_name || 'N/A',
-        datePosted: posData.datePosted ? 
+        clientspocEmail: clientspocEmail || 'N/A',
+        clientspocName: clientspocName,
+        coachNames: posData.coach_ids || 'N/A',
+        expertNames: posData.expert_ids || 'N/A',
+        datePosted: posData.datePosted ?
           (posData.datePosted._seconds ? new Date(posData.datePosted._seconds * 1000).toISOString() :
            posData.datePosted.seconds ? new Date(posData.datePosted.seconds * 1000).toISOString() :
            posData.datePosted.toDate ? posData.datePosted.toDate().toISOString() :

@@ -6,12 +6,50 @@ const recruiter = require('../model_fire/recruiterF')
 const adminModel = require('../model_fire/adminCF')
 const clientspoc = require('../model_fire/clientspocF')
 const candidateModel = require('../model_fire/candidateF')
+const companyModel = require('../model_fire/companyF');
 const { REJECTION_STATUSES } = require('../model_fire/adminF');
+const { sendPushToAll } = require('../utils/push');
+
+// Statuses excluded from "Active Candidates" count (rejected + on hold)
+const ACTIVE_EXCLUDE_STATUSES = [
+  ...REJECTION_STATUSES,
+  'On Hold', 'Hold', 'Client Hold', 'Candidate Hold', 'on hold', 'hold',
+];
 const { db } = require('./firebase_ad');
+const { resumeBankMatchCounts, getMatchingCandidates } = require('../utils/resumeBankMatch');
 const notificationModel = require('../model_fire/notificationF');
 const positionAccess = require('../model_fire/positionAccessF');
+const { sendEmail } = require('../utils/email');
 // Use db directly to get the positions collection
 const positionsCollection = db.collection("admin_AddPos");
+
+// Build a map of client name (lowercased) → commission from Company_Overview
+const buildCommissionMap = async () => {
+  try {
+    const companies = await companyModel.getAllCompanies();
+    const map = {};
+    companies.forEach(c => {
+      const val = Number(c.commisson) || 0;
+      if (val === 0) return;
+      if (c.lower) map[c.lower.trim()] = val;
+      if (c.name)  map[c.name.toLowerCase().trim()] = val;
+    });
+    return map;
+  } catch (_) {
+    return {};
+  }
+};
+
+// Apply current commission from company map to a positions array — only for
+// legacy positions with no explicit commission_type, so a position's own
+// chosen tier (fixed amount or percentage) is never overwritten.
+const applyCommission = (positions, commMap) =>
+  positions.map(pos => {
+    if (pos.commission_type) return pos;
+    const key = (pos.client || '').toLowerCase().trim();
+    const val = key ? commMap[key] : undefined;
+    return val ? { ...pos, commison: val } : pos;
+  });
 
 // Get candidate_db collection safely - get inside route handlers to avoid initialization issues
 const getCandidateDb = () => {
@@ -57,13 +95,78 @@ function authMiddleware(req, res, next) {
 
 
 router.get('/pos/show', async (req,res)=>{
-     try{
-        let show=await ad_Pos.getAllPosition();
-        res.status(200).json(show);
-        
-     } catch(err){
-        res.status(500).json({ error : err.message})
-     }
+  try {
+    let show = await ad_Pos.getAllPosition();
+    const commMap = await buildCommissionMap();
+    show = applyCommission(show, commMap);
+    res.status(200).json(show);
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+})
+
+// Authenticated version — returns only positions matching the logged-in user's skillCategory
+router.get('/pos/show-for-user', authMiddleware, async (req, res) => {
+  try {
+    const email = (req.user.email || '').toLowerCase().trim();
+
+    // Look up the user across recruiter, coach, and expert collections
+    let userDoc = null;
+    userDoc = await recruiter.findRecruiterByEmail(email);
+    if (!userDoc) {
+      const coachModel = require('../model_fire/coachF');
+      userDoc = await coachModel.findCoachByEmail(email);
+    }
+    if (!userDoc) {
+      const expertModel = require('../model_fire/expertF');
+      userDoc = await expertModel.findExpertByEmail(email);
+    }
+
+    let show = await ad_Pos.getAllPosition();
+    const commMap = await buildCommissionMap();
+    show = applyCommission(show, commMap);
+
+    // Only show active positions
+    show = show.filter(pos => {
+      const st = (pos.status || 'active').toLowerCase().trim();
+      return st === 'active';
+    });
+
+    // Consulting-firm scoping. A firm position is private to that firm's recruiters
+    // UNLESS it's flagged openToAll (visible to every recruiter). So:
+    //   - firm recruiter: their firm's positions + any open-to-all position
+    //   - non-firm recruiter: platform positions + any open-to-all firm position
+    const firmId = userDoc?.consultingFirmId || null;
+    if (firmId) {
+      show = show.filter(pos => pos.consultingFirmId === firmId || pos.openToAll === true);
+    } else {
+      show = show.filter(pos => !pos.consultingFirmId || pos.openToAll === true);
+    }
+
+    // Filter by skillCategory — only show positions whose skill_category matches.
+    // scope=all skips this (the "All" tab) but keeps the active + firm scoping above.
+    const scopeAll = (req.query.scope || '').toLowerCase() === 'all';
+    if (userDoc && !scopeAll) {
+      const sc = userDoc.skillCategory;
+      // Normalise to array of lowercase strings
+      const userCats = (Array.isArray(sc) ? sc : sc ? [sc] : [])
+        .map(s => s.toLowerCase().trim())
+        .filter(Boolean);
+
+      if (userCats.length) {
+        show = show.filter(pos => {
+          const posCat = (pos.skill_category || '').toLowerCase().trim();
+          // Strict match: position must have a skill_category AND it must be in the user's list
+          return posCat && userCats.includes(posCat);
+        });
+      }
+    }
+
+    res.status(200).json(show);
+  } catch (err) {
+    console.error('pos/show-for-user error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 })
 
 // GET my positions (filtered by clientspoc or all for admin)
@@ -87,7 +190,9 @@ router.get('/pos/my-positions', authMiddleware, async (req, res) => {
       });
     }
 
-    const myPositions = await ad_Pos.getMyPositions(user);
+    let myPositions = await ad_Pos.getMyPositions(user);
+    const commMap = await buildCommissionMap();
+    myPositions = applyCommission(myPositions, commMap);
     res.status(200).json(myPositions);
     
   } catch (err) {
@@ -169,6 +274,10 @@ router.post('/pos', authMiddleware, async (req,res)=>{
       console.log(`Creating position for authenticated user ${req.user.email} (not found in database)`);
       // Create the position without user validation
       const usr = await ad_Pos.CreatePosition(req.body);
+      try {
+        const { postPositionToLinkedIn } = require('../utils/linkedinPost');
+        postPositionToLinkedIn(usr).catch(() => {});
+      } catch (_) { /* ignore */ }
       return res.status(200).json({
         success: true,
         message : "Position Added Successfully",
@@ -208,6 +317,23 @@ router.post('/pos', authMiddleware, async (req,res)=>{
     // Client SPOCs and Admins have no limits - create the position
     // Regular recruiters also proceed here after passing plan checks
     const usr = await ad_Pos.CreatePosition(req.body);
+
+    // 🔔 Push: broadcast the new position to all app users
+    try {
+      const locTxt = usr?.location ? (Array.isArray(usr.location) ? usr.location.join(', ') : usr.location) : '';
+      sendPushToAll({
+        title: 'New position available',
+        body: `${usr?.position || 'A new position'}${usr?.client ? ` · ${usr.client}` : ''}${locTxt ? ` · ${locTxt}` : ''}`,
+        data: { type: 'position', posId: usr?.pos_id || '' },
+      }).catch(() => {});
+    } catch (_) { /* ignore */ }
+
+    // 🔗 Auto-post the new position to the RecruiterV LinkedIn company page
+    // (fire-and-forget; no-op until LinkedIn is configured in app_config/linkedin).
+    try {
+      const { postPositionToLinkedIn } = require('../utils/linkedinPost');
+      postPositionToLinkedIn(usr).catch(() => {});
+    } catch (_) { /* ignore */ }
 
     // 🔔 Send notification about new position
     try {
@@ -367,15 +493,66 @@ router.get('/fastresponse/candi', async (req,res)=>{
 // GET a single position by pos_id
 router.get('/position/:pos_id', async (req, res) => {
   try {
-    const { pos_id } = req.params;  // get pos_id from URL
-    const position = await ad_Pos.findPositionByPosId(pos_id); // <-- you need this function
+    const { pos_id } = req.params;
+    const position = await ad_Pos.findPositionByPosId(pos_id);
     if (!position) {
       return res.status(404).json({ message: "Position not found" });
     }
+
+    // Use the current commission from Company_Overview as source of truth —
+    // but only for legacy positions with no explicit commission_type, so a
+    // position's own chosen tier (fixed amount or percentage) is never overwritten.
+    if (position.client && !position.commission_type) {
+      try {
+        const companyData = await companyModel.fetchCompanyOverview(position.client);
+        if (companyData?.commisson) {
+          position.commison = Number(companyData.commisson);
+        }
+      } catch (_) { /* ignore — return position as-is */ }
+    }
+
     res.status(200).json(position);
   } catch (err) {
     console.error("Error fetching single position:", err);
     res.status(500).json({ message: "Server Error", error: err.message });
+  }
+});
+
+// GET /candidate/position/:pos_id/signal — submission stats + top rejection
+// reasons for a position (drives the "Submission Signal" card on dash_view_v2).
+router.get('/position/:pos_id/signal', async (req, res) => {
+  try {
+    const { db } = require('./firebase_ad');
+    const { pos_id } = req.params;
+    const REJ = new Set([
+      'screen reject', 'l1 reject', 'l2 reject', 'l3 reject', 'hr reject',
+      'background verification reject', 'negotiation reject', 'test reject',
+      'rejected', 'client drop', 'candidate drop', 'duplicate', 'offer declined',
+    ]);
+    const snap = await db.collection('candidate_db').where('pos_id', '==', pos_id).get();
+    let submitted = 0, rejected = 0;
+    const reasons = {};
+    snap.docs.forEach(d => {
+      const x = d.data();
+      submitted++;
+      const s = (x.statusa || '').toLowerCase().trim();
+      if (REJ.has(s)) {
+        rejected++;
+        let r = (x.rejectReason || '').toString().trim();
+        if (r) {
+          if (r.length > 60) r = r.slice(0, 57) + '…';   // keep free-text reasons short
+          reasons[r] = (reasons[r] || 0) + 1;
+        }
+      }
+    });
+    const topReasons = Object.entries(reasons)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+    return res.json({ success: true, submitted, rejected, inProcess: submitted - rejected, topReasons });
+  } catch (err) {
+    console.error('position signal error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -533,16 +710,20 @@ router.get('/pos/clientspoc-stats', authMiddleware, async (req, res) => {
     // Process positions with stats
     const processedPositions = positions.map(pos => {
       const posId = pos.pos_id;
-      
-      // Get candidates for this position (excluding rejections)
-      const positionCandidates = candidatesData.filter(c => 
-        c.pos_id === posId && 
-        !REJECTION_STATUSES.includes(c.statusa)
-      );
 
-      const currentCount = positionCandidates.length;
+      // All submitted candidates for this position
+      const allCandidates = candidatesData.filter(c => c.pos_id === posId);
+
+      // Non-rejected candidates (for Candidates column / max limit tracking)
+      const nonRejected = allCandidates.filter(c => !REJECTION_STATUSES.includes(c.statusa));
+
+      // Active candidates (exclude rejected AND hold statuses)
+      const activeCandidates = allCandidates.filter(c => !ACTIVE_EXCLUDE_STATUSES.includes(c.statusa));
+
+      const currentCount = nonRejected.length;
+      const activeCount  = activeCandidates.length;
       const maxCandidate = pos.maxCandidate || 10;
-      const remaining = Math.max(0, maxCandidate - currentCount);
+      const remaining    = Math.max(0, maxCandidate - currentCount);
 
       return {
         id: pos.id,
@@ -551,8 +732,9 @@ router.get('/pos/clientspoc-stats', authMiddleware, async (req, res) => {
         client: pos.client,
         hr_name: pos.hr_name,
         candidateCount: currentCount,
-        maxCandidate: maxCandidate,
-        remaining: remaining,
+        activeCount,
+        maxCandidate,
+        remaining,
         isFull: currentCount >= maxCandidate
       };
     });
@@ -561,6 +743,7 @@ router.get('/pos/clientspoc-stats', authMiddleware, async (req, res) => {
     const summary = {
       totalPositions: processedPositions.length,
       totalCandidates: processedPositions.reduce((sum, p) => sum + p.candidateCount, 0),
+      totalActiveCandidates: processedPositions.reduce((sum, p) => sum + p.activeCount, 0),
       totalMaxCandidates: processedPositions.reduce((sum, p) => sum + p.maxCandidate, 0),
       totalRemaining: processedPositions.reduce((sum, p) => sum + p.remaining, 0)
     };
@@ -940,32 +1123,78 @@ router.get('/pos/assigned-positions', authMiddleware, async (req, res) => {
       console.error("Error fetching assign requests:", assignError);
     }
 
+    // Step 6b: NEW - Get positions assigned to this recruiter by a Coach/Expert
+    // that the recruiter has ACCEPTED (coach_recruiter_assignments, status 'accepted').
+    const positionsFromCoach = [];
+    try {
+      const coachSnap = await db.collection('coach_recruiter_assignments')
+        .where('recruiterEmail', '==', req.user.email)
+        .get();
+      const acceptedCoachPosIds = [...new Set(
+        coachSnap.docs
+          .map(d => d.data())
+          .filter(a => a.status === 'accepted' && a.positionId)
+          .map(a => a.positionId)
+      )];
+      console.log(`[AssignedPositions] Found ${acceptedCoachPosIds.length} accepted coach assignments`);
+
+      for (let i = 0; i < acceptedCoachPosIds.length; i += 10) {
+        const batch = acceptedCoachPosIds.slice(i, i + 10);
+        const posSnap = await positionsCollection.where('pos_id', 'in', batch).get();
+        posSnap.docs.forEach(doc => {
+          const posData = doc.data();
+          const isOwned = ownedPositions.some(p => p.pos_id === posData.pos_id);
+          const isFromAssignment = positionsFromAssignments.some(p => p.pos_id === posData.pos_id);
+          const isFromCandidates = positionsFromCandidates.some(p => p.pos_id === posData.pos_id);
+          const isFromAssignReq = positionsFromAssignRequests.some(p => p.pos_id === posData.pos_id);
+          if (!isOwned && !isFromAssignment && !isFromCandidates && !isFromAssignReq) {
+            positionsFromCoach.push({
+              id: doc.id,
+              ...posData,
+              isOwner: false,
+              fromCoachAssignment: true
+            });
+            console.log(`[AssignedPositions] Added position from coach assignment: ${posData.pos_id} - ${posData.position}`);
+          }
+        });
+      }
+    } catch (coachError) {
+      console.error("Error fetching coach assignments:", coachError);
+    }
+
     // Step 7: Mark owned positions
     const processedOwnedPositions = ownedPositions.map(pos => ({
       ...pos,
       isOwner: true // Mark as owned
     }));
 
-    // Step 8: Combine owned, assigned (from assignment system), assigned (from candidates), and from assign requests
-    const allAssignedPositions = [
-      ...processedOwnedPositions, 
-      ...positionsFromAssignments, 
+    // Step 8: Combine owned, assigned (assignment system), candidates, assign requests, coach assignments
+    const commMap = await buildCommissionMap();
+    const allAssignedPositions = applyCommission([
+      ...processedOwnedPositions,
+      ...positionsFromAssignments,
       ...positionsFromCandidates,
-      ...positionsFromAssignRequests
-    ];
+      ...positionsFromAssignRequests,
+      ...positionsFromCoach
+    ], commMap);
     console.log(`[AssignedPositions] Total positions to return: ${allAssignedPositions.length}`);
 
     // Step 6: Get all candidate counts for these positions
-    const allPositionIds = allAssignedPositions.map(p => p.pos_id);
-    const allCandidatesSnap = await getCandidateDb().where('pos_id', 'in', allPositionIds.slice(0, 10)).get();
-    let allCandidatesData = allCandidatesSnap.docs.map(doc => doc.data());
-    
-    // Fetch remaining candidates in batches if needed
-    for (let i = 10; i < allPositionIds.length; i += 10) {
+    // (Firestore 'in' rejects an empty array, so guard for the no-positions case.)
+    const allPositionIds = allAssignedPositions.map(p => p.pos_id).filter(Boolean);
+    let allCandidatesData = [];
+    for (let i = 0; i < allPositionIds.length; i += 10) {
       const batch = allPositionIds.slice(i, i + 10);
+      if (!batch.length) continue;
       const snap = await getCandidateDb().where('pos_id', 'in', batch).get();
       allCandidatesData.push(...snap.docs.map(doc => doc.data()));
     }
+
+    // Resume-bank match counts — candidates in the bank matching each JD >= 75%.
+    let resumeBankCounts = {};
+    try {
+      resumeBankCounts = await resumeBankMatchCounts(db, allAssignedPositions, 75);
+    } catch (e) { console.error('resumeBankMatchCounts error:', e.message); }
 
     // Step 7: Enrich positions with candidate counts and recruiter's candidates
     const enrichedPositions = allAssignedPositions.map(position => {
@@ -998,16 +1227,19 @@ router.get('/pos/assigned-positions', authMiddleware, async (req, res) => {
         ctcStart: position.ctcStart,
         ctcEnd: position.ctcEnd,
         commison: position.commison,
+        commission_type: position.commission_type || '',
         datePosted: position.datePosted,
         pos_cat: position.pos_cat,
         job_desc: position.job_desc,
         state: position.state,
+        status: position.status || 'active',
         maxCandidate: maxCandidate,
-        candidateCount: totalCount,     // Total candidates for this position
-        myCandidateCount: myCount,      // Recruiter's own candidates
+        candidateCount: totalCount,
+        myCandidateCount: myCount,
         remaining: remaining,
         isFull: totalCount >= maxCandidate,
         isOwner: position.isOwner,
+        resumeBankMatchCount: resumeBankCounts[posId] || 0,
         // Store my candidates for expandable view
         myCandidates: myCandidates.map(c => ({
           id: c.id || c.candidateId,
@@ -1051,6 +1283,27 @@ router.get('/pos/assigned-positions', authMiddleware, async (req, res) => {
       message: "Failed to fetch assigned positions",
       error: err.message
     });
+  }
+});
+
+/**
+ * GET /candidate/pos/:pos_id/matching-bank
+ * Resume-bank (available pool) candidates matching this position's JD >= 75%,
+ * each with a match percent and matched/missing-skill reason. Used by the
+ * "Matching Candidates" tab of the Submit Candidate modal.
+ */
+router.get('/pos/:pos_id/matching-bank', authMiddleware, async (req, res) => {
+  try {
+    const { pos_id } = req.params;
+    const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', pos_id).limit(1).get();
+    if (posSnap.empty) return res.status(404).json({ success: false, message: 'Position not found' });
+    const position = posSnap.docs[0].data();
+    const threshold = Math.min(100, Math.max(0, Number(req.query.threshold) || 75));
+    const candidates = await getMatchingCandidates(db, position, threshold);
+    res.json({ success: true, candidates, threshold });
+  } catch (err) {
+    console.error('matching-bank error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -1125,23 +1378,23 @@ router.get('/pos/:pos_id/validate-add-candidate', authMiddleware, async (req, re
  */
 router.get('/pos/recruiter-stats', authMiddleware, async (req, res) => {
   try {
-    // Find the recruiter user
+    // Find the user across recruiter, admin, coach, and expert collections
     let user = null;
-    
-    // Try to find user in recruiter collection first
-    try {
-      user = await recruiter.findRecruiterByEmail(req.user.email);
-    } catch (err) {
-      console.log("User not found in recruiter collection");
+
+    try { user = await recruiter.findRecruiterByEmail(req.user.email); } catch (_) {}
+
+    if (!user) {
+      try { user = await adminModel.findAdminByEmail(req.user.email); } catch (_) {}
     }
 
-    // If not found, try admin collection (for hybrid users)
     if (!user) {
-      try {
-        user = await adminModel.findAdminByEmail(req.user.email);
-      } catch (err) {
-        console.log("User not found in admin collection");
-      }
+      const coachModel = require('../model_fire/coachF');
+      try { user = await coachModel.findCoachByEmail(req.user.email); } catch (_) {}
+    }
+
+    if (!user) {
+      const expertModel = require('../model_fire/expertF');
+      try { user = await expertModel.findExpertByEmail(req.user.email); } catch (_) {}
     }
 
     if (!user) {
@@ -1201,12 +1454,12 @@ router.get('/pos/recruiter-stats', authMiddleware, async (req, res) => {
     }
 
     // Get all candidates for these positions to calculate counts
-    const allCandidatesSnap = await getCandidateDb().where('pos_id', 'in', positionIds.slice(0, 10)).get();
-    let allCandidatesData = allCandidatesSnap.docs.map(doc => doc.data());
-    
-    // Fetch remaining candidates in batches if needed
-    for (let i = 10; i < positionIds.length; i += 10) {
-      const batch = positionIds.slice(i, i + 10);
+    // (Firestore 'in' rejects an empty array, so guard for the no-positions case.)
+    const safePositionIds = (positionIds || []).filter(Boolean);
+    let allCandidatesData = [];
+    for (let i = 0; i < safePositionIds.length; i += 10) {
+      const batch = safePositionIds.slice(i, i + 10);
+      if (!batch.length) continue;
       const snap = await getCandidateDb().where('pos_id', 'in', batch).get();
       allCandidatesData.push(...snap.docs.map(doc => doc.data()));
     }
@@ -1485,8 +1738,29 @@ router.get('/pos/clientspoc/my-positions', authMiddleware, async (req, res) => {
     // Get all candidates for these positions
     const candidatesData = await ad_Pos.getCandidatesByClientSPOC(userEmail);
 
+    // Build a vendor map: recruiterEmail → { vendorEmail, vendorName } in one batch
+    const allRecruiterEmails = [...new Set(candidatesData.map(c => (c.recEmail || '').toLowerCase()).filter(Boolean))];
+    const vendorMap = {};
+    for (let i = 0; i < allRecruiterEmails.length; i += 30) {
+      const batch = allRecruiterEmails.slice(i, i + 30);
+      const snap = await db.collection('recruiter_db').where('email', 'in', batch).get();
+      snap.docs.forEach(doc => {
+        const d = doc.data();
+        if (d.vendorEmail) {
+          vendorMap[(d.email || '').toLowerCase()] = {
+            vendorEmail: d.vendorEmail,
+            vendorName: d.vendorName || d.vendorEmail,
+          };
+        }
+      });
+    }
+
+    // Apply current commission from Company_Overview before processing
+    const commMap = await buildCommissionMap();
+    const enrichedPositions = applyCommission(positions, commMap);
+
     // Process positions with recruiter-wise breakdown
-    const processedPositions = positions.map(pos => {
+    const processedPositions = enrichedPositions.map(pos => {
       const posId = pos.pos_id;
       
       // Get all candidates for this position (excluding rejections)
@@ -1500,11 +1774,16 @@ router.get('/pos/clientspoc/my-positions', authMiddleware, async (req, res) => {
       positionCandidates.forEach(candidate => {
         const recruiterName = candidate.recName || candidate.recruiterName || candidate.recruiter_name || 'Unknown';
         const recruiterEmail = candidate.recEmail || '';
-        
+        const recruiterRole = candidate.recRole || 'Recruiter';
+
         if (!recruiterGroups[recruiterEmail]) {
+          const vendorInfo = vendorMap[(recruiterEmail || '').toLowerCase()] || null;
           recruiterGroups[recruiterEmail] = {
             recruiterName: recruiterName,
             recruiterEmail: recruiterEmail,
+            recruiterRole: recruiterRole,
+            vendorEmail: vendorInfo?.vendorEmail || null,
+            vendorName: vendorInfo?.vendorName || null,
             candidates: []
           };
         }
@@ -1534,6 +1813,9 @@ router.get('/pos/clientspoc/my-positions', authMiddleware, async (req, res) => {
         ctcEnd: pos.ctcEnd || '',
         experience: pos.experience || '',
         commison: pos.commison || 0,
+        commission_type: pos.commission_type || '',
+        position_tier: pos.position_tier || '',
+        client_questions: Array.isArray(pos.client_questions) ? pos.client_questions : [],
         job_desc: pos.job_desc || '',
         state: pos.state || [],
         location: pos.location || [],
@@ -1543,6 +1825,7 @@ router.get('/pos/clientspoc/my-positions', authMiddleware, async (req, res) => {
         compet: pos.compet || '',
         comp_view: pos.comp_view || '',
         pos_cat: pos.pos_cat || '',
+        skill_category: pos.skill_category || '',
         maxCandidate: maxCandidate,
         candidateCount: currentCount,
         recruitersCount: recruitersCount,
@@ -1554,6 +1837,9 @@ router.get('/pos/clientspoc/my-positions', authMiddleware, async (req, res) => {
         recruiters: Object.values(recruiterGroups).map(group => ({
           recruiterName: group.recruiterName,
           recruiterEmail: group.recruiterEmail,
+          recruiterRole: group.recruiterRole,
+          vendorEmail: group.vendorEmail || null,
+          vendorName: group.vendorName || null,
           candidateCount: group.candidates.length,
           candidates: group.candidates
         }))
@@ -1652,17 +1938,114 @@ router.post('/pos/pause/:id', authMiddleware, async (req, res) => {
     // Determine new status
     const newStatus = action === 'pause' ? 'paused' : 'active';
 
-    // Update position status
-    const updatedPosition = await ad_Pos.updatePositionById(id, {
+    // Build update payload — record reactivatedAt when going active
+    const statusUpdate = {
       status: newStatus,
       statusChangedAt: new Date(),
-      statusChangedBy: userEmail
-    });
+      statusChangedBy: userEmail,
+      ...(newStatus === 'active' ? { reactivatedAt: new Date() } : {}),
+    };
+
+    // Update position status
+    const updatedPosition = await ad_Pos.updatePositionById(id, statusUpdate);
+
+    const pos_id = position.pos_id;
+    const positionTitle = position.position || 'Position';
+    const clientName = position.client || '';
+
+    // On reactivation: restore expired access records and notify assigned users
+    if (newStatus === 'active' && pos_id) {
+      const frontUrl = process.env.FRONTURL || 'https://www.recruiterv.com';
+      const positionLink = `${frontUrl}/dash_view/${pos_id}`;
+      const freshExpiry = new Date();
+      freshExpiry.setDate(freshExpiry.getDate() + 30);
+
+      const notifiedEmails = new Set();
+
+      // Restore recruiter access records (approved + expired → re-approved)
+      try {
+        const accessSnap = await db.collection('position_access_requests')
+          .where('positionId', '==', pos_id)
+          .get();
+
+        const batch = db.batch();
+        accessSnap.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.status === 'approved' || data.status === 'expired') {
+            batch.update(doc.ref, {
+              status: 'approved',
+              expiresAt: freshExpiry,
+              updatedAt: new Date()
+            });
+            if (data.recruiterEmail) notifiedEmails.add(data.recruiterEmail.toLowerCase());
+          }
+        });
+        await batch.commit();
+      } catch (e) {
+        console.error('Failed to restore recruiter access records on reactivation:', e.message);
+      }
+
+      // Collect coach/expert emails from approved direct requests
+      try {
+        const ceSnap = await db.collection('coach_expert_direct_requests')
+          .where('positionId', '==', pos_id)
+          .where('status', '==', 'approved')
+          .get();
+        ceSnap.docs.forEach(doc => {
+          const email = doc.data().coachExpertEmail;
+          if (email) notifiedEmails.add(email.toLowerCase());
+        });
+      } catch (e) {
+        console.error('Failed to fetch coach/expert emails on reactivation:', e.message);
+      }
+
+      // Send reactivation email to each unique assigned user
+      const emailHtml = (recipientEmail) => `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9fafb;border-radius:12px;">
+          <div style="background:#2563eb;padding:24px;border-radius:8px 8px 0 0;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:22px;">Position Reactivated</h1>
+          </div>
+          <div style="background:#fff;padding:28px;border-radius:0 0 8px 8px;border:1px solid #e5e7eb;">
+            <p style="color:#374151;font-size:15px;">Hello,</p>
+            <p style="color:#374151;font-size:15px;">
+              Good news! The position you are assigned to has been <strong style="color:#16a34a;">reactivated</strong> and is now accepting candidates again.
+            </p>
+            <table style="width:100%;border-collapse:collapse;margin:20px 0;background:#f3f4f6;border-radius:8px;">
+              <tr><td style="padding:10px 14px;font-weight:bold;color:#374151;width:40%;">Position</td><td style="padding:10px 14px;color:#1d4ed8;">${positionTitle}</td></tr>
+              ${clientName ? `<tr style="background:#fff;"><td style="padding:10px 14px;font-weight:bold;color:#374151;">Client</td><td style="padding:10px 14px;color:#374151;">${clientName}</td></tr>` : ''}
+            </table>
+            <div style="text-align:center;margin:28px 0;">
+              <a href="${positionLink}" style="background:#2563eb;color:#fff;padding:14px 32px;text-decoration:none;border-radius:8px;font-weight:bold;font-size:15px;display:inline-block;">
+                View Position &amp; Submit Candidates
+              </a>
+            </div>
+            <p style="color:#6b7280;font-size:13px;text-align:center;">
+              Your access has been refreshed. You can log in and start submitting candidates immediately.
+            </p>
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">
+            <p style="color:#6b7280;font-size:13px;text-align:center;">Best regards,<br><strong>RecruiterV Team</strong></p>
+          </div>
+        </div>`;
+
+      for (const email of notifiedEmails) {
+        try {
+          await sendEmail(
+            email,
+            `Position Reactivated: ${positionTitle}${clientName ? ` — ${clientName}` : ''}`,
+            emailHtml(email),
+            'noreply@recruiterv.com',
+            'RecruiterV'
+          );
+        } catch (e) {
+          console.error(`Failed to send reactivation email to ${email}:`, e.message);
+        }
+      }
+    }
 
     res.status(200).json({
       success: true,
-      message: newStatus === 'paused' 
-        ? "Position paused successfully. It will no longer be visible to recruiters." 
+      message: newStatus === 'paused'
+        ? "Position paused successfully. It will no longer be visible to recruiters."
         : "Position activated successfully. Recruiters can now see this position.",
       data: {
         id: updatedPosition.id,
@@ -1750,6 +2133,9 @@ router.post('/pos/copy/:id', authMiddleware, async (req, res) => {
       job_desc: position.job_desc,
       experience: position.experience,
       commison: position.commison,
+      commission_type: position.commission_type || '',
+      position_tier: position.position_tier || '',
+      client_questions: Array.isArray(position.client_questions) ? position.client_questions : [],
       pos_cat: position.pos_cat || 'General',
       comp_view: position.comp_view,
       m_have: position.m_have,
@@ -2054,7 +2440,11 @@ router.post('/pos/assign/:pos_id', authMiddleware, async (req, res) => {
       });
     }
 
-    // Create assign request (this will auto-approve if user is the position owner)
+    // Note: assigning a position is unrestricted. The free-plan limit of 4 positions
+    // only counts positions that actually have an active candidate, so it is enforced
+    // at candidate submission time (see /addit/data/candi), not here.
+
+    // Create assign request (access is granted immediately — no approval needed)
     const assignRequest = await positionAccess.createAssignRequest(
       user.id,
       recruiterEmail,
@@ -2261,10 +2651,15 @@ router.put('/candidate/pos/:pos_id/candidate/:candidateId/status', authMiddlewar
       });
     }
 
-    // Update the candidate status
+    // Update the candidate status (record who changed it)
+    const changedByEmail = req.user?.email || '';
+    const changedByName = req.user?.name || (changedByEmail ? changedByEmail.split('@')[0] : '');
     await getCandidateDb().doc(candidateId).update({
       statusa: status,
       statusaDate: new Date(),
+      statusChangedAt: new Date(),
+      ...(changedByEmail ? { statusChangedBy: changedByEmail } : {}),
+      ...(changedByName ? { statusChangedByName: changedByName } : {}),
       updatedAt: new Date()
     });
 
@@ -2369,6 +2764,82 @@ router.put('/candidate/pos/:pos_id/candidate/:candidateId/duplicate', authMiddle
       message: "Failed to mark candidate as duplicate",
       error: err.message
     });
+  }
+});
+
+// Public endpoint — returns all skill category parent names
+router.get('/skill-categories', async (req, res) => {
+  try {
+    const snap = await db.collection('skill_categories').get();
+    const parents = snap.docs
+      .map(d => d.data().parent)
+      .filter(Boolean)
+      .sort();
+    return res.json({ success: true, categories: parents });
+  } catch (err) {
+    console.error('skill-categories fetch error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Returns full skill category data: parent + flat list of specialization names
+// children can be strings OR objects {name, subChildren[]}
+router.get('/skill-categories-full', async (req, res) => {
+  try {
+    const snap = await db.collection('skill_categories').get();
+    const categories = snap.docs
+      .filter(d => d.data().parent)
+      .map(d => {
+        const raw = d.data().children || [];
+        const specializations = [];
+        raw.forEach(c => {
+          if (typeof c === 'string' && c.trim()) {
+            specializations.push(c.trim());
+          } else if (c && typeof c === 'object') {
+            if (c.name && typeof c.name === 'string') specializations.push(c.name.trim());
+            (c.subChildren || []).forEach(s => {
+              if (typeof s === 'string' && s.trim()) specializations.push(s.trim());
+            });
+          }
+        });
+        return { parent: d.data().parent, children: [...new Set(specializations)] };
+      })
+      .sort((a, b) => a.parent.localeCompare(b.parent));
+    return res.json({ success: true, categories });
+  } catch (err) {
+    console.error('skill-categories-full fetch error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /skill-categories-hierarchical — 3-level tree: parent → [{name, subChildren[]}]
+router.get('/skill-categories-hierarchical', async (req, res) => {
+  try {
+    const snap = await db.collection('skill_categories').get();
+    const categories = snap.docs
+      .filter(d => d.data().parent)
+      .map(d => {
+        const raw = d.data().children || [];
+        const children = raw.map(c => {
+          if (typeof c === 'string' && c.trim()) {
+            return { name: c.trim(), subChildren: [] };
+          } else if (c && typeof c === 'object' && c.name) {
+            return {
+              name: c.name.trim(),
+              subChildren: (c.subChildren || [])
+                .filter(s => typeof s === 'string' && s.trim())
+                .map(s => s.trim()),
+            };
+          }
+          return null;
+        }).filter(Boolean);
+        return { parent: d.data().parent, children };
+      })
+      .sort((a, b) => a.parent.localeCompare(b.parent));
+    return res.json({ success: true, categories });
+  } catch (err) {
+    console.error('skill-categories-hierarchical fetch error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 

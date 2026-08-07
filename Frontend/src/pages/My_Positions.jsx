@@ -5,7 +5,8 @@ import { Briefcase, MapPin, IndianRupee, BadgePercent, Calendar, Users, User, Cl
 import { Box, Collapse } from '@mui/material';
 import { UserStateContext } from '../context/AuthPro';
 import { useNavigate } from 'react-router-dom';
-import { EditJobModal } from './Ad_OpenPos';
+import { EditJobModal } from './EditJobModal';
+import { formatCommission } from '../lib/commission';
 
 const My_Positions = () => {
   const { user } = useContext(UserStateContext);
@@ -333,14 +334,14 @@ const My_Positions = () => {
         accessorKey: 'commison',
         header: 'Commission',
         size: 110,
-        Cell: ({ cell }) => {
+        Cell: ({ cell, row }) => {
           const commission = cell.getValue();
           const colors = getCommissionColor(commission);
-          
+
           return (
             <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${colors.bg} ${colors.text} border-2 ${colors.border} font-bold text-xs`}>
               <BadgePercent size={12} />
-              <span>{commission}%</span>
+              <span>{formatCommission(commission, row.original.commission_type)}</span>
             </div>
           );
         },

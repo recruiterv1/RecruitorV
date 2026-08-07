@@ -1,8 +1,9 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Bell, Search, Menu, X, Check, CheckCheck } from 'lucide-react';
+import { Bell, Search, Menu, X, Check, CheckCheck, HelpCircle, Sun, Moon } from 'lucide-react';
 import { UserStateContext } from '../context/AuthPro';
+import { useTheme } from '../context/ThemeContext';
 import NotificationContext from '../context/NotificationContext';
 
 const formatTimeAgo = (dateString) => {
@@ -147,6 +148,7 @@ const NotificationItem = ({ notification, onMarkAsRead, onDelete }) => {
 
 const Dash_Header = ({ onMenuClick }) => {
   const { user } = useContext(UserStateContext);
+  const { theme, toggleTheme, canUseDark } = useTheme();
   const [greeting, setGreeting] = useState('');
   const [profileCompletion, setProfileCompletion] = useState(0);
   const dropdownRef = useRef(null);
@@ -228,6 +230,9 @@ const Dash_Header = ({ onMenuClick }) => {
     await markAllAsRead();
   };
 
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const toggleUserMenu = () => setIsUserMenuOpen((o) => !o);
+
   return (
     <div className="w-full bg-white border-b border-gray-200">
       <div className="px-4 sm:px-6 lg:px-8 py-4">
@@ -263,6 +268,30 @@ const Dash_Header = ({ onMenuClick }) => {
           {/* ========== RIGHT SIDE ========== */}
           <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             
+            {/* Theme toggle — only for roles included in the dark-mode rollout */}
+            {canUseDark && (
+              <button
+                onClick={toggleTheme}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              >
+                {theme === 'dark'
+                  ? <Sun size={20} className="text-gray-600" />
+                  : <Moon size={20} className="text-gray-600" />}
+              </button>
+            )}
+
+            {/* Help Center */}
+            <button
+              onClick={() => navigate('/help-center')}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Help Center"
+              title="Help Center"
+            >
+              <HelpCircle size={20} className="text-gray-600" />
+            </button>
+
             {/* Notifications */}
             <div className="relative" ref={dropdownRef}>
               <button
@@ -368,14 +397,40 @@ const Dash_Header = ({ onMenuClick }) => {
               </div>
             </div>
 
-{/* Profile Avatar */}
-            <button
-              onClick={() => navigate('/profile')}
-              className="hidden sm:flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-orange-500 rounded-full text-white font-bold text-sm cursor-pointer hover:scale-110 transition-transform shadow-md"
-              title="View Profile"
-            >
-              {user?.name?.charAt(0)?.toUpperCase() || 'R'}
-            </button>
+            {/* Profile Avatar + Dropdown */}
+            <div className="relative hidden sm:block">
+              <button
+                onClick={toggleUserMenu}
+                className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-blue-500 to-orange-500 rounded-full text-white font-bold text-sm cursor-pointer hover:scale-110 transition-transform shadow-md"
+                title="Account"
+              >
+                {user?.name?.charAt(0)?.toUpperCase() || 'R'}
+              </button>
+
+              {isUserMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-44 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
+                  <button
+                    onClick={() => { setIsUserMenuOpen(false); navigate('/profile'); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                  >
+                    Profile
+                  </button>
+                  <button
+                    onClick={() => { 
+                      setIsUserMenuOpen(false); 
+                      const rolePath = user?.roleCategory?.toLowerCase() === 'coach' ? '/coach-agreement' :
+                                     user?.roleCategory?.toLowerCase() === 'expert' ? '/expert-agreement' :
+                                     '/recruiter-agreement';
+                      navigate(rolePath);
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                  >
+                    Agreement
+                  </button>
+                </div>
+              )}
+
+            </div>
           </div>
         </div>
       </div>

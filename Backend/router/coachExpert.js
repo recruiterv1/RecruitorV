@@ -4,9 +4,13 @@ const router = express.Router();
 const coach = require('../model_fire/coachF');
 const expert = require('../model_fire/expertF');
 const { db } = require('./firebase_ad');
+const jwt = require('jsonwebtoken');
+const { sendEmail } = require('../utils/email');
+const { sendPushToEmails } = require('../utils/push');
 
 // Collection reference for coach/expert requests
 const coachExpertRequestsDb = db.collection("coach_expert_requests");
+const positionsDb = db.collection("admin_AddPos");
 
 // Specialization options
 const specializations = [
@@ -22,6 +26,69 @@ const specializations = [
   'Sales',
   'Other'
 ];
+
+// Helper function to calculate profile completion - matches Frontend Profile.jsx fields
+const calculateProfileCompletion = (user) => {
+  // Handle mobile -> phone mapping
+  const phone = user.phone || user.mobile || '';
+  
+  // Map frontend field names to backend/user model field names
+  const company = user.company || user.currentCompany || '';
+  const designation = user.designation || user.currentTitle || '';
+  
+  const fields = {
+    // Common fields (all users) - matching Frontend Profile.jsx
+    name: { value: user.name, weight: 5 },
+    email: { value: user.email, weight: 5 },
+    phone: { value: phone, weight: 5 },
+    yearsOfExperience: { value: user.yearsOfExperience, weight: 5 },
+    location: { value: user.location, weight: 3 },
+    country: { value: user.country, weight: 3 },
+    bio: { value: user.bio, weight: 10 },
+    // Professional tab fields
+    currentCompany: { value: company, weight: 5 },
+    currentTitle: { value: designation, weight: 5 },
+    linkedin: { value: user.linkedin, weight: 2 },
+    twitter: { value: user.twitter, weight: 1 },
+    website: { value: user.website, weight: 1 },
+    // Skills no longer counted — field is being rebuilt by all users
+    workExperience: { value: user.workExperience, weight: 20, type: 'array' },
+    // Profile photo
+    profilePhoto: { value: user.profilePhoto, weight: 10 },
+  };
+
+  let totalWeight = 0;
+  let filledWeight = 0;
+
+  for (const [field, config] of Object.entries(fields)) {
+    totalWeight += config.weight;
+    
+    const isFilled = config.type === 'array' 
+      ? (config.value && Array.isArray(config.value) && config.value.length > 0)
+      : (config.value && config.value.toString().trim() !== '');
+    
+    if (isFilled) {
+      filledWeight += config.weight;
+    }
+  }
+
+  return Math.round((filledWeight / totalWeight) * 100);
+};
+
+// Simple auth middleware (matches profile.js)
+function authMiddleware(req, res, next) {
+  const token = req.cookies.__session;
+  if (!token) {
+    return res.status(401).json({ success: false, message: "Unauthorized - No token found" });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.SECKEY);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).json({ success: false, message: "Invalid or expired token" });
+  }
+}
 
 // ==================== COACH ROUTES ====================
 
@@ -83,7 +150,8 @@ router.post('/coach/add', async (req, res) => {
       phone: phone || '',
       specialization,
       userType,
-      password: password || ''
+      password: password || '',
+      availableToCreateTeam: true
     };
 
     const newCoach = await coach.createCoach(coachData);
@@ -113,7 +181,6 @@ router.get('/coach/all', async (req, res) => {
     const { specialization, userType } = req.query;
 
     let coaches;
-
     if (specialization) {
       coaches = await coach.getCoachesBySpecialization(specialization);
     } else if (userType) {
@@ -122,19 +189,39 @@ router.get('/coach/all', async (req, res) => {
       coaches = await coach.getAllCoaches();
     }
 
-    res.json({
-      success: true,
-      count: coaches.length,
-      data: coaches
+    // Fetch all requests once, then enrich each coach
+    const allRequestsSnap = await coachExpertRequestsDb.get();
+    const allRequests = allRequestsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const enriched = coaches.map(coachData => {
+      const reqs = allRequests.filter(r => r.coachExpertId === coachData.id && r.coachExpertType === 'Coach');
+      const approved = reqs.filter(r => r.status === 'accepted').length;
+      const pending  = reqs.filter(r => r.status === 'pending' || r.status === 'waitlist').length;
+      const rejected = reqs.filter(r => r.status === 'rejected').length;
+
+      let lastActiveMs = null;
+      reqs.forEach(r => {
+        const ts = r.createdAt;
+        const ms = ts?._seconds ? ts._seconds * 1000
+                 : ts?.seconds  ? ts.seconds * 1000
+                 : ts?.toDate   ? ts.toDate().getTime()
+                 : ts            ? new Date(ts).getTime() : null;
+        if (ms && ms > (lastActiveMs || 0)) lastActiveMs = ms;
+      });
+
+      return {
+        ...coachData,
+        profileCompletion: calculateProfileCompletion(coachData),
+        positionStats: { approved, pending, rejected, total: reqs.length },
+        lastActiveDate: lastActiveMs ? new Date(lastActiveMs).toISOString() : null
+      };
     });
+
+    res.json({ success: true, count: enriched.length, data: enriched });
 
   } catch (error) {
     console.error("Error getting coaches:", error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get coaches',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to get coaches', error: error.message });
   }
 });
 
@@ -300,7 +387,8 @@ router.post('/expert/add', async (req, res) => {
       phone: phone || '',
       specialization,
       userType,
-      password: password || ''
+      password: password || '',
+      availableToCreateTeam: true
     };
 
     const newExpert = await expert.createExpert(expertData);
@@ -330,7 +418,6 @@ router.get('/expert/all', async (req, res) => {
     const { specialization, userType } = req.query;
 
     let experts;
-
     if (specialization) {
       experts = await expert.getExpertsBySpecialization(specialization);
     } else if (userType) {
@@ -339,17 +426,74 @@ router.get('/expert/all', async (req, res) => {
       experts = await expert.getAllExperts();
     }
 
-    res.json({
-      success: true,
-      count: experts.length,
-      data: experts
+    // Fetch all requests once, then enrich each expert
+    const allRequestsSnap = await coachExpertRequestsDb.get();
+    const allRequests = allRequestsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const enriched = experts.map(expertData => {
+      const reqs = allRequests.filter(r => r.coachExpertId === expertData.id && r.coachExpertType === 'Expert');
+      const approved = reqs.filter(r => r.status === 'accepted').length;
+      const pending  = reqs.filter(r => r.status === 'pending' || r.status === 'waitlist').length;
+      const rejected = reqs.filter(r => r.status === 'rejected').length;
+
+      let lastActiveMs = null;
+      reqs.forEach(r => {
+        const ts = r.createdAt;
+        const ms = ts?._seconds ? ts._seconds * 1000
+                 : ts?.seconds  ? ts.seconds * 1000
+                 : ts?.toDate   ? ts.toDate().getTime()
+                 : ts            ? new Date(ts).getTime() : null;
+        if (ms && ms > (lastActiveMs || 0)) lastActiveMs = ms;
+      });
+
+      return {
+        ...expertData,
+        profileCompletion: calculateProfileCompletion(expertData),
+        positionStats: { approved, pending, rejected, total: reqs.length },
+        lastActiveDate: lastActiveMs ? new Date(lastActiveMs).toISOString() : null
+      };
     });
+
+    res.json({ success: true, count: enriched.length, data: enriched });
 
   } catch (error) {
     console.error("Error getting experts:", error);
+    res.status(500).json({ success: false, message: 'Failed to get experts', error: error.message });
+  }
+});
+
+/**
+ * GET /expert/:id/admin
+ * Get full expert profile for Admin/SuperAdmin modal view
+ * Returns enriched data with profileCompletion and normalized phone
+ */
+router.get('/expert/:id/admin', async (req, res) => {
+  try {
+    const expertData = await expert.findExpertById(req.params.id);
+
+    if (!expertData) {
+      return res.status(404).json({
+        success: false,
+        message: 'Expert not found'
+      });
+    }
+
+    // Normalize phone/mobile field and add profile completion
+    const normalized = {
+      ...expertData,
+      phone: expertData.phone || expertData.mobile || '',
+      profileCompletion: calculateProfileCompletion(expertData)
+    };
+
+    return res.json({
+      success: true,
+      data: normalized
+    });
+  } catch (error) {
+    console.error("Error getting expert (admin):", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get experts',
+      message: 'Failed to get expert',
       error: error.message
     });
   }
@@ -480,17 +624,23 @@ router.get('/stats/all', async (req, res) => {
     
     console.log(`[GET /stats/all] Fetching stats for type: ${type || 'all'}`);
     
-    // Get all coaches if type is undefined or 'coach'
+    // Get all coaches if type is undefined or 'coach' — lean query (no resume/profilePhoto)
     let coaches = [];
     if (!type || type === 'coach') {
-      coaches = await coach.getAllCoaches();
+      const coachSnap = await db.collection('coach_db')
+        .select('name','email','phone','mobile','specialization','userType','createdAt','location','country','bio','skills','yearsOfExperience','linkedin','website','twitter','currentCompany','currentTitle','workExperience','accountStatus','isActive','suspendedReason')
+        .orderBy('createdAt', 'desc').get();
+      coaches = coachSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       console.log(`Found ${coaches.length} coaches`);
     }
-    
-    // Get all experts if type is undefined or 'expert'
+
+    // Get all experts if type is undefined or 'expert' — lean query (no resume/profilePhoto)
     let experts = [];
     if (!type || type === 'expert') {
-      experts = await expert.getAllExperts();
+      const expertSnap = await db.collection('expert_db')
+        .select('name','email','phone','mobile','specialization','userType','createdAt','location','country','bio','skills','yearsOfExperience','linkedin','website','twitter','currentCompany','currentTitle','workExperience','accountStatus','isActive','suspendedReason')
+        .orderBy('createdAt', 'desc').get();
+      experts = expertSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       console.log(`Found ${experts.length} experts`);
     }
     
@@ -503,6 +653,21 @@ router.get('/stats/all', async (req, res) => {
     
     console.log(`Found ${allRequests.length} total requests`);
     
+    // Build position map for client lookup
+    const positionIds = [...new Set(allRequests.map(r => r.positionId).filter(Boolean))];
+    const positionsMap = {};
+    for (let i = 0; i < positionIds.length; i += 10) {
+      const batch = positionIds.slice(i, i + 10);
+      const posSnap = await positionsDb.where("pos_id", "in", batch).get();
+      posSnap.docs.forEach(doc => {
+        const d = doc.data();
+        positionsMap[d.pos_id] = {
+          positionName: d.position || 'N/A',
+          client: d.client || 'N/A'
+        };
+      });
+    }
+    
     // Calculate stats for each coach
     const coachesWithStats = coaches.map(coachData => {
       const coachRequests = allRequests.filter(req => 
@@ -512,7 +677,7 @@ router.get('/stats/all', async (req, res) => {
       
       // Count unique positions and recruiters
       const uniquePositions = new Set(coachRequests.map(r => r.positionId));
-      const uniqueRecruiters = new Set(coachRequests.map(r => req.recruiterEmail));
+      const uniqueRecruiters = new Set(coachRequests.map(r => r.recruiterEmail));
       
       // Count by status
       const statusCounts = {
@@ -528,6 +693,8 @@ router.get('/stats/all', async (req, res) => {
         positionTitle: req.positionTitle || 'N/A',
         recruiterName: req.recruiterName || 'N/A',
         recruiterEmail: req.recruiterEmail || 'N/A',
+        recruiterPhone: req.recruiterPhone || 'N/A',
+        client: positionsMap[req.positionId]?.client || 'N/A',
         status: req.status,
         date: req.createdAt ? (req.createdAt.toDate ? req.createdAt.toDate().toLocaleDateString('en-GB') : new Date(req.createdAt).toLocaleDateString('en-GB')) : 'N/A'
       }));
@@ -552,7 +719,7 @@ router.get('/stats/all', async (req, res) => {
       
       // Count unique positions and recruiters
       const uniquePositions = new Set(expertRequests.map(r => r.positionId));
-      const uniqueRecruiters = new Set(expertRequests.map(r => req.recruiterEmail));
+      const uniqueRecruiters = new Set(expertRequests.map(r => r.recruiterEmail));
       
       // Count by status
       const statusCounts = {
@@ -568,6 +735,8 @@ router.get('/stats/all', async (req, res) => {
         positionTitle: req.positionTitle || 'N/A',
         recruiterName: req.recruiterName || 'N/A',
         recruiterEmail: req.recruiterEmail || 'N/A',
+        recruiterPhone: req.recruiterPhone || 'N/A',
+        client: positionsMap[req.positionId]?.client || 'N/A',
         status: req.status,
         date: req.createdAt ? (req.createdAt.toDate ? req.createdAt.toDate().toLocaleDateString('en-GB') : new Date(req.createdAt).toLocaleDateString('en-GB')) : 'N/A'
       }));
@@ -620,6 +789,79 @@ router.get('/stats/all', async (req, res) => {
 });
 
 // ==================== COACH/EXPERT REQUEST ROUTES ====================
+
+/**
+ * GET /requests/all
+ * Get all coach/expert requests (SuperAdmin view)
+ */
+router.get('/requests/all', async (req, res) => {
+  try {
+    // Get all requests
+    const allReqSnap = await coachExpertRequestsDb.orderBy('createdAt', 'desc').get();
+    let requests = allReqSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    // Collect unique position IDs
+    const posIds = [...new Set(requests.map(r => r.positionId).filter(Boolean))];
+    
+    // Fetch positions map
+    const positionMap = {};
+    for (let i = 0; i < posIds.length; i += 10) {
+      const batch = posIds.slice(i, i + 10);
+      const posSnap = await positionsDb.where('pos_id', 'in', batch).get();
+      posSnap.docs.forEach(doc => {
+        const d = doc.data();
+        positionMap[d.pos_id] = {
+          positionTitle: d.position || 'N/A',
+          client: d.client || 'N/A'
+        };
+      });
+    }
+    
+    // Enrich missing coach/expert phone numbers
+    const phoneMap = {};
+    for (const r of requests) {
+      try {
+        if ((!r.coachExpertPhone || String(r.coachExpertPhone).trim() === '') && r.coachExpertId) {
+          if (r.coachExpertType === 'Coach' && !phoneMap[r.coachExpertId]) {
+            const coachDoc = await coach.findCoachById(r.coachExpertId);
+            if (coachDoc && coachDoc.phone) phoneMap[r.coachExpertId] = coachDoc.phone;
+          }
+          if (r.coachExpertType === 'Expert' && !phoneMap[r.coachExpertId]) {
+            const expertDoc = await expert.findExpertById(r.coachExpertId);
+            if (expertDoc && expertDoc.phone) phoneMap[r.coachExpertId] = expertDoc.phone;
+          }
+        }
+      } catch (_) {}
+    }
+    
+    // Build response items
+    const items = requests.map(r => ({
+      id: r.id,
+      positionId: r.positionId,
+      positionTitle: positionMap[r.positionId]?.positionTitle || r.positionTitle || 'N/A',
+      client: positionMap[r.positionId]?.client || 'N/A',
+      recruiterName: r.recruiterName || 'N/A',
+      recruiterEmail: r.recruiterEmail || 'N/A',
+      recruiterPhone: r.recruiterPhone || 'N/A',
+      coachExpertType: r.coachExpertType || 'N/A',
+      coachExpertName: r.coachExpertName || 'N/A',
+      coachExpertEmail: r.coachExpertEmail || 'N/A',
+      coachExpertPhone: (r.coachExpertPhone && String(r.coachExpertPhone).trim() !== '')
+        ? r.coachExpertPhone
+        : (r.coachExpertId ? phoneMap[r.coachExpertId] || 'N/A' : 'N/A'),
+      status: r.status || 'pending',
+      requestedAt: r.createdAt?.toDate ? r.createdAt.toDate() : (r.createdAt ? new Date(r.createdAt) : null),
+    }));
+    
+    res.json({ success: true, count: items.length, data: items });
+  } catch (error) {
+    console.error("Error getting all coach/expert requests:", error);
+    res.status(500).json({ success: false, message: 'Failed to get requests', error: error.message });
+  }
+});
 
 /**
  * POST /request/create
@@ -818,6 +1060,103 @@ router.get('/requests', async (req, res) => {
 });
 
 /**
+ * GET /earnings
+ * Get earnings for a coach or expert by email
+ * Query: ?email=someone@example.com&type=coach|expert
+ * Calculation: 1% of CTC Start for non-rejected requests on associated positions
+ */
+router.get('/earnings', async (req, res) => {
+  try {
+    const { email, type } = req.query;
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    const emailLower = String(email).trim().toLowerCase();
+    const capitalizedType = type ? (type[0].toUpperCase() + type.slice(1).toLowerCase()) : null; // Coach/Expert
+
+    // Fetch requests for this coach/expert
+    let query = coachExpertRequestsDb.where("coachExpertEmail", "==", emailLower);
+    if (capitalizedType === 'Coach' || capitalizedType === 'Expert') {
+      query = query.where("coachExpertType", "==", capitalizedType);
+    }
+    const requestsSnap = await query.get();
+    const allRequests = requestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // Filter non-rejected statuses (align with recruiter earnings semantics)
+    const rejectedStatuses = ["Rejected", "Client Rejected", "Candidate Rejected"];
+    const eligibleRequests = allRequests.filter(r => !rejectedStatuses.includes(r.status));
+
+    if (eligibleRequests.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          earnings: [],
+          totalEstimatedEarnings: 0,
+          totalPositions: 0
+        }
+      });
+    }
+
+    // Collect unique position IDs
+    const positionIds = [...new Set(eligibleRequests.map(r => r.positionId).filter(Boolean))];
+
+    // Fetch positions in batches (limit 10 for 'in' queries)
+    const positionsMap = {};
+    for (let i = 0; i < positionIds.length; i += 10) {
+      const batch = positionIds.slice(i, i + 10);
+      const posSnap = await positionsDb.where("pos_id", "in", batch).get();
+      posSnap.docs.forEach(doc => {
+        const pos = doc.data();
+        positionsMap[pos.pos_id] = {
+          positionName: pos.position || 'N/A',
+          client: pos.client || 'N/A',
+          ctcStart: parseFloat(pos.ctcStart) || 0
+        };
+      });
+    }
+
+    // Build earnings with 1% of CTC
+    const earnings = eligibleRequests.map(reqItem => {
+      const pos = positionsMap[reqItem.positionId] || { positionName: 'Unknown', client: 'N/A', ctcStart: 0 };
+      const ctcAmount = pos.ctcStart || 0;
+      const commissionAmount = (ctcAmount * 1) / 100; // 1%
+      return {
+        requestId: reqItem.id,
+        positionId: reqItem.positionId,
+        positionName: pos.positionName,
+        client: pos.client,
+        ctcStart: ctcAmount,
+        commissionPercent: 1,
+        commissionAmount,
+        status: reqItem.status
+      };
+    });
+
+    const totalEstimatedEarnings = earnings.reduce((sum, e) => sum + (e.commissionAmount || 0), 0);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        earnings,
+        totalEstimatedEarnings,
+        totalPositions: positionIds.length
+      }
+    });
+  } catch (error) {
+    console.error("Error getting coach/expert earnings:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get earnings",
+      error: error.message
+    });
+  }
+});
+
+/**
  * PUT /request/:id/status
  * Update request status (accept/reject/waitlist)
  */
@@ -843,6 +1182,44 @@ router.put('/request/:id/status', async (req, res) => {
         success: false,
         message: 'Request not found'
       });
+    }
+
+    const currentData = doc.data();
+
+    // Enforce plan limits when accepting
+    if (status === 'accepted') {
+      const coachExpertId = currentData.coachExpertId;
+      const coachExpertType = currentData.coachExpertType; // 'Coach' or 'Expert'
+
+      // Determine plan limit based on userType in coach/expert collection
+      let userDoc = null;
+      let userType = 'free';
+      if (coachExpertType === 'Coach') {
+        userDoc = await coach.findCoachById(coachExpertId);
+      } else if (coachExpertType === 'Expert') {
+        userDoc = await expert.findExpertById(coachExpertId);
+      }
+      if (userDoc && (userDoc.userType === 'paid' || userDoc.userType === 'free')) {
+        userType = userDoc.userType;
+      }
+      const limit = userType === 'paid' ? 10 : 5;
+
+      // Count currently accepted requests for this coach/expert
+      const acceptedSnap = await coachExpertRequestsDb
+        .where("coachExpertId", "==", coachExpertId)
+        .where("coachExpertType", "==", coachExpertType)
+        .where("status", "==", "accepted")
+        .get();
+
+      // Exclude current doc if it is already accepted (avoids double-count on idempotent update)
+      const acceptedCount = acceptedSnap.docs.filter(d => d.id !== id).length;
+
+      if (acceptedCount >= limit) {
+        return res.status(400).json({
+          success: false,
+          message: `Limit reached: ${coachExpertType} on ${userType} plan can accept up to ${limit} requests`
+        });
+      }
     }
 
     await docRef.update({
@@ -1004,6 +1381,158 @@ router.get('/recruiter/coach-expert-requests', async (req, res) => {
 });
 
 /**
+ * GET /clientspoc/position-requests
+ * Get coach/expert requests for positions created by the logged-in ClientSPOC
+ */
+router.get('/clientspoc/position-requests', async (req, res) => {
+  try {
+    const userEmail = ((req.query?.email || '')).toLowerCase();
+    if (!userEmail) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    // Find positions created by this ClientSPOC
+    const posSnap = await positionsDb.where('clientspoc', '==', userEmail).get();
+    const positions = posSnap.docs.map(doc => {
+      const data = doc.data();
+      return {
+        pos_id: data.pos_id,
+        positionTitle: data.position || 'N/A',
+        client: data.client || 'N/A'
+      };
+    });
+
+    if (positions.length === 0) {
+      return res.status(200).json({ success: true, data: [], count: 0 });
+    }
+
+    // Collect requests for these positions in batches of 10 (Firestore 'in' limit)
+    const posIds = positions.map(p => p.pos_id).filter(Boolean);
+    const positionMap = {};
+    positions.forEach(p => { positionMap[p.pos_id] = p; });
+
+    let requests = [];
+    for (let i = 0; i < posIds.length; i += 10) {
+      const batch = posIds.slice(i, i + 10);
+      const reqSnap = await coachExpertRequestsDb.where('positionId', 'in', batch).get();
+      reqSnap.docs.forEach(doc => {
+        const r = doc.data();
+        const posInfo = positionMap[r.positionId] || {};
+        requests.push({
+          id: doc.id,
+          positionId: r.positionId,
+          positionTitle: posInfo.positionTitle || r.positionTitle || 'N/A',
+          client: posInfo.client || 'N/A',
+          coachExpertId: r.coachExpertId,
+          coachExpertType: r.coachExpertType,
+          coachExpertName: r.coachExpertName,
+          coachExpertEmail: r.coachExpertEmail,
+          coachExpertPhone: r.coachExpertPhone,
+          recruiterName: r.recruiterName || '',
+          recruiterEmail: r.recruiterEmail || '',
+          recruiterPhone: r.recruiterPhone || '',
+          status: r.status,
+          requestedAt: r.createdAt?.toDate ? r.createdAt.toDate() : (r.createdAt ? new Date(r.createdAt) : null)
+        });
+      });
+    }
+
+    // Enrich missing coach/expert phone numbers from their collections
+    const missingEntries = requests.filter(r => !r.coachExpertPhone || String(r.coachExpertPhone).trim() === '');
+    if (missingEntries.length > 0) {
+      const phoneMap = {};
+      // Fetch phones by ID where available
+      for (const r of missingEntries) {
+        try {
+          if (r.coachExpertType === 'Coach' && r.coachExpertId && !phoneMap[r.coachExpertId]) {
+            const coachDoc = await coach.findCoachById(r.coachExpertId);
+            if (coachDoc && coachDoc.phone) {
+              phoneMap[r.coachExpertId] = coachDoc.phone;
+            }
+          } else if (r.coachExpertType === 'Expert' && r.coachExpertId && !phoneMap[r.coachExpertId]) {
+            const expertDoc = await expert.findExpertById(r.coachExpertId);
+            if (expertDoc && expertDoc.phone) {
+              phoneMap[r.coachExpertId] = expertDoc.phone;
+            }
+          }
+        } catch (e) {
+          // Silent fail for individual fetch errors
+        }
+      }
+      // Apply enrichment
+      requests = requests.map(reqItem => ({
+        ...reqItem,
+        coachExpertPhone: reqItem.coachExpertPhone && String(reqItem.coachExpertPhone).trim() !== ''
+          ? reqItem.coachExpertPhone
+          : (reqItem.coachExpertId ? phoneMap[reqItem.coachExpertId] || '' : '')
+      }));
+    }
+
+    // Enrich missing recruiter fields (name/phone) from recruiter_db
+    const recruiterMissing = requests.filter(r => !r.recruiterName || !r.recruiterPhone);
+    if (recruiterMissing.length > 0) {
+      const { findRecruiterByEmail } = require('../model_fire/recruiterF');
+      const recruiterInfoMap = {};
+      for (const r of recruiterMissing) {
+        const email = (r.recruiterEmail || '').toLowerCase();
+        if (!email || recruiterInfoMap[email]) continue;
+        try {
+          const rec = await findRecruiterByEmail(email);
+          if (rec) {
+            recruiterInfoMap[email] = {
+              name: rec.name || rec.firstName || '',
+              phone: rec.phone || rec.mobile || ''
+            };
+          }
+        } catch {}
+      }
+      requests = requests.map(r => {
+        const email = (r.recruiterEmail || '').toLowerCase();
+        const info = recruiterInfoMap[email];
+        return {
+          ...r,
+          recruiterName: r.recruiterName || (info ? info.name : ''),
+          recruiterPhone: r.recruiterPhone || (info ? info.phone : '')
+        };
+      });
+    }
+
+    // Also include positions with no requests (optional)
+    const positionsWithRequests = new Set(requests.map(r => r.positionId));
+    positions.forEach(p => {
+      if (!positionsWithRequests.has(p.pos_id)) {
+        requests.push({
+          id: null,
+          positionId: p.pos_id,
+          positionTitle: p.positionTitle,
+          client: p.client,
+          coachExpertId: null,
+          coachExpertType: null,
+          coachExpertName: null,
+          coachExpertEmail: null,
+          coachExpertPhone: null,
+          status: 'No Request',
+          requestedAt: null
+        });
+      }
+    });
+
+    // Sort by requestedAt desc, 'No Request' last
+    requests.sort((a, b) => {
+      if (!a.requestedAt && !b.requestedAt) return 0;
+      if (!a.requestedAt) return 1;
+      if (!b.requestedAt) return -1;
+      return b.requestedAt - a.requestedAt;
+    });
+
+    return res.status(200).json({ success: true, data: requests, count: requests.length });
+  } catch (error) {
+    console.error("Error getting ClientSPOC position requests:", error);
+    return res.status(500).json({ success: false, message: 'Failed to get position requests', error: error.message });
+  }
+});
+
+/**
  * POST /request/:id/send-email
  * Send email notification to coach/expert about the request
  */
@@ -1021,32 +1550,32 @@ router.post('/request/:id/send-email', async (req, res) => {
     }
     
     const requestData = doc.data();
-    
-    // In a real implementation, you would send an email here
-    // For now, we'll just log and return success
-    console.log("Sending email notification to:", requestData.coachExpertEmail);
-    console.log("Request details:", {
-      coachExpertName: requestData.coachExpertName,
-      recruiterName: requestData.recruiterName,
-      recruiterEmail: requestData.recruiterEmail,
-      positionTitle: requestData.positionTitle
-    });
-    
-    // TODO: Implement actual email sending using nodemailer or similar
-    // const transporter = nodemailer.createTransporter({...});
-    // await transporter.sendMail({...});
-    
+
+    await sendEmail(
+      requestData.coachExpertEmail,
+      `New Help Request for ${requestData.positionTitle}`,
+      `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+        <h2 style="color:#2563eb;">New Help Request</h2>
+        <p>Dear <strong>${requestData.coachExpertName || 'Coach/Expert'}</strong>,</p>
+        <p>A recruiter has requested your assistance for the following position:</p>
+        <div style="background:#f3f4f6;padding:16px;border-radius:8px;margin:16px 0;">
+          <div><strong>Position:</strong> ${requestData.positionTitle}</div>
+          <div><strong>Recruiter:</strong> ${requestData.recruiterName}</div>
+          <div><strong>Recruiter Email:</strong> ${requestData.recruiterEmail}</div>
+        </div>
+        <p>Please log in to RecruiterV to respond to this request.</p>
+        <p style="color:#6b7280;font-size:12px;">© ${new Date().getFullYear()} RecruiterV</p>
+      </div>`,
+      'admin@recruiterv.com', 'RecruiterV'
+    );
+    console.log("✅ Email sent to coach/expert:", requestData.coachExpertEmail);
+
     res.json({
       success: true,
       message: 'Email notification sent successfully!',
       data: {
         recipientEmail: requestData.coachExpertEmail,
-        subject: `New Help Request for ${requestData.positionTitle}`,
-        requestDetails: {
-          recruiterName: requestData.recruiterName,
-          recruiterEmail: requestData.recruiterEmail,
-          positionTitle: requestData.positionTitle
-        }
+        subject: `New Help Request for ${requestData.positionTitle}`
       }
     });
     
@@ -1084,26 +1613,26 @@ router.post('/send-help-email', async (req, res) => {
       });
     }
     
-    // Log the email details (in production, actually send the email)
-    console.log("========================================");
-    console.log("COACH/EXPERT HELP REQUEST EMAIL");
-    console.log("========================================");
-    console.log(`To: ${coachExpertEmail}`);
-    console.log(`Subject: New Help Request - ${positionTitle}`);
-    console.log(`Coach/Expert: ${coachExpertName} (${coachExpertType})`);
-    console.log(`Recruiter: ${recruiterName}`);
-    console.log(`Recruiter Email: ${recruiterEmail}`);
-    console.log(`Recruiter Phone: ${recruiterPhone || 'Not provided'}`);
-    console.log(`Position: ${positionTitle} (ID: ${positionId})`);
-    console.log("========================================");
-    
-    // TODO: Implement actual email sending
-    // await sendEmail({
-    //   to: coachExpertEmail,
-    //   subject: `Help Request for position: ${positionTitle}`,
-    //   html: `...`
-    // });
-    
+    await sendEmail(
+      coachExpertEmail,
+      `New Help Request - ${positionTitle}`,
+      `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+        <h2 style="color:#2563eb;">New Help Request</h2>
+        <p>Dear <strong>${coachExpertName || coachExpertType}</strong>,</p>
+        <p>A recruiter needs your assistance. Here are the details:</p>
+        <div style="background:#f3f4f6;padding:16px;border-radius:8px;margin:16px 0;">
+          <div><strong>Position:</strong> ${positionTitle}</div>
+          <div><strong>Recruiter:</strong> ${recruiterName}</div>
+          <div><strong>Recruiter Email:</strong> ${recruiterEmail}</div>
+          ${recruiterPhone ? `<div><strong>Phone:</strong> ${recruiterPhone}</div>` : ''}
+        </div>
+        <p>Please log in to RecruiterV to respond to this request.</p>
+        <p style="color:#6b7280;font-size:12px;">© ${new Date().getFullYear()} RecruiterV</p>
+      </div>`,
+      'admin@recruiterv.com', 'RecruiterV'
+    );
+    console.log("✅ Help request email sent to:", coachExpertEmail);
+
     res.json({
       success: true,
       message: 'Help request email sent successfully!',
@@ -1226,5 +1755,1352 @@ router.get('/get-by-name', async (req, res) => {
   }
 });
 
-module.exports = router;
+// ─── COACH → RECRUITER ASSIGNMENT FEATURE ────────────────────────────────────
 
+// GET /api/coach-expert/recruiters/all — coach sees recruiters matching their skill categories
+router.get('/recruiters/all', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email;
+
+    // Get coach's skill categories — try lowercase email and multiple field names
+    const coachSnap = await db.collection('coach_db')
+      .where('email', '==', coachEmail.toLowerCase())
+      .limit(1).get();
+    let coachCategories = [];
+    if (!coachSnap.empty) {
+      const coachData = coachSnap.docs[0].data();
+      const val = coachData.skillCategory || coachData.skill_category || coachData.specialization;
+      coachCategories = Array.isArray(val) ? val : (val ? [val] : []);
+    }
+
+    // Fetch recruiters and their approved position assignments in parallel
+    const [recSnap, posSnap] = await Promise.all([
+      db.collection('recruiter_db').get(),
+      db.collection('position_access_requests').where('status', '==', 'approved').get(),
+    ]);
+
+    // Build a map: recruiterEmail → [{ positionId, positionTitle, client }]
+    const positionsByEmail = {};
+    posSnap.docs.forEach(d => {
+      const data = d.data();
+      const email = (data.recruiterEmail || '').toLowerCase();
+      if (!email) return;
+      if (!positionsByEmail[email]) positionsByEmail[email] = [];
+      positionsByEmail[email].push({
+        positionId: data.positionId || '',
+        positionTitle: data.positionTitle || 'Untitled',
+        client: data.client || '',
+      });
+    });
+
+    const recruiters = recSnap.docs
+      .map(d => {
+        const data = d.data();
+        const email = (data.email || '').toLowerCase();
+        const positions = positionsByEmail[email] || [];
+        return {
+          id: d.id,
+          isEmployee: !!data.isEmployee,
+          accountStatus: data.accountStatus || '',
+          name: data.name || '',
+          email: data.email || '',
+          phone: data.phone || data.mobile || data.mob || '',
+          skillCategory: data.skillCategory || '',
+          specialization: data.specialization || '',
+          profileCompletion: data.profileCompletion || 0,
+          isActive: data.isActive !== false,
+          agreementSigned: data.agreementSigned || false,
+          resume: data.resume || null,
+          resumeUrl: data.resumeUrl || null,
+          resumeFileName: data.resumeFileName || '',
+          linkedin: data.linkedin || '',
+          location: data.location || '',
+          bio: data.bio || '',
+          skills: data.skills || [],
+          currentTitle: data.currentTitle || '',
+          yearsOfExperience: data.yearsOfExperience || '',
+          createdAt: data.createdAt || null,
+          positionCount: positions.length,
+          positions,
+        };
+      })
+      .filter(r => {
+        if (r.isEmployee) return false;                 // employees are not shown to coach/expert
+        if (r.accountStatus === 'suspended' || r.isActive === false) return false; // hide suspended/inactive
+        // If coach has no categories set, return ALL recruiters
+        if (coachCategories.length === 0) return true;
+        const rCats = Array.isArray(r.skillCategory)
+          ? r.skillCategory
+          : (r.skillCategory ? [r.skillCategory] : []);
+        return rCats.some(c => coachCategories.includes(c));
+      });
+
+    return res.json({ success: true, recruiters, coachCategories });
+  } catch (err) {
+    console.error('coach get recruiters error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/matching-positions — positions matching coach's skill categories
+router.get('/matching-positions', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email;
+
+    // Get coach's skill categories — try both case variants
+    const coachSnap = await db.collection('coach_db')
+      .where('email', '==', coachEmail.toLowerCase())
+      .limit(1).get();
+    let coachCategories = [];
+    if (!coachSnap.empty) {
+      const data = coachSnap.docs[0].data();
+      const val = data.skillCategory || data.skill_category || data.specialization;
+      coachCategories = Array.isArray(val) ? val : (val ? [val] : []);
+    }
+
+    const snap = await db.collection('admin_AddPos').get();
+    const INACTIVE = ['paused', 'closed', 'on hold', 'hold', 'closed - filled', 'closed - cancelled'];
+
+    const positions = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(pos => {
+        const st = (pos.status || '').toLowerCase().trim();
+        if (INACTIVE.some(s => st === s || st.includes(s))) return false;
+        // If no categories set, return ALL active positions
+        if (coachCategories.length === 0) return true;
+        const posCat = (pos.skill_category || '').trim();
+        return coachCategories.includes(posCat);
+      })
+      .map(pos => ({
+        pos_id: pos.pos_id || pos.id,
+        position: pos.position || '',
+        client: pos.client || '',
+        location: Array.isArray(pos.location) ? pos.location.join(', ') : (pos.location || ''),
+        skill_category: pos.skill_category || '',
+        status: pos.status || 'Active',
+        experience: pos.experience || '',
+      }));
+
+    return res.json({ success: true, positions, coachCategories });
+  } catch (err) {
+    console.error('matching-positions error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/coach-expert/recruiter-assignment — coach assigns recruiter to a position
+router.post('/recruiter-assignment', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email;
+    const { recruiterId, positionId, note } = req.body;
+    if (!recruiterId || !positionId) {
+      return res.status(400).json({ success: false, message: 'recruiterId and positionId are required' });
+    }
+    const { FieldValue } = require('firebase-admin/firestore');
+
+    // Get coach info
+    const coachSnap = await db.collection('coach_db').where('email', '==', coachEmail).limit(1).get();
+    if (coachSnap.empty) return res.status(404).json({ success: false, message: 'Coach not found' });
+    const coachDoc = coachSnap.docs[0];
+    const coachData = coachDoc.data();
+
+    // Get recruiter info
+    const recDoc = await db.collection('recruiter_db').doc(recruiterId).get();
+    if (!recDoc.exists) return res.status(404).json({ success: false, message: 'Recruiter not found' });
+    const recData = recDoc.data();
+
+    // Get position info
+    const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', positionId).limit(1).get();
+    if (posSnap.empty) return res.status(404).json({ success: false, message: 'Position not found' });
+    const posData = posSnap.docs[0].data();
+
+    // Duplicate check
+    const dupSnap = await db.collection('coach_recruiter_assignments')
+      .where('coachEmail', '==', coachEmail)
+      .where('recruiterId', '==', recruiterId)
+      .where('positionId', '==', positionId)
+      .limit(1).get();
+    if (!dupSnap.empty) {
+      return res.status(409).json({ success: false, message: 'You have already assigned this recruiter to this position' });
+    }
+
+    const ref = await db.collection('coach_recruiter_assignments').add({
+      coachId: coachDoc.id,
+      coachName: coachData.name || '',
+      coachEmail,
+      recruiterId,
+      recruiterName: recData.name || '',
+      recruiterEmail: recData.email || '',
+      positionId,
+      positionTitle: posData.position || '',
+      client: posData.client || '',
+      note: note || '',
+      status: 'pending',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // Email to recruiter
+    try {
+      const { sendEmailFull, templates, renderEmail } = require('../utils/email');
+      const dashUrl = `${process.env.FRONTURL || 'https://www.recruiterv.com'}/coach-assigned-positions`;
+      const _title = posData.position || positionId;
+      const _r = await renderEmail('positionDirectAssigned', {
+        userName: recData.name || 'Recruiter', userType: 'Recruiter', positionTitle: _title,
+        clientName: posData.client ? ` (${posData.client})` : '', dashboardUrl: dashUrl,
+      }, {
+        subject: `Position Assigned by Coach: ${_title}`,
+        htmlContent: templates.positionDirectAssigned(_title, 'Recruiter', recData.name || 'Recruiter', dashUrl, posData.client || ''),
+      });
+      await sendEmailFull({
+        to: recData.email,
+        toName: recData.name || 'Recruiter',
+        subject: _r.subject,
+        htmlContent: _r.htmlContent,
+      });
+    } catch (emailErr) {
+      console.error('Assignment email error:', emailErr.message);
+    }
+
+    // 🔔 Push to the assigned recruiter
+    sendPushToEmails([recData.email], {
+      title: 'New position assigned to you',
+      body: `${coachData.name || 'A coach'} assigned you "${posData.position || positionId}"${posData.client ? ` · ${posData.client}` : ''}`,
+      data: { type: 'assignment', posId: positionId },
+    }).catch(() => {});
+
+    return res.json({ success: true, id: ref.id, message: 'Recruiter assigned and notified by email' });
+  } catch (err) {
+    console.error('recruiter-assignment error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/my-recruiter-assignments — coach sees all their assignments + status
+router.get('/my-recruiter-assignments', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email;
+    const snap = await db.collection('coach_recruiter_assignments')
+      .where('coachEmail', '==', coachEmail)
+      .get();
+    const assignments = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?._seconds || 0) - (a.createdAt?._seconds || 0));
+    return res.json({ success: true, assignments });
+  } catch (err) {
+    console.error('my-recruiter-assignments error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/recruiter-stats — coach/expert sees, per recruiter, the
+// candidates submitted against the positions they assigned to that recruiter.
+router.get('/recruiter-stats', authMiddleware, async (req, res) => {
+  try {
+    const assignerEmail = (req.user.email || '').toLowerCase();
+
+    // 1. Positions this coach/expert assigned to recruiters
+    const assignSnap = await db.collection('coach_recruiter_assignments')
+      .where('coachEmail', '==', req.user.email)
+      .get();
+    const assignments = assignSnap.docs.map(d => d.data());
+    // Also try lowercase match in case of casing differences
+    if (assignments.length === 0 && req.user.email !== assignerEmail) {
+      const altSnap = await db.collection('coach_recruiter_assignments')
+        .where('coachEmail', '==', assignerEmail)
+        .get();
+      altSnap.docs.forEach(d => assignments.push(d.data()));
+    }
+
+    if (assignments.length === 0) {
+      return res.json({ success: true, recruiters: [], totalCandidates: 0 });
+    }
+
+    // Build a lookup of (recruiterEmail|positionId) -> assignment meta
+    const pairKey = (rEmail, pId) => `${(rEmail || '').toLowerCase()}|${pId}`;
+    const pairMeta = {};
+    const posIds = new Set();
+    assignments.forEach(a => {
+      if (!a.positionId) return;
+      pairMeta[pairKey(a.recruiterEmail, a.positionId)] = a;
+      posIds.add(a.positionId);
+    });
+
+    // 2. Position titles (for any assignment missing positionTitle)
+    const posMap = {};
+    const posIdArr = [...posIds];
+    for (let i = 0; i < posIdArr.length; i += 10) {
+      const batch = posIdArr.slice(i, i + 10);
+      if (!batch.length) continue;
+      const snap = await db.collection('admin_AddPos').where('pos_id', 'in', batch).get();
+      snap.docs.forEach(d => { const p = d.data(); if (p.pos_id) posMap[p.pos_id] = p; });
+    }
+
+    // 3. Candidates for the assigned positions, then keep only those submitted by
+    //    the recruiter that the coach assigned to that position.
+    const fmt = (v) => {
+      if (!v) return '';
+      const d = v._seconds ? new Date(v._seconds * 1000) : (v.toDate ? v.toDate() : new Date(v));
+      return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    };
+
+    const byRecruiter = {}; // recruiterEmail -> { recruiterName, recruiterEmail, candidates: [] }
+    let totalCandidates = 0;
+
+    const candDb = db.collection('candidate_db');
+    for (let i = 0; i < posIdArr.length; i += 10) {
+      const batch = posIdArr.slice(i, i + 10);
+      if (!batch.length) continue;
+      const snap = await candDb.where('pos_id', 'in', batch).get();
+      snap.docs.forEach(doc => {
+        const c = doc.data();
+        const meta = pairMeta[pairKey(c.recEmail, c.pos_id)];
+        if (!meta) return; // candidate not from the recruiter the coach assigned to this position
+        const recEmail = (c.recEmail || '').toLowerCase();
+        if (!byRecruiter[recEmail]) {
+          byRecruiter[recEmail] = {
+            recruiterName: c.recName || meta.recruiterName || recEmail.split('@')[0],
+            recruiterEmail: c.recEmail || meta.recruiterEmail || '',
+            candidates: [],
+          };
+        }
+        const pos = posMap[c.pos_id] || {};
+        byRecruiter[recEmail].candidates.push({
+          candidateId: doc.id,
+          candidate: c.candidate || c.name || '',
+          positionId: c.pos_id,
+          positionTitle: pos.position || meta.positionTitle || '',
+          client: pos.client || meta.client || c.client || '',
+          status: c.statusa || 'Submitted',
+          submittedOn: fmt(c.datePosted),
+          statusUpdatedOn: fmt(c.statusChangedAt || c.statusaDate || c.updatedAt),
+          cvUrl: c.cv_data || c.cv_url || '',
+          // Extra details for the candidate modal
+          email: c.emails || c.email || '',
+          mobile: c.mob || c.mobile || '',
+          relExp: c.rel_exp || '',
+          totalExp: c.total_exp || '',
+          currentCtc: c.current_ctc || '',
+          expectedCtc: c.exp_ctc || '',
+          currentLocation: c.curr_loc || '',
+          preferredLocation: c.pref_loc || '',
+          currentEmployer: c.curr_emp || '',
+          noticePeriod: c.notice_period || '',
+          offerInHand: c.offer_hand || '',
+          highestEducation: c.highest_education || '',
+          hrName: pos.hr_name || c.hr_name || '',
+          matchPercent: (c.matchPercent === undefined || c.matchPercent === null) ? null : c.matchPercent,
+          matchSummary: c.matchSummary || '',
+          // Full candidate document for the "all details" modal (heavy/internal keys stripped)
+          raw: (() => {
+            const { cv_data, cv_url, ...rest } = c;
+            return rest;
+          })(),
+        });
+        totalCandidates++;
+      });
+    }
+
+    const recruiters = Object.values(byRecruiter)
+      .map(r => ({
+        ...r,
+        candidateCount: r.candidates.length,
+        candidates: r.candidates.sort((a, b) => (a.positionTitle || '').localeCompare(b.positionTitle || '')),
+      }))
+      .sort((a, b) => b.candidateCount - a.candidateCount);
+
+    return res.json({ success: true, recruiters, totalCandidates });
+  } catch (err) {
+    console.error('recruiter-stats error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/coach-assigned-positions — recruiter sees positions assigned to them by coaches
+router.get('/coach-assigned-positions', authMiddleware, async (req, res) => {
+  try {
+    const recruiterEmail = req.user.email;
+    const snap = await db.collection('coach_recruiter_assignments')
+      .where('recruiterEmail', '==', recruiterEmail)
+      .get();
+    const assignments = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?._seconds || 0) - (a.createdAt?._seconds || 0));
+    return res.json({ success: true, assignments });
+  } catch (err) {
+    console.error('coach-assigned-positions error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/coach-expert/coach-assigned-positions/:id — recruiter accepts or rejects
+router.patch('/coach-assigned-positions/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!['accepted', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'status must be accepted or rejected' });
+    }
+    const { FieldValue } = require('firebase-admin/firestore');
+    const docRef = db.collection('coach_recruiter_assignments').doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Assignment not found' });
+    if (doc.data().recruiterEmail !== req.user.email) {
+      return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    await docRef.update({ status, updatedAt: FieldValue.serverTimestamp() });
+
+    // 🔔 Push to the coach when the recruiter accepts their assignment
+    if (status === 'accepted') {
+      const a = doc.data();
+      sendPushToEmails([a.coachEmail], {
+        title: 'Assignment accepted',
+        body: `${a.recruiterName || 'A recruiter'} accepted "${a.positionTitle || 'a position'}".`,
+        data: { type: 'assignment-accepted', posId: a.positionId || '' },
+      }).catch(() => {});
+    }
+
+    return res.json({ success: true, message: `Assignment ${status}` });
+  } catch (err) {
+    console.error('patch coach-assigned-positions error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── COACH VENDOR UPGRADE REQUESTS ─────────────────────────────────────────
+
+// POST /api/coach-expert/vendor-upgrade-request
+router.post('/vendor-upgrade-request', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email;
+    const { FieldValue } = require('firebase-admin/firestore');
+    const { sendEmailFull } = require('../utils/email');
+
+    const coachSnap = await db.collection('coach_db').where('email', '==', coachEmail.toLowerCase()).limit(1).get();
+    if (coachSnap.empty) return res.status(404).json({ success: false, message: 'Coach not found' });
+    const coachDoc = coachSnap.docs[0];
+    const coachData = coachDoc.data();
+
+    // Prevent duplicate pending request
+    const dupSnap = await db.collection('coach_vendor_requests')
+      .where('coachEmail', '==', coachEmail)
+      .where('status', '==', 'pending')
+      .limit(1).get();
+    if (!dupSnap.empty) return res.status(409).json({ success: false, message: 'You already have a pending vendor upgrade request' });
+
+    await db.collection('coach_vendor_requests').add({
+      coachId: coachDoc.id,
+      coachName: coachData.name || '',
+      coachEmail,
+      coachPhone: coachData.phone || coachData.mobile || '',
+      coachLocation: coachData.location || '',
+      coachSkillCategory: coachData.skillCategory || coachData.skill_category || coachData.specialization || '',
+      coachBio: coachData.bio || '',
+      coachProfilePhoto: coachData.profilePhoto || '',
+      status: 'pending',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    const adminEmails = [
+      { email: 'roshan@freepathshala.org' },
+      { email: 'ikumarmrigank@gmail.com' },
+    ];
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+        <div style="background:linear-gradient(135deg,#f97316,#ea580c);padding:24px;border-radius:12px;color:#fff;margin-bottom:20px">
+          <h2 style="margin:0">New Vendor Upgrade Request</h2>
+          <p style="margin:6px 0 0;opacity:.85">A coach has requested to become a vendor on RecruiterV</p>
+        </div>
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin-bottom:20px">
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="padding:8px 0;color:#6b7280;font-size:14px;width:140px">Name</td><td style="padding:8px 0;font-weight:600;color:#111827">${coachData.name || '—'}</td></tr>
+            <tr><td style="padding:8px 0;color:#6b7280;font-size:14px">Email</td><td style="padding:8px 0;color:#111827">${coachEmail}</td></tr>
+            <tr><td style="padding:8px 0;color:#6b7280;font-size:14px">Phone</td><td style="padding:8px 0;color:#111827">${coachData.phone || coachData.mobile || '—'}</td></tr>
+            <tr><td style="padding:8px 0;color:#6b7280;font-size:14px">Location</td><td style="padding:8px 0;color:#111827">${coachData.location || '—'}</td></tr>
+            <tr><td style="padding:8px 0;color:#6b7280;font-size:14px">Skill Category</td><td style="padding:8px 0;color:#111827">${Array.isArray(coachData.skillCategory) ? coachData.skillCategory.join(', ') : (coachData.skillCategory || '—')}</td></tr>
+          </table>
+        </div>
+        <div style="text-align:center">
+          <a href="https://www.recruiterv.com/superadmin" style="display:inline-block;background:#f97316;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600">Review in Admin Panel</a>
+        </div>
+      </div>`;
+
+    try {
+      await sendEmailFull({ to: adminEmails, subject: `Vendor Upgrade Request — ${coachData.name || coachEmail}`, htmlContent: html });
+    } catch (emailErr) {
+      console.error('vendor-upgrade email error:', emailErr.message);
+    }
+
+    return res.json({ success: true, message: 'Request sent to administrators' });
+  } catch (err) {
+    console.error('vendor-upgrade-request error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /admin/coach-vendor-requests — superadmin sees all vendor upgrade requests
+router.get('/coach-vendor-requests', async (req, res) => {
+  try {
+    const snap = await db.collection('coach_vendor_requests').get();
+    const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?._seconds || 0) - (a.createdAt?._seconds || 0));
+    return res.json({ success: true, requests });
+  } catch (err) {
+    console.error('coach-vendor-requests error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /admin/coach-vendor-requests/:id — superadmin approves/rejects/waitlists
+router.patch('/coach-vendor-requests/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!['approved', 'rejected', 'waitlist'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+    const { FieldValue } = require('firebase-admin/firestore');
+    const docRef = db.collection('coach_vendor_requests').doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Request not found' });
+    await docRef.update({ status, updatedAt: FieldValue.serverTimestamp() });
+    return res.json({ success: true, message: `Request ${status}` });
+  } catch (err) {
+    console.error('patch coach-vendor-requests error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── COACH TEAM ────────────────────────────────────────────────────────────
+
+// GET /api/coach-expert/team/eligible-recruiters
+// Returns recruiters matching coach's skill categories, not vendor-associated, not already at team limit,
+// active within last 72 hours, and profile completion > 50%
+router.get('/team/eligible-recruiters', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email;
+    // scope=all → every joinable recruiter (non-employee) active in the last 72h,
+    // any skill category. default → "Skill Fit": matching the coach's category.
+    const isAll = String(req.query.scope || '').toLowerCase() === 'all';
+    const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    const toMs = (lastActive) => {
+      if (!lastActive) return null;
+      if (typeof lastActive._seconds === 'number') return lastActive._seconds * 1000;
+      if (lastActive instanceof Date) return lastActive.getTime();
+      if (typeof lastActive === 'string') return new Date(lastActive).getTime();
+      return null;
+    };
+
+    // Get coach's skill categories (check both coach_db and expert_db)
+    let coachCategories = [];
+    const [coachSnap, expertSnap] = await Promise.all([
+      db.collection('coach_db').where('email', '==', coachEmail.toLowerCase()).limit(1).get(),
+      db.collection('expert_db').where('email', '==', coachEmail.toLowerCase()).limit(1).get(),
+    ]);
+    if (!coachSnap.empty) {
+      const val = coachSnap.docs[0].data().skillCategory || coachSnap.docs[0].data().skill_category || coachSnap.docs[0].data().specialization;
+      coachCategories = Array.isArray(val) ? val : (val ? [val] : []);
+    } else if (!expertSnap.empty) {
+      const val = expertSnap.docs[0].data().skillCategory || expertSnap.docs[0].data().skill_category || expertSnap.docs[0].data().specialization;
+      coachCategories = Array.isArray(val) ? val : (val ? [val] : []);
+    }
+
+    // Get all approved team requests + all recruiters
+    const [recSnap, teamSnap] = await Promise.all([
+      db.collection('recruiter_db').get(),
+      db.collection('coach_team_requests').where('status', '==', 'approved').get(),
+    ]);
+
+    // Count approved teams per recruiter — exclude those already at max 3
+    const teamCount = {};
+    teamSnap.docs.forEach(d => {
+      const rid = d.data().recruiterId;
+      if (rid) teamCount[rid] = (teamCount[rid] || 0) + 1;
+    });
+
+    const recruiters = recSnap.docs
+      .map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          _raw: data,
+          _lastActiveMs: toMs(data.lastActive),
+          teamsConnected: teamCount[d.id] || 0,
+          name: data.name || '',
+          email: data.email || '',
+          phone: data.phone || data.mobile || '',
+          skillCategory: data.skillCategory || '',
+          specialization: data.specialization || '',
+          location: data.location || '',
+          bio: data.bio || '',
+          skills: data.skills || [],
+          currentTitle: data.currentTitle || '',
+          yearsOfExperience: data.yearsOfExperience || '',
+          linkedin: data.linkedin || '',
+          profilePhoto: data.profilePhoto || '',
+          workExperience: data.workExperience || [],
+          education: data.education || [],
+          resume: data.resume || null,
+          resumeUrl: data.resumeUrl || null,
+          resumeFileName: data.resumeFileName || '',
+          vendorEmail: data.vendorEmail || null,
+          lastActiveDate: toMs(data.lastActive) ? new Date(toMs(data.lastActive)).toISOString() : null,
+        };
+      })
+      .filter(r => {
+        // Functional join constraints apply to both tabs.
+        if (r._raw.isEmployee) return false;                      // exclude employees from team building
+        if (r._raw.accountStatus === 'suspended' || r._raw.isActive === false) return false; // hide suspended/inactive
+        if (r.vendorEmail) return false;                          // exclude vendor-associated
+        if ((teamCount[r.id] || 0) >= 3) return false;           // exclude recruiter already in 3 teams
+
+        // "All" tab: every joinable recruiter with an active account, ANY skill
+        // category. No last-login recency or profile gate — those over-filter and
+        // hid genuinely active recruiters.
+        if (isAll) return true;
+
+        // Skill Fit: active within 72h + a matching skill category + a decent profile.
+        if (!r._lastActiveMs || (now - r._lastActiveMs) > SEVENTY_TWO_HOURS_MS) return false;
+        if (coachCategories.length === 0) return false;
+        const rCats = Array.isArray(r.skillCategory) ? r.skillCategory : (r.skillCategory ? [r.skillCategory] : []);
+        if (!rCats.some(c => coachCategories.includes(c))) return false;
+        if (calculateProfileCompletion(r._raw) <= 50) return false;
+        return true;
+      })
+      .map(({ _raw, _lastActiveMs, vendorEmail, ...rest }) => rest); // lastActiveDate is kept in rest
+
+    return res.json({ success: true, recruiters, coachCategories });
+  } catch (err) {
+    console.error('team/eligible-recruiters error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/recruiter-profile/:recruiterId — full recruiter profile (incl. CV)
+router.get('/recruiter-profile/:recruiterId', authMiddleware, async (req, res) => {
+  try {
+    const { recruiterId } = req.params;
+    if (!recruiterId) return res.status(400).json({ success: false, message: 'recruiterId required' });
+
+    let data = null;
+    const docSnap = await db.collection('recruiter_db').doc(recruiterId).get();
+    if (docSnap.exists) {
+      data = docSnap.data();
+    } else {
+      // Fallback: treat the param as an email
+      const emailSnap = await db.collection('recruiter_db').where('email', '==', recruiterId).limit(1).get();
+      if (!emailSnap.empty) data = emailSnap.docs[0].data();
+    }
+    if (!data) return res.status(404).json({ success: false, message: 'Recruiter not found' });
+
+    const profile = {
+      id: docSnap.exists ? docSnap.id : recruiterId,
+      name: data.name || '',
+      email: data.email || '',
+      phone: data.phone || data.mobile || '',
+      skillCategory: data.skillCategory || '',
+      specialization: data.specialization || '',
+      location: data.location || '',
+      bio: data.bio || '',
+      skills: data.skills || [],
+      currentTitle: data.currentTitle || '',
+      yearsOfExperience: data.yearsOfExperience || '',
+      linkedin: data.linkedin || '',
+      profilePhoto: data.profilePhoto || '',
+      workExperience: data.workExperience || [],
+      education: data.education || [],
+      resume: data.resume || null,
+      resumeUrl: data.resumeUrl || null,
+      resumeFileName: data.resumeFileName || '',
+    };
+    return res.json({ success: true, recruiter: profile });
+  } catch (err) {
+    console.error('recruiter-profile error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/coach-expert/team/send-request — coach sends a team join request to a recruiter
+router.post('/team/send-request', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email;
+    const { recruiterId } = req.body;
+    if (!recruiterId) return res.status(400).json({ success: false, message: 'recruiterId required' });
+    const { FieldValue } = require('firebase-admin/firestore');
+
+    const coachSnap = await db.collection('coach_db').where('email', '==', coachEmail.toLowerCase()).limit(1).get();
+    if (coachSnap.empty) return res.status(404).json({ success: false, message: 'Coach not found' });
+    const coachDoc = coachSnap.docs[0];
+    const coachData = coachDoc.data();
+
+    const recDoc = await db.collection('recruiter_db').doc(recruiterId).get();
+    if (!recDoc.exists) return res.status(404).json({ success: false, message: 'Recruiter not found' });
+    const recData = recDoc.data();
+
+    // Check duplicate
+    const dupSnap = await db.collection('coach_team_requests')
+      .where('coachEmail', '==', coachEmail)
+      .where('recruiterId', '==', recruiterId)
+      .where('status', 'in', ['pending', 'approved'])
+      .limit(1).get();
+    if (!dupSnap.empty) {
+      const existing = dupSnap.docs[0].data();
+      return res.status(409).json({ success: false, message: existing.status === 'approved' ? 'Recruiter is already in your team' : 'Request already sent' });
+    }
+
+    // Check recruiter's team limit — max 3 approved teams across all coaches/experts
+    const recTeamSnap = await db.collection('coach_team_requests')
+      .where('recruiterId', '==', recruiterId)
+      .where('status', '==', 'approved')
+      .get();
+    if (recTeamSnap.size >= 3) {
+      return res.status(409).json({ success: false, message: 'This recruiter has already reached the maximum of 3 teams and cannot join another.' });
+    }
+
+    await db.collection('coach_team_requests').add({
+      coachId: coachDoc.id,
+      coachName: coachData.name || '',
+      coachEmail,
+      coachPhone: coachData.phone || coachData.mobile || '',
+      coachSkillCategory: coachData.skillCategory || coachData.skill_category || coachData.specialization || '',
+      coachBio: coachData.bio || '',
+      coachLocation: coachData.location || '',
+      coachProfilePhoto: coachData.profilePhoto || '',
+      coachLinkedin: coachData.linkedin || '',
+      coachYearsOfExperience: coachData.yearsOfExperience || '',
+      coachCurrentTitle: coachData.currentTitle || '',
+      coachSkills: coachData.skills || [],
+      coachWorkExperience: coachData.workExperience || [],
+      coachEducation: coachData.education || [],
+      recruiterId,
+      recruiterName: recData.name || '',
+      recruiterEmail: recData.email || '',
+      status: 'pending',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({ success: true, message: 'Request sent to recruiter' });
+  } catch (err) {
+    console.error('team/send-request error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/coach-expert/team/remove/:requestId — coach removes a recruiter (deletes the request doc)
+router.delete('/team/remove/:requestId', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email;
+    const docRef = db.collection('coach_team_requests').doc(req.params.requestId);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Request not found' });
+    if (doc.data().coachEmail !== coachEmail) return res.status(403).json({ success: false, message: 'Forbidden' });
+    await docRef.delete();
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('team/remove error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/team/my-team — coach gets their approved team + all sent requests
+router.get('/team/my-team', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email;
+    const snap = await db.collection('coach_team_requests').where('coachEmail', '==', coachEmail).get();
+    const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?._seconds || 0) - (a.createdAt?._seconds || 0));
+    return res.json({ success: true, requests });
+  } catch (err) {
+    console.error('team/my-team error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/team/join-requests — recruiter gets all team requests sent to them (enriched with coach profile)
+router.get('/team/join-requests', authMiddleware, async (req, res) => {
+  try {
+    const recruiterEmail = req.user.email;
+    const snap = await db.collection('coach_team_requests').where('recruiterEmail', '==', recruiterEmail).get();
+    const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      // Only coach-initiated invitations (excludes recruiter-initiated join requests)
+      .filter(d => d.initiatedBy !== 'recruiter')
+      .sort((a, b) => (b.createdAt?._seconds || 0) - (a.createdAt?._seconds || 0));
+
+    // Enrich each request with full coach/expert profile
+    const enriched = await Promise.all(requests.map(async r => {
+      const coachEmail = r.coachEmail || '';
+      if (!coachEmail) return r;
+      // Try coach_db first, then expert_db
+      let profileDoc = null;
+      const coachSnap = await db.collection('coach_db').where('email', '==', coachEmail).limit(1).get();
+      if (!coachSnap.empty) {
+        profileDoc = coachSnap.docs[0].data();
+      } else {
+        const expertSnap = await db.collection('expert_db').where('email', '==', coachEmail).limit(1).get();
+        if (!expertSnap.empty) profileDoc = expertSnap.docs[0].data();
+      }
+      if (!profileDoc) return r;
+      return {
+        ...r,
+        coachName:            profileDoc.name            || r.coachName,
+        coachProfilePhoto:    profileDoc.profilePhoto    || null,
+        coachCurrentTitle:    profileDoc.currentTitle    || profileDoc.specialization || null,
+        coachBio:             profileDoc.bio             || null,
+        coachSkillCategory:   profileDoc.skillCategory   || null,
+        coachSkills:          profileDoc.skills          || [],
+        coachWorkExperience:  profileDoc.workExperience  || [],
+        coachEducation:       profileDoc.education       || [],
+        coachLinkedin:        profileDoc.linkedin        || null,
+        coachPhone:           profileDoc.phone           || null,
+        coachLocation:        profileDoc.location        || null,
+        coachYearsOfExperience: profileDoc.yearsOfExperience || null,
+      };
+    }));
+
+    return res.json({ success: true, requests: enriched });
+  } catch (err) {
+    console.error('team/join-requests error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/coach-expert/team/respond/:id — recruiter approves or rejects a team request
+router.patch('/team/respond/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'status must be approved or rejected' });
+    }
+    const { FieldValue } = require('firebase-admin/firestore');
+    const docRef = db.collection('coach_team_requests').doc(id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Request not found' });
+    if (doc.data().recruiterEmail !== req.user.email) return res.status(403).json({ success: false, message: 'Forbidden' });
+    await docRef.update({ status, updatedAt: FieldValue.serverTimestamp() });
+    return res.json({ success: true, message: `Request ${status}` });
+  } catch (err) {
+    console.error('team/respond error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/coach-expert/team/leave/:requestId — recruiter leaves a coach-initiated team
+router.delete('/team/leave/:requestId', authMiddleware, async (req, res) => {
+  try {
+    const recruiterEmail = req.user.email;
+    const docRef = db.collection('coach_team_requests').doc(req.params.requestId);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Request not found' });
+    if (doc.data().recruiterEmail !== recruiterEmail) return res.status(403).json({ success: false, message: 'Forbidden' });
+    await docRef.delete();
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('team/leave error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/team/my-team-members — approved team members for the
+// assign-recruiter dropdown. Returns the FULL recruiter objects (resolved from
+// recruiter_db, NOT filtered by skill category / employee flag) so every team
+// member is selectable regardless of category.
+router.get('/team/my-team-members', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email || '';
+    // Case-tolerant match on coachEmail (requests may be stored in either case).
+    const variants = [...new Set([coachEmail, coachEmail.toLowerCase(), coachEmail.trim()].filter(Boolean))];
+    const reqs = {};
+    for (const v of variants) {
+      const snap = await db.collection('coach_team_requests')
+        .where('coachEmail', '==', v)
+        .where('status', '==', 'approved')
+        .get();
+      snap.docs.forEach(d => {
+        const x = d.data();
+        const key = (x.recruiterId || x.recruiterEmail || '').toString();
+        if (key) reqs[key] = { recruiterId: x.recruiterId || '', recruiterEmail: x.recruiterEmail || '' };
+      });
+    }
+
+    const memberIds = [];
+    const recruiters = [];
+    for (const e of Object.values(reqs)) {
+      let rd = null;
+      if (e.recruiterId) {
+        const dd = await db.collection('recruiter_db').doc(e.recruiterId).get();
+        if (dd.exists) rd = { id: dd.id, ...dd.data() };
+      }
+      if (!rd && e.recruiterEmail) {
+        const q = await db.collection('recruiter_db').where('email', '==', e.recruiterEmail).limit(1).get();
+        if (!q.empty) rd = { id: q.docs[0].id, ...q.docs[0].data() };
+      }
+      if (rd) {
+        memberIds.push(rd.id);
+        recruiters.push({
+          id: rd.id,
+          name: rd.name || '',
+          email: rd.email || e.recruiterEmail || '',
+          phone: rd.phone || rd.mobile || rd.mob || '',
+          skillCategory: rd.skillCategory || '',
+          specialization: rd.specialization || '',
+          location: rd.location || '',
+          isEmployee: !!rd.isEmployee,
+        });
+      } else if (e.recruiterId) {
+        memberIds.push(e.recruiterId);
+      }
+    }
+
+    return res.json({ success: true, memberIds, recruiters });
+  } catch (err) {
+    console.error('team/my-team-members error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── RECRUITER-INITIATED JOIN REQUESTS ───────────────────────────────────────
+
+// GET /api/coach-expert/team/available-coaches
+// Returns coaches + experts who:
+//   • have availableToCreateTeam: true
+//   • share a skill category with the recruiter
+//   • logged in within the last 72 hours
+//   • have profile completion > 50%
+router.get('/team/available-coaches', authMiddleware, async (req, res) => {
+  try {
+    const recruiterEmail = req.user.email;
+    // scope=all → every coach/expert of ANY skill category active in the last 48h.
+    // default  → "Skill Fit": only those matching the recruiter's skill category.
+    const isAll = String(req.query.scope || '').toLowerCase() === 'all';
+    const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000;
+    const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    // Get recruiter's skill categories first
+    const recSnap = await db.collection('recruiter_db').where('email', '==', recruiterEmail.toLowerCase()).limit(1).get();
+    if (recSnap.empty) return res.json({ success: true, coaches: [], recruiterId: null });
+    const recDoc = recSnap.docs[0];
+    const recData = recDoc.data();
+    const recCats = Array.isArray(recData.skillCategory)
+      ? recData.skillCategory
+      : recData.skillCategory ? [recData.skillCategory] : [];
+    const recSkills = Array.isArray(recData.skills) ? recData.skills : [];
+    const recSpecializedAt = Array.isArray(recData.specializedAt) ? recData.specializedAt : [];
+
+    // Skill Fit needs a skill category; the "All" tab does not.
+    if (!isAll && recCats.length === 0) {
+      return res.json({ success: true, coaches: [], recruiterId: recDoc.id, hint: 'Set your skill category in your profile to see matching coaches.' });
+    }
+
+    // Fetch coaches + experts with availableToCreateTeam: true
+    const [coachSnap, expertSnap] = await Promise.all([
+      db.collection('coach_db').where('availableToCreateTeam', '==', true).get(),
+      db.collection('expert_db').where('availableToCreateTeam', '==', true).get(),
+    ]);
+
+    const toMs = (lastActive) => {
+      if (!lastActive) return null;
+      if (typeof lastActive._seconds === 'number') return lastActive._seconds * 1000;
+      if (lastActive instanceof Date) return lastActive.getTime();
+      if (typeof lastActive === 'string') return new Date(lastActive).getTime();
+      return null;
+    };
+
+    const mapDoc = (d, role) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        role,
+        _raw: data,
+        name: data.name || '',
+        email: data.email || '',
+        phone: data.phone || data.mobile || '',
+        skillCategory: data.skillCategory || '',
+        location: data.location || '',
+        bio: data.bio || '',
+        skills: data.skills || [],
+        specializedAt: data.specializedAt || [],
+        currentTitle: data.currentTitle || '',
+        yearsOfExperience: data.yearsOfExperience || '',
+        linkedin: data.linkedin || '',
+        profilePhoto: data.profilePhoto || '',
+        workExperience: data.workExperience || [],
+        education: data.education || [],
+        resume: data.resume || null,
+        resumeUrl: data.resumeUrl || null,
+        resumeFileName: data.resumeFileName || '',
+        lastActiveMs: toMs(data.lastActive),
+        lastActiveDate: toMs(data.lastActive) ? new Date(toMs(data.lastActive)).toISOString() : null,
+      };
+    };
+
+    const all = [
+      ...coachSnap.docs.map(d => mapDoc(d, 'Coach')),
+      ...expertSnap.docs.map(d => mapDoc(d, 'Expert')),
+    ].filter(c => {
+      // Suspended/inactive coaches & experts are hidden from recruiters.
+      if (c._raw?.accountStatus === 'suspended' || c._raw?.isActive === false) return false;
+      if (isAll) {
+        // "All" tab: every coach/expert who is available to create a team (already
+        // enforced by the query), ANY skill category — no last-login recency or
+        // profile gate, which were hiding active coaches/experts.
+        return true;
+      }
+
+      // 1. Must share at least one skill category with the recruiter
+      const cCats = Array.isArray(c.skillCategory)
+        ? c.skillCategory
+        : c.skillCategory ? [c.skillCategory] : [];
+      if (!cCats.some(cat => recCats.includes(cat))) return false;
+
+      // 2. Must share at least one specialization (skills) with the recruiter
+      if (recSkills.length > 0) {
+        const cSkills = Array.isArray(c.skills) ? c.skills : [];
+        if (!cSkills.some(s => recSkills.includes(s))) return false;
+      }
+
+      // 3. Must share at least one specializedAt with the recruiter
+      if (recSpecializedAt.length > 0) {
+        const cSpecAt = Array.isArray(c.specializedAt) ? c.specializedAt : [];
+        if (!cSpecAt.some(s => recSpecializedAt.includes(s))) return false;
+      }
+
+      // 4. Must have logged in within the last 72 hours
+      if (!c.lastActiveMs || (now - c.lastActiveMs) > SEVENTY_TWO_HOURS_MS) return false;
+
+      // 5. Profile completion must be above 50%
+      if (calculateProfileCompletion(c._raw) <= 50) return false;
+
+      return true;
+    });
+
+    // Strip internal fields before sending to client
+    const cleaned = all.map(({ _raw, lastActiveMs, ...rest }) => rest); // lastActiveDate is kept in rest
+
+    // Mark already-requested coaches
+    const sentSnap = await db.collection('coach_team_requests')
+      .where('recruiterId', '==', recDoc.id)
+      .where('initiatedBy', '==', 'recruiter')
+      .where('status', 'in', ['pending', 'approved'])
+      .get();
+    const sentEmails = new Set(sentSnap.docs.map(d => d.data().coachEmail));
+
+    const result = cleaned.map(c => ({ ...c, alreadyRequested: sentEmails.has(c.email) }));
+
+    return res.json({ success: true, coaches: result, recruiterId: recDoc.id });
+  } catch (err) {
+    console.error('available-coaches error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/coach-expert/team/recruiter-join-request
+// Recruiter sends a request to join a coach/expert's team
+router.post('/team/recruiter-join-request', authMiddleware, async (req, res) => {
+  try {
+    const { FieldValue } = require('firebase-admin/firestore');
+    const recruiterEmail = req.user.email;
+    const { coachId, coachEmail, coachRole } = req.body;
+    if (!coachEmail) return res.status(400).json({ success: false, message: 'coachEmail required' });
+
+    // Get recruiter details
+    const recSnap = await db.collection('recruiter_db').where('email', '==', recruiterEmail.toLowerCase()).limit(1).get();
+    if (recSnap.empty) return res.status(404).json({ success: false, message: 'Recruiter not found' });
+    const recDoc = recSnap.docs[0];
+    const recData = recDoc.data();
+
+    // Get coach/expert details
+    const collection = coachRole === 'Expert' ? 'expert_db' : 'coach_db';
+    const cSnap = await db.collection(collection).where('email', '==', coachEmail.toLowerCase()).limit(1).get();
+    if (cSnap.empty) return res.status(404).json({ success: false, message: 'Coach/Expert not found' });
+    const cDoc = cSnap.docs[0];
+    const cData = cDoc.data();
+
+    // Duplicate check
+    const dupSnap = await db.collection('coach_team_requests')
+      .where('coachEmail', '==', coachEmail)
+      .where('recruiterId', '==', recDoc.id)
+      .where('initiatedBy', '==', 'recruiter')
+      .where('status', 'in', ['pending', 'approved'])
+      .limit(1).get();
+    if (!dupSnap.empty) {
+      const st = dupSnap.docs[0].data().status;
+      return res.status(409).json({ success: false, message: st === 'approved' ? 'Already in this team' : 'Request already sent' });
+    }
+
+    // Team limit check for recruiter (max 3 teams)
+    const recTeamSnap = await db.collection('coach_team_requests')
+      .where('recruiterId', '==', recDoc.id)
+      .where('status', '==', 'approved')
+      .get();
+    if (recTeamSnap.size >= 3) {
+      return res.status(409).json({ success: false, message: 'You have already joined the maximum of 3 teams.' });
+    }
+
+    await db.collection('coach_team_requests').add({
+      coachId: cDoc.id,
+      coachName: cData.name || '',
+      coachEmail: cData.email || coachEmail,
+      coachRole: coachRole || 'Coach',
+      coachPhone: cData.phone || cData.mobile || '',
+      coachSkillCategory: cData.skillCategory || '',
+      coachBio: cData.bio || '',
+      coachLocation: cData.location || '',
+      coachProfilePhoto: cData.profilePhoto || '',
+      coachLinkedin: cData.linkedin || '',
+      coachYearsOfExperience: cData.yearsOfExperience || '',
+      coachCurrentTitle: cData.currentTitle || '',
+      coachSkills: cData.skills || [],
+      coachWorkExperience: cData.workExperience || [],
+      coachEducation: cData.education || [],
+      recruiterId: recDoc.id,
+      recruiterName: recData.name || '',
+      recruiterEmail: recData.email || '',
+      status: 'pending',
+      initiatedBy: 'recruiter',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return res.json({ success: true, message: 'Join request sent successfully' });
+  } catch (err) {
+    console.error('recruiter-join-request error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/team/recruiter-my-requests
+// Recruiter gets all their self-initiated join requests
+router.get('/team/recruiter-my-requests', authMiddleware, async (req, res) => {
+  try {
+    const recruiterEmail = req.user.email;
+    const recSnap = await db.collection('recruiter_db').where('email', '==', recruiterEmail.toLowerCase()).limit(1).get();
+    if (recSnap.empty) return res.json({ success: true, requests: [] });
+    const recruiterId = recSnap.docs[0].id;
+    const snap = await db.collection('coach_team_requests')
+      .where('recruiterId', '==', recruiterId)
+      .where('initiatedBy', '==', 'recruiter')
+      .get();
+    const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?._seconds || 0) - (a.createdAt?._seconds || 0));
+    return res.json({ success: true, requests });
+  } catch (err) {
+    console.error('recruiter-my-requests error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/team/incoming-join-requests
+// Coach/Expert gets recruiter-initiated requests to join their team
+router.get('/team/incoming-join-requests', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = req.user.email;
+    const snap = await db.collection('coach_team_requests')
+      .where('coachEmail', '==', coachEmail)
+      .where('initiatedBy', '==', 'recruiter')
+      .get();
+    const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?._seconds || 0) - (a.createdAt?._seconds || 0));
+    return res.json({ success: true, requests });
+  } catch (err) {
+    console.error('incoming-join-requests error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /api/coach-expert/team/incoming-join-requests/:id
+// Coach/Expert approves or rejects a recruiter-initiated join request
+router.patch('/team/incoming-join-requests/:id', authMiddleware, async (req, res) => {
+  try {
+    const { FieldValue } = require('firebase-admin/firestore');
+    const { status } = req.body;
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'status must be approved or rejected' });
+    }
+    const docRef = db.collection('coach_team_requests').doc(req.params.id);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Request not found' });
+    if (doc.data().coachEmail !== req.user.email) return res.status(403).json({ success: false, message: 'Forbidden' });
+    await docRef.update({ status, updatedAt: FieldValue.serverTimestamp() });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('incoming-join-requests patch error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/coach-expert/admin/migrate-available-to-create-team
+// One-time migration: sets availableToCreateTeam: true on all coaches and experts that don't already have it set
+router.post('/admin/migrate-available-to-create-team', authMiddleware, async (req, res) => {
+  try {
+    const [coachSnap, expertSnap] = await Promise.all([
+      db.collection('coach_db').get(),
+      db.collection('expert_db').get(),
+    ]);
+
+    const batch = db.batch();
+    let count = 0;
+
+    coachSnap.docs.forEach(doc => {
+      if (doc.data().availableToCreateTeam !== true) {
+        batch.update(doc.ref, { availableToCreateTeam: true });
+        count++;
+      }
+    });
+    expertSnap.docs.forEach(doc => {
+      if (doc.data().availableToCreateTeam !== true) {
+        batch.update(doc.ref, { availableToCreateTeam: true });
+        count++;
+      }
+    });
+
+    await batch.commit();
+    return res.json({ success: true, updated: count });
+  } catch (err) {
+    console.error('migrate-available-to-create-team error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/position-people — per-position list of recruiters and
+// coach/experts associated with each position (for the Open Positions cards).
+router.get('/position-people', authMiddleware, async (req, res) => {
+  try {
+    const lc = (s) => (s || '').toString().toLowerCase().trim();
+
+    const recMap = {};   // pos_id -> Map(email -> { name, email, phone })
+    const coachMap = {}; // pos_id -> Map(email -> { name, email, phone, type })
+    const ensure = (m, pos) => (m[pos] = m[pos] || new Map());
+    const addRec = (pos, email, name, phone) => {
+      if (!pos || !email) return;
+      const e = lc(email); const mp = ensure(recMap, pos);
+      const cur = mp.get(e) || { email: e, name: '', phone: '' };
+      if (name && !cur.name) cur.name = name;
+      if (phone && !cur.phone) cur.phone = phone;
+      mp.set(e, cur);
+    };
+    const addCoach = (pos, email, name, phone, type) => {
+      if (!pos || !email) return;
+      const e = lc(email); const mp = ensure(coachMap, pos);
+      const cur = mp.get(e) || { email: e, name: '', phone: '', type: '' };
+      if (name && !cur.name) cur.name = name;
+      if (phone && !cur.phone) cur.phone = phone;
+      if (type && !cur.type) cur.type = type;
+      mp.set(e, cur);
+    };
+
+    const [cra, par, pas, ced] = await Promise.all([
+      db.collection('coach_recruiter_assignments').get(),
+      db.collection('position_access_requests').get(),
+      db.collection('position_assignments').get(),
+      db.collection('coach_expert_direct_requests').get(),
+    ]);
+
+    cra.forEach(d => {
+      const a = d.data();
+      const pos = a.pos_id || a.positionId;
+      const st = lc(a.status);
+      if (st === 'rejected' || st === 'released') return;
+      addRec(pos, a.recruiterEmail, a.recruiterName, a.recruiterPhone);
+      if (a.coachEmail) addCoach(pos, a.coachEmail, a.coachName, a.coachPhone, a.coachRole || 'Coach');
+    });
+    par.forEach(d => {
+      const a = d.data();
+      if (lc(a.status) !== 'approved') return;
+      addRec(a.positionId || a.pos_id, a.recruiterEmail);
+    });
+    pas.forEach(d => {
+      const a = d.data();
+      if (a.assigned === false) return;
+      addRec(a.pos_id || a.positionId, a.recruiterEmail, a.recruiterName, a.recruiterPhone);
+    });
+    ced.forEach(d => {
+      const a = d.data();
+      if (lc(a.status) !== 'approved') return;
+      addCoach(a.positionId || a.pos_id, a.coachExpertEmail, a.coachExpertName, a.coachExpertPhone, a.coachExpertType);
+    });
+
+    // Resolve any missing names/phones from the profile collections
+    const [recSnap, coachSnap, expSnap] = await Promise.all([
+      db.collection('recruiter_db').get(),
+      db.collection('coach_db').get(),
+      db.collection('expert_db').get(),
+    ]);
+    const profByEmail = {};
+    const idx = (snap, role) => snap.forEach(d => {
+      const u = d.data(); const e = lc(u.email);
+      if (e) profByEmail[e] = { name: u.name || '', phone: u.phone || u.mobile || '', role };
+    });
+    idx(recSnap, 'Recruiter'); idx(coachSnap, 'Coach'); idx(expSnap, 'Expert');
+
+    const finalize = (mp, isCoach) => {
+      const out = {};
+      Object.keys(mp).forEach(pos => {
+        out[pos] = [...mp[pos].values()].map(p => {
+          const prof = profByEmail[p.email] || {};
+          return {
+            name: p.name || prof.name || p.email.split('@')[0],
+            email: p.email,
+            phone: p.phone || prof.phone || '',
+            ...(isCoach ? { type: p.type || prof.role || 'Coach' } : {}),
+          };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+      });
+      return out;
+    };
+
+    const recruiters = finalize(recMap, false);
+    const coaches = finalize(coachMap, true);
+
+    const people = {};
+    new Set([...Object.keys(recruiters), ...Object.keys(coaches)]).forEach(pos => {
+      people[pos] = { recruiters: recruiters[pos] || [], coaches: coaches[pos] || [] };
+    });
+
+    res.json({ success: true, people });
+  } catch (e) {
+    console.error('position-people', e);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /api/coach-expert/position-access/:posId
+// Does the signed-in coach/expert have access to submit candidates for this
+// position? Access comes from EITHER collection:
+//   • coach_expert_direct_requests — a direct request approved by the SPOC
+//   • coach_expert_requests        — the coach/expert assigned it to themselves
+// Checking only the first blocked every self-assigned coach from submitting.
+router.get('/position-access/:posId', authMiddleware, async (req, res) => {
+  try {
+    const posId = String(req.params.posId);
+    const emailLower = (req.user.email || '').toLowerCase();
+
+    const [directSnap, assignSnap] = await Promise.all([
+      db.collection('coach_expert_direct_requests')
+        .where('coachExpertEmail', '==', emailLower)
+        .where('positionId', '==', posId).get(),
+      coachExpertRequestsDb
+        .where('coachExpertEmail', '==', emailLower)
+        .where('positionId', '==', posId).get(),
+    ]);
+
+    const viaDirect = directSnap.docs.some(d => d.data().status === 'approved');
+    const viaAssign = assignSnap.docs.some(d => ['accepted', 'approved'].includes(d.data().status));
+
+    return res.json({
+      success: true,
+      hasAccess: viaDirect || viaAssign,
+      source: viaDirect ? 'direct_request' : (viaAssign ? 'self_assigned' : null),
+    });
+  } catch (err) {
+    console.error('coach-expert position-access error:', err.message);
+    return res.status(500).json({ success: false, hasAccess: false, message: err.message });
+  }
+});
+
+module.exports = router;

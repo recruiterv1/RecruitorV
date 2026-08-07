@@ -14,10 +14,10 @@ const Footer = () => {
           {/* Company Info */}
           <div className="space-y-4">
             <div className="flex items-center mb-4">
-              <img 
-                src="/recruitorV.png" 
-                alt="RecruiterV Logo" 
-                className="h-16 w-56 object-contain hover:scale-105 transition-transform duration-300"
+              <img
+                src="/recuiterv-logo.png"
+                alt="RecruiterV Logo"
+                className="h-16 w-56 object-contain bg-white rounded-lg px-2 py-1 hover:scale-105 transition-transform duration-300"
               />
             </div>
             <p className="text-gray-300 text-sm leading-relaxed">
@@ -82,10 +82,10 @@ const Footer = () => {
                 <div>
                   <p className="text-gray-400 text-xs mb-1">Email</p>
                   <a 
-                    href="mailto:admin@recruiterv.com" 
+                    href="mailto:support@recruiterv.in " 
                     className="text-gray-200 hover:text-orange-400 transition-colors"
                   >
-                    admin@recruiterv.com
+                    support@recruiterv.in 
                   </a>
                 </div>
               </li>
@@ -96,11 +96,12 @@ const Footer = () => {
                 <div>
                   <p className="text-gray-400 text-xs mb-1">Phone</p>
                   <a 
-                    href="tel:+917827983008" 
+                    href="tel:+919315553229" 
                     className="text-gray-200 hover:text-orange-400 transition-colors"
                   >
-                    +91-7827983008
+                    +91-931-555-3229
                   </a>
+                  <p className="text-gray-400 text-xs mb-1">09:00 AM - 06:00 PM</p>
                 </div>
               </li>
               <li className="flex items-start gap-3 group">

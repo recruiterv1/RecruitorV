@@ -45,8 +45,8 @@ const showAllCandidate= async ()=>{
 }
 
 
-const updatePositionStatus = async (id, statusa) => {
-    
+const updatePositionStatus = async (id, statusa, meta = {}) => {
+
     const posRef = candidate.doc(id);
     const posSnap = await posRef.get();
 
@@ -57,9 +57,15 @@ const updatePositionStatus = async (id, statusa) => {
     const candidateData = posSnap.data();
     const pos_id = candidateData.pos_id;
 
+    const now = new Date();
     await posRef.update({
         statusa: statusa,
-        updatedAt: new Date(),
+        statusaDate: now,
+        statusChangedAt: now,
+        updatedAt: now,
+        ...(meta.changedBy ? { statusChangedBy: meta.changedBy } : {}),
+        ...(meta.changedByName ? { statusChangedByName: meta.changedByName } : {}),
+        ...(meta.rejectReason !== undefined ? { rejectReason: meta.rejectReason } : {}),
     });
 
     // After updating candidate status, update position visibility
@@ -103,4 +109,14 @@ async function findCandidateByPhone(mob) {
 
 
 
-module.exports={createCandidate, findCandidateByPhone, findCandidateByEmail, updatePositionStatus, findCandidateById,showAllCandidate}
+async function findCandidateByPan(pan) {
+  if (!pan) return null;
+  const variants = [...new Set([String(pan).trim(), String(pan).trim().toUpperCase()])];
+  for (const v of variants) {
+    const snapshot = await candidate.where("pan_number", "==", v).limit(1).get();
+    if (!snapshot.empty) return snapshot.docs[0].data();
+  }
+  return null;
+}
+
+module.exports={createCandidate, findCandidateByPhone, findCandidateByEmail, findCandidateByPan, updatePositionStatus, findCandidateById,showAllCandidate}

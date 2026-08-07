@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { getRecruiterStats, getRecruiterDetailedStats, getRecruiterDashboardStats } = require('../model_fire/recruiterStatsF');
+const { cached } = require('../utils/cache');
+
+const STATS_TTL = 3 * 60 * 1000; // 3 min — dashboards don't need second-level freshness
 
 /**
  * GET /recruiterstats/dashboard
@@ -19,7 +22,7 @@ router.get('/dashboard', async (req, res) => {
       });
     }
 
-    const stats = await getRecruiterDashboardStats(recruiterId);
+    const stats = await cached(`recDash:${recruiterId}`, STATS_TTL, () => getRecruiterDashboardStats(recruiterId));
 
     return res.status(200).json({
       success: true,
@@ -49,7 +52,7 @@ router.get('/dashboard', async (req, res) => {
  */
 router.get('/all', async (req, res) => {
   try {
-    const stats = await getRecruiterStats();
+    const stats = await cached('recAll', STATS_TTL, () => getRecruiterStats());
 
     return res.status(200).json({
       success: true,
@@ -63,6 +66,29 @@ router.get('/all', async (req, res) => {
       message: 'Failed to fetch recruiter statistics',
       error: error.message
     });
+  }
+});
+
+/**
+ * PATCH /recruiterstats/:id/active
+ * Activate or deactivate a recruiter account
+ */
+router.patch('/:id/active', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+    const recruiterF = require('../model_fire/recruiterF');
+    const patch = { isActive: Boolean(isActive) };
+    // Re-activating clears an inactivity suspension so the recruiter can log in again.
+    if (Boolean(isActive)) { patch.accountStatus = 'approved'; patch.suspendedReason = null; }
+    await recruiterF.updateRecruiter(id, patch);
+    // Invalidate the cached recruiter list so the change shows immediately.
+    try { require('../utils/cache').invalidate('rec'); } catch (_) {}
+    console.log(`Recruiter ${id} isActive set to ${Boolean(isActive)}`);
+    return res.json({ success: true, id, isActive: Boolean(isActive) });
+  } catch (error) {
+    console.error('Error toggling recruiter status:', error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
@@ -82,7 +108,7 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    const stats = await getRecruiterDetailedStats(id);
+    const stats = await cached(`recDetail:${id}`, STATS_TTL, () => getRecruiterDetailedStats(id));
 
     return res.status(200).json({
       success: true,

@@ -1,164 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Eye, EyeOff, Phone, Mail, User, Lock, Briefcase, Shield, Users, UserCheck, BookOpen, Award, TrendingUp, Tag } from "lucide-react";
-import { Autocomplete, Chip, TextField } from "@mui/material";
-
-// Specialization options for Coach and Expert
-const specializations = [
-  // 1. Technology & Digital - Backend Engineering Languages
-  'Node.js (Backend)',
-  'Python (Backend)',
-  'Java (Backend)',
-  'C# (Backend)',
-  'C++ (Backend)',
-  'Go (Backend)',
-  'Ruby (Backend)',
-  'PHP (Backend)',
-  'Kotlin (Backend)',
-  'Scala (Backend)',
-  'Rust (Backend)',
-  // 1. Technology & Digital - Frontend Engineering Languages
-  'React.js (Frontend)',
-  'Angular (Frontend)',
-  'Vue.js (Frontend)',
-  'JavaScript (Frontend)',
-  'TypeScript (Frontend)',
-  'HTML/CSS (Frontend)',
-  // 1. Technology & Digital - Full Stack Engineering
-  'Full Stack Engineering',
-  // 1. Technology & Digital - Mobile Engineering
-  'Mobile Engineering (Android)',
-  'Mobile Engineering (iOS)',
-  'Mobile Engineering (Flutter)',
-  'Mobile Engineering (React Native)',
-  // 1. Technology & Digital - Platform & Infrastructure
-  'DevOps / SRE',
-  'Cloud Engineering (AWS)',
-  'Cloud Engineering (Azure)',
-  'Cloud Engineering (GCP)',
-  'Platform Engineering',
-  'Networking & Systems',
-  // 1. Technology & Digital - Data & Intelligence
-  'Data Engineering',
-  'Data Science',
-  'Machine Learning / AI',
-  'Analytics & BI',
-  // 1. Technology & Digital - Quality & Security
-  'QA / Test Engineering (Manual)',
-  'QA / Test Engineering (Automation)',
-  'Performance Testing',
-  'Cyber Security',
-  'Application Security / GRC',
-  // 2. Product, Design & Agile - Product Management
-  'Product Managers (B2B)',
-  'Product Managers (B2C)',
-  'Product Managers (Platform)',
-  'Technical Product Managers',
-  'Growth Product',
-  // 2. Product, Design & Agile - Design & Experience
-  'UX / UI Design',
-  'Product Design',
-  'Interaction Design',
-  'Design Research',
-  // 2. Product, Design & Agile - Agile & Delivery
-  'Scrum Masters',
-  'Agile Coaches',
-  'Delivery / Program Managers',
-  // 3. Sales, Growth & Customer Roles - Revenue Generation
-  'B2B Sales',
-  'Enterprise Sales',
-  'Inside Sales',
-  'Channel / Partner Sales',
-  // 3. Sales, Growth & Customer Roles - Pre & Post Sales
-  'Presales / Solutions Consulting',
-  'Customer Success',
-  'Account Management',
-  'Key Account Management',
-  // 3. Sales, Growth & Customer Roles - Marketing & Growth
-  'Digital Marketing',
-  'Performance Marketing',
-  'Brand & Content Marketing',
-  'Growth & Lifecycle Marketing',
-  // 4. BFSI & Financial Services - Banking Operations
-  'Retail Banking Operations',
-  'Corporate Banking Operations',
-  'Trade Finance',
-  'Branch Operations',
-  // 4. BFSI & Financial Services - Risk, Compliance & Control
-  'Credit Risk',
-  'Market Risk',
-  'Operational Risk',
-  'Compliance / AML / KYC',
-  // 4. BFSI & Financial Services - Finance & Accounting
-  'Financial Planning & Analysis (FP&A)',
-  'Accounting & Reporting',
-  'Treasury',
-  'Audit & Controls',
-  // 5. HR, Talent & People Functions - Talent & Hiring
-  'Recruitment / Talent Acquisition',
-  'Campus Hiring',
-  'Employer Branding',
-  // 5. HR, Talent & People Functions - HR Operations
-  'HR Operations',
-  'Payroll & Compliance',
-  'HR Shared Services',
-  // 5. HR, Talent & People Functions - People Development
-  'Learning & Development',
-  'Performance Management',
-  'OD / Culture',
-  // 6. Operations, Supply Chain & Manufacturing - Manufacturing & Plant Roles
-  'Production',
-  'Maintenance',
-  'Quality Control',
-  'Industrial Engineering',
-  // 6. Operations, Supply Chain & Manufacturing - Supply Chain
-  'Procurement',
-  'Logistics',
-  'Warehouse Management',
-  'Demand Planning',
-  // 6. Operations, Supply Chain & Manufacturing - Operations Excellence
-  'Lean / Six Sigma',
-  'Process Excellence',
-  'Business Operations',
-  // 7. Media, Content & Creative - Content Creation
-  'Journalism',
-  'Editorial',
-  'Script Writing',
-  'Copywriting',
-  // 7. Media, Content & Creative - Creative & Production
-  'Video Production',
-  'Film & TV Production',
-  'Animation / VFX',
-  // 7. Media, Content & Creative - Digital Media
-  'Social Media',
-  'Influencer Marketing',
-  'Content Strategy',
-  // 8. Leadership & Strategic Roles (Cross-Industry)
-  'CXO Roles (CEO)',
-  'CXO Roles (CTO)',
-  'CXO Roles (CFO)',
-  'CXO Roles (CHRO)',
-  'Business Heads',
-  'Practice Heads',
-  'Transformation Leaders',
-  'Strategy & Consulting',
-  // 9. Support & Corporate Functions - Corporate Support
-  'Legal & Compliance',
-  'Admin & Facilities',
-  'Corporate Communications',
-  // 9. Support & Corporate Functions - IT & Internal Systems
-  'IT Support',
-  'ERP / SAP',
-  'Internal Tools',
-  // 10. Early Career & Volume Hiring
-  'Freshers / Graduate Roles',
-  'Sales Executives',
-  'Operations Executives',
-  'Support Staff',
-  'Other'
-];
-
+import { Eye, EyeOff, Phone, Mail, User, Lock, Briefcase, Shield, Users, UserCheck, BookOpen, Award, TrendingUp, Tag, FileText, Upload, X as XIcon } from "lucide-react";
+import TermsModal from "./TermsModal";
+import { buildRegistrationAgreementPDF, getRoleTerms } from "../lib/agreementTerms";
 export default function Register() {
   const navigate = useNavigate();
   
@@ -175,12 +20,22 @@ export default function Register() {
     userType: "free" // For Coach/Expert (paid/free)
   });
 
-  const [specializationTags, setSpecializationTags] = useState([]);
+  const [skillCategories, setSkillCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [resumeFile, setResumeFile] = useState(null);
+  const [resumeUploading, setResumeUploading] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+
+  useEffect(() => {
+    axios.get('/candidate/skill-categories')
+      .then(res => { if (res.data.success) setSkillCategories(res.data.categories); })
+      .catch(() => {});
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -198,18 +53,15 @@ export default function Register() {
       return;
     }
 
-    // Handle role change - reset experience category if not Recruiter
+    // Handle role change
     if (name === "roleCategory") {
       setForm({
         ...form,
         [name]: value,
         experienceCategory: value === "Recruiter" ? "" : "N/A",
         planType: value === "Recruiter" ? form.planType : "1",
-        specialization: value === "Recruiter" ? "" : form.specialization,
         userType: value === "Recruiter" ? "free" : form.userType
       });
-      // Reset specialization tags when role changes
-      setSpecializationTags([]);
     } else {
       setForm({ ...form, [name]: value });
     }
@@ -221,33 +73,6 @@ export default function Register() {
   };
 
   // Handle specialization autocomplete change
-  const handleSpecializationChange = (event, newValue) => {
-    if (newValue && typeof newValue === "string") {
-      setSpecializationTags([newValue]);
-      setForm(prev => ({ ...prev, specialization: newValue }));
-    } else if (Array.isArray(newValue)) {
-      setSpecializationTags(newValue);
-      if (newValue.length > 0) {
-        setForm(prev => ({ ...prev, specialization: newValue[newValue.length - 1] }));
-      } else {
-        setForm(prev => ({ ...prev, specialization: "" }));
-      }
-    }
-  };
-
-  // Handle specialization input change
-  const handleSpecializationInputChange = (event, value, reason) => {
-    if (reason === 'input') {
-      setForm(prev => ({ ...prev, specialization: value }));
-    }
-  };
-
-  // Delete specialization tag
-  const handleDeleteSpecialization = (tagToDelete) => {
-    setSpecializationTags(prev => prev.filter(tag => tag !== tagToDelete));
-    setForm(prev => ({ ...prev, specialization: "" }));
-  };
-
   const validateForm = () => {
     const newErrors = {};
 
@@ -280,9 +105,19 @@ export default function Register() {
       newErrors.experienceCategory = "Please select an experience category";
     }
 
-    // Validate specialization for Coach/Expert
-    if ((form.roleCategory === "Coach" || form.roleCategory === "Expert") && !form.specialization) {
-      newErrors.specialization = "Please select or type a specialization";
+    // Validate specialization for all roles
+    if (form.roleCategory && !form.specialization) {
+      newErrors.specialization = "Please select a specialization";
+    }
+
+    // Resume is mandatory for all roles
+    if (form.roleCategory && !resumeFile) {
+      newErrors.resume = "Please upload your resume / CV (PDF)";
+    }
+
+    // Terms & Conditions acceptance is mandatory
+    if (!agreeTerms) {
+      newErrors.agreeTerms = "Please accept the Terms & Conditions to continue";
     }
 
     setErrors(newErrors);
@@ -299,10 +134,30 @@ export default function Register() {
     setLoading(true);
     setMessage("");
 
-    // Join all specialization tags with comma separator
-    const finalSpecialization = specializationTags.length > 0
-      ? specializationTags.join(", ")
-      : form.specialization;
+    // Upload resume if selected
+    let resumeUrl = "";
+    if (resumeFile) {
+      setResumeUploading(true);
+      try {
+        const fileBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(resumeFile);
+        });
+        const uploadRes = await axios.post("/auth/upload-resume", {
+          fileBase64,
+          filename: resumeFile.name,
+        });
+        resumeUrl = uploadRes.data.resumeUrl || "";
+      } catch (uploadErr) {
+        setMessage("Failed to upload resume. Please try again.");
+        setLoading(false);
+        setResumeUploading(false);
+        return;
+      }
+      setResumeUploading(false);
+    }
 
     const dataToSend = {
       name: form.name.trim(),
@@ -312,13 +167,15 @@ export default function Register() {
       confirmPassword: form.confirmPassword,
       roleCategory: form.roleCategory,
       experienceCategory: form.experienceCategory || "N/A",
-      planType: form.roleCategory === "Recruiter" ? parseInt(form.planType) : 1
+      planType: form.roleCategory === "Recruiter" ? parseInt(form.planType) : 1,
+      skillCategory: form.specialization,
+      agreementAccepted: true,   // ticked the mandatory Terms & Conditions checkbox
+      ...(resumeUrl ? { resumeUrl } : {}),
     };
 
     // Add Coach/Expert specific fields
     if (form.roleCategory === "Coach" || form.roleCategory === "Expert") {
-      dataToSend.specialization = finalSpecialization;
-      dataToSend.userType = form.userType; // 'paid' or 'free'
+      dataToSend.userType = form.userType;
     }
 
     console.log("Data being sent to backend:", dataToSend);
@@ -330,15 +187,43 @@ export default function Register() {
 
       console.log("Response from backend:", res.data);
 
+      // Email the agreement acceptance record (PDF) for the user's role.
+      // agreementSigned is already set by /auth/register, so this is best-effort:
+      // a failure here must not block the user from reaching OTP verification.
+      try {
+        const terms = getRoleTerms(form.roleCategory);
+        if (terms) {
+          const acceptedUser = { name: form.name.trim(), email: form.email.toLowerCase().trim() };
+          const timestamp = new Date().toISOString();
+          let userIP = "";
+          try {
+            const ipRes = await axios.get("https://api.ipify.org?format=json");
+            userIP = ipRes.data?.ip || "";
+          } catch (_) { /* IP is optional */ }
+
+          const doc = buildRegistrationAgreementPDF({ role: form.roleCategory, user: acceptedUser, timestamp, userIP });
+          const b64 = doc.output("datauristring").split("base64,")[1];
+          await axios.post("/api/agreement/submit", {
+            role: terms.key,
+            user: acceptedUser,
+            meta: { timestamp, ip: userIP, version: "v1.0" },
+            pdfBase64: b64,
+            fileName: `${terms.label.replace(/[^A-Za-z]/g, "")}_Agreement_${acceptedUser.name.replace(/\s+/g, "_")}.pdf`,
+          });
+        }
+      } catch (agrErr) {
+        console.warn("Agreement record email failed (registration unaffected):", agrErr.message);
+      }
+
       setMessage(res.data.message || res.data.error || "OTP Sent Successfully!");
       localStorage.setItem("pendingEmail", form.email);
       localStorage.setItem("experienceCategory", form.experienceCategory);
       localStorage.setItem("planType", form.planType);
       // Store role and userType for redirect logic
       localStorage.setItem("roleCategory", form.roleCategory);
+      localStorage.setItem("skillCategory", form.specialization);
       if (form.roleCategory === "Coach" || form.roleCategory === "Expert") {
         localStorage.setItem("userType", form.userType);
-        localStorage.setItem("specialization", finalSpecialization);
       }
       setTimeout(() => navigate("/otp"), 1000);
     } catch (err) {
@@ -752,76 +637,31 @@ export default function Register() {
               </div>
             )}
 
-            {/* Specialization Field - Only shown when Coach or Expert is selected */}
-            {(form.roleCategory === "Coach" || form.roleCategory === "Expert") && (
+            {/* Specialization Field - shown for ALL roles once role is selected */}
+            {form.roleCategory && (
               <div className="relative animate-fadeIn">
                 <label className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                   <Tag size={16} className="text-blue-600" />
                   Select Your Specialization
                   <span className="text-red-500">*</span>
                 </label>
-                <div className="relative">
-                  <Autocomplete
-                    freeSolo
-                    options={specializations}
-                    value={specializationTags}
-                    onChange={handleSpecializationChange}
-                    inputValue={form.specialization}
-                    onInputChange={handleSpecializationInputChange}
-                    renderTags={(value, getTagProps) =>
-                      value.map((option, index) => (
-                        <Chip
-                          variant="outlined"
-                          label={option}
-                          size="small"
-                          {...getTagProps({ index })}
-                          onDelete={() => handleDeleteSpecialization(option)}
-                          key={option}
-                          sx={{
-                            borderColor: form.roleCategory === "Coach" ? '#f97316' : '#ef4444',
-                            color: form.roleCategory === "Coach" ? '#ea580c' : '#dc2626',
-                            '& .MuiChip-label': { color: form.roleCategory === "Coach" ? '#ea580c' : '#dc2626' },
-                            '& .MuiChip-deleteIcon': {
-                              color: form.roleCategory === "Coach" ? '#f97316' : '#ef4444',
-                              '&:hover': { color: form.roleCategory === "Coach" ? '#ea580c' : '#dc2626' }
-                            }
-                          }}
-                        />
-                      ))
-                    }
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        placeholder="Select or type specialization"
-                        variant="outlined"
-                        size="small"
-                        error={!!errors.specialization}
-                        helperText={errors.specialization}
-                        sx={{
-                          '& .MuiOutlinedInput-root': {
-                            '& fieldset': { borderColor: errors.specialization ? '#fca5a5' : '#e5e7eb' },
-                            '&:hover fieldset': { borderColor: form.roleCategory === "Coach" ? '#f97316' : '#ef4444' },
-                            '&.Mui-focused fieldset': { borderColor: form.roleCategory === "Coach" ? '#f97316' : '#ef4444' }
-                          }
-                        }}
-                      />
-                    )}
-                    filterOptions={(options, params) => {
-                      const filtered = options.filter(option =>
-                        option.toLowerCase().includes(params.inputValue.toLowerCase())
-                      );
-                      if (params.inputValue && !filtered.includes(params.inputValue)) {
-                        filtered.push(`Add "${params.inputValue}"`);
-                      }
-                      return filtered;
-                    }}
-                    getOptionLabel={(option) => option}
-                    isOptionEqualToValue={(option, value) => option === value}
-                  />
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Select from options or type your own specialization
-                </p>
+                <select
+                  name="specialization"
+                  value={form.specialization}
+                  onChange={handleChange}
+                  required
+                  className={`w-full px-4 py-2.5 border-2 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 bg-white transition-all ${
+                    errors.specialization ? 'border-red-300' : 'border-gray-200 focus:border-blue-500'
+                  }`}
+                >
+                  <option value="">Select specialization...</option>
+                  {skillCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                {errors.specialization && (
+                  <p className="text-red-500 text-xs mt-1">{errors.specialization}</p>
+                )}
               </div>
             )}
 
@@ -932,13 +772,114 @@ export default function Register() {
               </div>
             )}
 
+            {/* Resume Upload - mandatory for all roles */}
+            {form.roleCategory && (
+              <div className="relative animate-fadeIn">
+                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <FileText size={16} className="text-blue-600" />
+                  Resume / CV
+                  <span className="text-red-500">*</span>
+                  <span className="text-gray-400 text-xs font-normal">(PDF only · max 5 MB)</span>
+                </label>
+                {resumeFile ? (
+                  <div className="flex items-center gap-3 border-2 border-green-400 bg-green-50 rounded-xl px-4 py-3">
+                    <FileText size={20} className="text-green-600 flex-shrink-0" />
+                    <span className="text-sm font-medium text-green-700 flex-1 truncate">{resumeFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setResumeFile(null)}
+                      className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                      title="Remove file"
+                    >
+                      <XIcon size={18} />
+                    </button>
+                  </div>
+                ) : (
+                  <label
+                    htmlFor="resume-upload"
+                    className={`flex flex-col items-center gap-2 border-2 border-dashed rounded-xl px-4 py-5 cursor-pointer transition-colors ${
+                      errors.resume
+                        ? 'border-red-400 bg-red-50 hover:border-red-500'
+                        : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'
+                    }`}
+                  >
+                    <Upload size={24} className={errors.resume ? 'text-red-400' : 'text-gray-400'} />
+                    <span className={`text-sm ${errors.resume ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
+                      Click to upload your resume (PDF only)
+                    </span>
+                    <input
+                      id="resume-upload"
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file && file.type === "application/pdf") {
+                          setResumeFile(file);
+                          setErrors(prev => ({ ...prev, resume: "" }));
+                        } else if (file) {
+                          alert("Only PDF files are allowed.");
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+                {errors.resume && (
+                  <p className="text-red-500 text-xs mt-1">{errors.resume}</p>
+                )}
+              </div>
+            )}
+
+            {/* Terms & Conditions — mandatory */}
+            <div>
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={agreeTerms}
+                  onChange={(e) => {
+                    setAgreeTerms(e.target.checked);
+                    if (errors.agreeTerms) setErrors({ ...errors, agreeTerms: "" });
+                  }}
+                  className="w-5 h-5 mt-0.5 accent-blue-600 cursor-pointer flex-shrink-0"
+                />
+                <span className="text-sm text-gray-700">
+                  I agree to the{" "}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setShowTerms(true); }}
+                    className="text-blue-600 font-semibold underline hover:text-blue-700"
+                  >
+                    Terms &amp; Conditions
+                  </button>
+                  <span className="text-red-500"> *</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">
+                    {form.roleCategory
+                      ? "Click to see what you earn as a " + form.roleCategory + " and to view the full agreement."
+                      : "Select your role above to see the terms that apply to you."}
+                  </span>
+                </span>
+              </label>
+              {errors.agreeTerms && (
+                <p className="text-red-500 text-xs mt-1">{errors.agreeTerms}</p>
+              )}
+            </div>
+
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || resumeUploading}
               className="w-full bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white py-3.5 rounded-xl font-semibold text-base transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
             >
-              {loading ? (
+              {resumeUploading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Uploading Resume...
+                </span>
+              ) : loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -992,6 +933,10 @@ export default function Register() {
           animation: fadeIn 0.3s ease-out;
         }
       `}</style>
+
+      {showTerms && (
+        <TermsModal role={form.roleCategory} onClose={() => setShowTerms(false)} />
+      )}
     </div>
   );
 }

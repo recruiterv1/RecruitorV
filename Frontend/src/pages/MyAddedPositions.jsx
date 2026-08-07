@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Briefcase, Users, User, RefreshCw, Clock, CheckCircle, AlertCircle,
-  Eye, Copy, Edit, Pause, Play, Trash2, X, Check
+import {
+  Briefcase, Users, User, RefreshCw, CheckCircle, AlertCircle, Calendar, MapPin,
+  Eye, Copy, Edit, Pause, Play, Trash2, X
 } from 'lucide-react';
-import { Box, Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@mui/material';
-import { MaterialReactTable, useMaterialReactTable } from 'material-react-table';
-import { UserStateContext } from '../context/AuthPro';
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
+import EditPositionModal from './EditPositionModal';
+import ViewPositionModal from './ViewPositionModal';
 
 // Custom Input component matching Add Position form style
 const Input = ({ label, ...props }) => (
@@ -46,8 +46,9 @@ const Select = ({ label, options, ...props }) => (
   </div>
 );
 
+const PREFERRED_CATS = ['Immediate Hiring', 'Interview Drives', 'Fast Response', 'High Commission', 'New'];
+
 const MyAddedPositions = () => {
-  const { user } = useContext(UserStateContext);
   const [positions, setPositions] = useState([]);
   const [summary, setSummary] = useState({
     totalPositions: 0,
@@ -59,11 +60,14 @@ const MyAddedPositions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'active' | 'paused'
+  const [catFilter, setCatFilter] = useState(''); // '' = all categories
   
   // Dialog states
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
+  const [viewModalOpen, setViewModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -130,45 +134,43 @@ const MyAddedPositions = () => {
     setSuccessMessage(message);
   };
 
-  // Handle VIEW - Navigate to ClientSPOC-specific page in read-only SPOC mode
+  // Handle VIEW - Open view modal with all details and share URL
   const handleView = (position) => {
-    navigate(`/clientspoc-dash-view/${position.pos_id}`);
+    setSelectedPosition(position);
+    setViewModalOpen(true);
   };
 
-  // Handle EDIT - Navigate to ClientSpocDashView in editable mode (same as Add Position form)
+  // Handle EDIT - Open edit modal with same form as Add Position
   const handleEdit = (position) => {
-    navigate(`/clientspoc-dash-view/${position.pos_id}?mode=edit`);
+    setSelectedPosition(position);
+    setEditModalOpen(true);
   };
 
-  // Handle COPY
-  const handleCopy = async (position) => {
-    if (!window.confirm(`Are you sure you want to copy position "${position.position}"?`)) {
-      return;
-    }
-    
-    setActionLoading(true);
-    try {
-      console.log("Attempting to copy position:", position.id);
-      
-      const res = await axios.post(`/candidate/pos/copy/${position.id}`, {}, {
-        withCredentials: true
-      });
-      
-      console.log('Copy response:', res.data);
-      
-      if (res.data.success) {
-        showSuccess(`Position copied successfully! New Position ID: ${res.data.data.pos_id}`);
-        fetchMyPositions();
-      } else {
-        setError(res.data.message || 'Failed to copy position');
-      }
-    } catch (err) {
-      console.error('Error copying position:', err);
-      console.error('Error response:', err.response);
-      setError(err.response?.data?.message || 'Failed to copy position');
-    } finally {
-      setActionLoading(false);
-    }
+  // Handle COPY — save data to sessionStorage and open Add Position form pre-filled
+  const handleCopy = (position) => {
+    const copyData = {
+      position: position.position || '',
+      client: position.client || '',
+      hr_name: position.hr_name || '',
+      ctcStart: position.ctcStart || '',
+      ctcEnd: position.ctcEnd || '',
+      location: Array.isArray(position.location)
+        ? position.location
+        : (position.location ? position.location.split(',').map(s => s.trim()).filter(Boolean) : []),
+      job_desc: position.job_desc || '',
+      commison: position.commison || '',
+      commission_type: position.commission_type || '',
+      client_questions: Array.isArray(position.client_questions) ? position.client_questions : [],
+      experience: position.experience || '',
+      pos_cat: position.pos_cat || '',
+      comp_view: position.comp_view || '',
+      m_have: position.m_have || '',
+      g_have: position.g_have || '',
+      compet: position.compet || '',
+      key_res: position.key_res || '',
+    };
+    sessionStorage.setItem('copiedPosition', JSON.stringify(copyData));
+    navigate('/ad_panel#add-position');
   };
 
   // Handle PAUSE/UNPAUSE
@@ -263,238 +265,98 @@ const MyAddedPositions = () => {
     );
   };
 
-  // Table columns
-  const columns = [
-    {
-      accessorKey: 'position',
-      header: 'Position',
-      size: 200,
-      Cell: ({ cell, row }) => (
-        <div>
-          <p className="font-bold text-gray-900 text-sm">{cell.getValue()}</p>
-          <p className="text-xs text-gray-500">ID: {row.original.pos_id}</p>
-        </div>
-      ),
-    },
-    {
-      accessorKey: 'status',
-      header: 'Status',
-      size: 100,
-      Cell: ({ cell }) => getStatusBadge(cell.getValue()),
-    },
-    {
-      accessorKey: 'client',
-      header: 'Client',
-      size: 140,
-      Cell: ({ cell }) => (
-        <span className="font-medium text-gray-700 text-sm">
-          {cell.getValue() || 'Confidential'}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'hr_name',
-      header: 'HR Name',
-      size: 130,
-      Cell: ({ cell }) => (
-        <span className="font-medium text-gray-700 text-sm">
-          {cell.getValue() || 'N/A'}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'candidateCount',
-      header: 'Candidates',
-      size: 100,
-      Cell: ({ cell }) => {
-        const count = cell.getValue() || 0;
-        return (
-          <div className={`inline-flex items-center justify-center px-2 py-1 rounded-lg text-sm font-bold ${
-            count > 0 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'
-          }`}>
-            <Users size={14} className="mr-1" />
-            <span>{count}</span>
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: 'recruitersCount',
-      header: 'Recruiters',
-      size: 100,
-      Cell: ({ cell }) => {
-        const count = cell.getValue() || 0;
-        return (
-          <div className="inline-flex items-center justify-center px-2 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm font-bold">
-            <User size={14} className="mr-1" />
-            <span>{count}</span>
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: 'datePosted',
-      header: 'Posted On',
-      size: 120,
-      Cell: ({ cell }) => (
-        <span className="text-gray-600 text-sm">
-          {formatDate(cell.getValue())}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'actions',
-      header: 'Actions',
-      size: 220,
-      Cell: ({ row }) => {
-        const position = row.original;
-        return (
-          <div className="flex items-center gap-1">
-            {/* VIEW */}
-            <button
-              onClick={() => handleView(position)}
-              className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
-              title="View Details"
-            >
-              <Eye size={16} />
-            </button>
-            
-            {/* COPY */}
-            <button
-              onClick={() => handleCopy(position)}
-              disabled={actionLoading}
-              className="p-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg transition-colors"
-              title="Copy Position"
-            >
-              <Copy size={16} />
-            </button>
-            
-            {/* MODIFY */}
-            <button
-              onClick={() => handleEdit(position)}
-              className="p-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg transition-colors"
-              title="Modify Position"
-            >
-              <Edit size={16} />
-            </button>
-            
-            {/* PAUSE/UNPAUSE */}
-            <button
-              onClick={() => {
-                setSelectedPosition(position);
-                setPauseDialogOpen(true);
-              }}
-              className={`p-2 rounded-lg transition-colors ${
-                position.status === 'paused' 
-                  ? 'bg-green-100 hover:bg-green-200 text-green-700' 
-                  : 'bg-yellow-100 hover:bg-yellow-200 text-yellow-700'
-              }`}
-              title={position.status === 'paused' ? 'Activate Position' : 'Pause Position'}
-            >
-              {position.status === 'paused' ? <Play size={16} /> : <Pause size={16} />}
-            </button>
-            
-            {/* DELETE */}
-            <button
-              onClick={() => {
-                setSelectedPosition(position);
-                setDeleteDialogOpen(true);
-              }}
-              className="p-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors"
-              title="Delete Position"
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
-        );
-      },
-    },
-  ];
+  // Action buttons shown at the bottom of every card
+  const renderActions = (position) => (
+    <div className="flex items-center justify-between gap-1.5 pt-3 mt-auto border-t border-gray-100">
+      {/* VIEW */}
+      <button
+        onClick={() => handleView(position)}
+        className="flex-1 flex flex-col items-center gap-1 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-[10px] font-semibold"
+        title="View Details"
+      >
+        <Eye size={16} />
+        View
+      </button>
 
-  const table = useMaterialReactTable({
-    columns,
-    data: positions,
-    enableColumnOrdering: true,
-    enableColumnResizing: true,
-    enableColumnFilters: false,
-    enableSorting: true,
-    enablePagination: true,
-    enableDensityToggle: true,
-    enableFullScreenToggle: true,
-    enableGlobalFilter: true,
-    enableHiding: true,
-    enableRowActions: false,
-    getRowId: (row) => row.id,
-    initialState: {
-      pagination: { pageSize: 15, pageIndex: 0 },
-      density: 'compact',
-      sorting: [{ id: 'datePosted', desc: true }],
-    },
-    muiTableContainerProps: {
-      sx: {
-        maxHeight: 'calc(100vh - 400px)',
-        minHeight: '400px',
-      },
-    },
-    muiTableProps: {
-      sx: {
-        '& .MuiTableCell-root': {
-          borderBottom: '1px solid #e5e7eb',
-          padding: '8px 12px',
-        },
-      },
-    },
-    muiTableHeadCellProps: {
-      sx: {
-        background: 'linear-gradient(to right, #eff6ff, #fff7ed)',
-        borderBottom: '2px solid #bfdbfe',
-        fontWeight: '600',
-        color: '#1f2937',
-        padding: '12px',
-      },
-    },
-    muiTableBodyRowProps: {
-      sx: {
-        cursor: 'default',
-        '&:hover': {
-          backgroundColor: '#f9fafb',
-        },
-        transition: 'all 0.3s',
-      },
-    },
-    muiTableBodyCellProps: {
-      sx: {
-        padding: '12px 16px',
-      },
-    },
-    muiTablePaperProps: {
-      sx: {
-        boxShadow: 'none',
-        border: 'none',
-      },
-    },
-    muiTopToolbarProps: {
-      sx: {
-        background: 'linear-gradient(to right, #2563eb, #f97316)',
-        padding: '12px',
-        '& .MuiBox-root': {
-          color: 'white',
-        },
-        '& .MuiIconButton-root': {
-          color: 'white',
-        },
-        '& .MuiInputBase-root': {
-          color: 'white',
-          '&::before': {
-            borderBottomColor: 'rgba(255,255,255,0.5)',
-          },
-        },
-      },
-    },
-    state: {
-      isLoading: loading,
-    },
-  });
+      {/* COPY */}
+      <button
+        onClick={() => handleCopy(position)}
+        disabled={actionLoading}
+        className="flex-1 flex flex-col items-center gap-1 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg transition-colors text-[10px] font-semibold disabled:opacity-50"
+        title="Copy Position"
+      >
+        <Copy size={16} />
+        Copy
+      </button>
+
+      {/* MODIFY */}
+      <button
+        onClick={() => handleEdit(position)}
+        className="flex-1 flex flex-col items-center gap-1 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-lg transition-colors text-[10px] font-semibold"
+        title="Modify Position"
+      >
+        <Edit size={16} />
+        Modify
+      </button>
+
+      {/* PAUSE/UNPAUSE */}
+      <button
+        onClick={() => { setSelectedPosition(position); setPauseDialogOpen(true); }}
+        className={`flex-1 flex flex-col items-center gap-1 py-2 rounded-lg transition-colors text-[10px] font-semibold ${
+          position.status === 'paused'
+            ? 'bg-green-50 hover:bg-green-100 text-green-700'
+            : 'bg-yellow-50 hover:bg-yellow-100 text-yellow-700'
+        }`}
+        title={position.status === 'paused' ? 'Activate Position' : 'Pause Position'}
+      >
+        {position.status === 'paused' ? <Play size={16} /> : <Pause size={16} />}
+        {position.status === 'paused' ? 'Activate' : 'Pause'}
+      </button>
+
+      {/* DELETE */}
+      <button
+        onClick={() => { setSelectedPosition(position); setDeleteDialogOpen(true); }}
+        className="flex-1 flex flex-col items-center gap-1 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition-colors text-[10px] font-semibold"
+        title="Delete Position"
+      >
+        <Trash2 size={16} />
+        Delete
+      </button>
+    </div>
+  );
+
+  const isActive = (position) => (position?.status || 'active') !== 'paused';
+
+  // Status counts
+  const statusCounts = useMemo(() => ({
+    all: positions.length,
+    active: positions.filter(isActive).length,
+    paused: positions.filter(p => !isActive(p)).length,
+  }), [positions]);
+
+  // Category counts (by pos_cat), preserving a preferred order then any extras
+  const categoryCounts = useMemo(() => {
+    const counts = {};
+    positions.forEach(p => {
+      const c = p.pos_cat;
+      if (c) counts[c] = (counts[c] || 0) + 1;
+    });
+    const ordered = [
+      ...PREFERRED_CATS.filter(c => counts[c]),
+      ...Object.keys(counts).filter(c => !PREFERRED_CATS.includes(c)).sort(),
+    ];
+    return ordered.map(c => ({ label: c, count: counts[c] }));
+  }, [positions]);
+
+  // Apply filters
+  const filteredPositions = useMemo(() => {
+    return positions.filter(p => {
+      if (statusFilter === 'active' && !isActive(p)) return false;
+      if (statusFilter === 'paused' && isActive(p)) return false;
+      if (catFilter && p.pos_cat !== catFilter) return false;
+      return true;
+    });
+  }, [positions, statusFilter, catFilter]);
 
   if (loading) {
     return (
@@ -645,152 +507,142 @@ const MyAddedPositions = () => {
           </div>
         </div>
 
-        {/* Positions Table */}
-        <div className="bg-white rounded-xl shadow-xl border-2 border-gray-100 overflow-hidden">
-          {positions.length === 0 ? (
-            <div className="p-12 text-center">
-              <Briefcase className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-gray-700 mb-2">No Positions Found</h3>
-              <p className="text-gray-500 mb-4">You haven't created any positions yet.</p>
-              <p className="text-sm text-gray-400">
-                Create a position to see it listed here with all management options.
-              </p>
-            </div>
-          ) : (
-            <div className="p-2 sm:p-3 lg:p-4">
-              <MaterialReactTable table={table} />
-            </div>
-          )}
-        </div>
+        {/* Filter Buttons */}
+        {positions.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            {/* Status filters */}
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm font-semibold transition-colors ${
+                statusFilter === 'all' ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              All <span className="ml-1 opacity-80">({statusCounts.all})</span>
+            </button>
+            <button
+              onClick={() => setStatusFilter('active')}
+              className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm font-semibold transition-colors ${
+                statusFilter === 'active' ? 'bg-green-600 text-white border-green-600' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+              }`}
+            >
+              Active <span className="ml-1 opacity-80">({statusCounts.active})</span>
+            </button>
+            <button
+              onClick={() => setStatusFilter('paused')}
+              className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm font-semibold transition-colors ${
+                statusFilter === 'paused' ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100'
+              }`}
+            >
+              Paused <span className="ml-1 opacity-80">({statusCounts.paused})</span>
+            </button>
+
+            {/* Divider + category filters */}
+            {categoryCounts.length > 0 && <span className="hidden sm:block w-px h-6 bg-gray-300 mx-1" />}
+            {categoryCounts.map(cat => (
+              <button
+                key={cat.label}
+                onClick={() => setCatFilter(prev => prev === cat.label ? '' : cat.label)}
+                className={`px-3 py-1.5 rounded-full border text-xs sm:text-sm font-semibold transition-colors ${
+                  catFilter === cat.label ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                }`}
+              >
+                {cat.label} <span className="ml-1 opacity-80">({cat.count})</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Positions Cards */}
+        {positions.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-xl border-2 border-gray-100 p-12 text-center">
+            <Briefcase className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-gray-700 mb-2">No Positions Found</h3>
+            <p className="text-gray-500 mb-4">You haven't created any positions yet.</p>
+            <p className="text-sm text-gray-400">
+              Create a position to see it listed here with all management options.
+            </p>
+          </div>
+        ) : filteredPositions.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-xl border-2 border-gray-100 p-12 text-center">
+            <Briefcase className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-gray-700 mb-2">No Positions Match</h3>
+            <p className="text-gray-500">Try a different filter.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredPositions.map((position) => {
+              const loc = Array.isArray(position.location)
+                ? position.location.filter(Boolean).slice(0, 2).join(', ') + (position.location.filter(Boolean).length > 2 ? '…' : '')
+                : (position.location || '');
+              return (
+                <div
+                  key={position.id}
+                  className={`bg-white rounded-2xl shadow-sm border flex flex-col gap-3 p-4 transition-all hover:shadow-md ${
+                    position.status === 'paused' ? 'border-yellow-200' : 'border-gray-200'
+                  }`}
+                >
+                  {/* Title + status */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h4 className="font-bold text-gray-900 text-sm leading-snug line-clamp-2">{position.position || '—'}</h4>
+                      <p className="text-xs text-gray-400 mt-0.5">ID: {position.pos_id}</p>
+                    </div>
+                    {getStatusBadge(position.status)}
+                  </div>
+
+                  {/* Client + HR */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                      <Briefcase size={13} className="text-blue-400 flex-shrink-0" />
+                      <span className="truncate font-medium">{position.client || 'Confidential'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      <User size={13} className="text-purple-400 flex-shrink-0" />
+                      <span className="truncate">HR: {position.hr_name || 'N/A'}</span>
+                    </div>
+                    {loc && (
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <MapPin size={13} className="text-orange-400 flex-shrink-0" />
+                        <span className="truncate">{loc}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Counts */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold ${
+                      (position.candidateCount || 0) > 0 ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-500'
+                    }`}>
+                      <Users size={12} /> {position.candidateCount || 0} candidates
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-purple-100 text-purple-700 text-xs font-bold">
+                      <User size={12} /> {position.recruitersCount || 0} recruiters
+                    </span>
+                  </div>
+
+                  {/* Posted date */}
+                  <div className="flex items-center gap-1 text-xs text-gray-400">
+                    <Calendar size={11} />
+                    <span>{formatDate(position.datePosted)}</span>
+                  </div>
+
+                  {/* Action buttons at the bottom */}
+                  {renderActions(position)}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
       </div>
 
-      {/* VIEW Dialog - Same form as Add Position but readonly */}
-      <Dialog open={viewDialogOpen} onClose={() => setViewDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle className="bg-gradient-to-r from-blue-600 to-orange-500 text-white">
-          <div className="flex items-center justify-between">
-            <span>Position Details (Read Only)</span>
-            <button onClick={() => setViewDialogOpen(false)} className="p-1 hover:bg-white/20 rounded-lg">
-              <X size={20} />
-            </button>
-          </div>
-        </DialogTitle>
-        <DialogContent className="p-6">
-          {selectedPosition && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Position Name"
-                  name="position"
-                  value={selectedPosition.position || ''}
-                  disabled
-                />
-                <Input
-                  label="Position ID"
-                  name="pos_id"
-                  value={selectedPosition.pos_id || ''}
-                  disabled
-                />
-                <Input
-                  label="HR Name"
-                  name="hr_name"
-                  value={selectedPosition.hr_name || ''}
-                  disabled
-                />
-                <Input
-                  label="Client"
-                  name="client"
-                  value={selectedPosition.client || ''}
-                  disabled
-                />
-                <Input
-                  label="Key Responsibilities"
-                  name="key_res"
-                  value={selectedPosition.key_res || ''}
-                  disabled
-                />
-                <Input
-                  label="Must Have"
-                  name="m_have"
-                  value={selectedPosition.m_have || ''}
-                  disabled
-                />
-                <Input
-                  label="Good To Have"
-                  name="g_have"
-                  value={selectedPosition.g_have || ''}
-                  disabled
-                />
-                <Input
-                  label="Competencies"
-                  name="compet"
-                  value={selectedPosition.compet || ''}
-                  disabled
-                />
-                <Input
-                  label="Experience"
-                  name="experience"
-                  value={selectedPosition.experience || ''}
-                  disabled
-                />
-                <Input
-                  label="Commission (%)"
-                  name="commison"
-                  type="number"
-                  value={selectedPosition.commison || ''}
-                  disabled
-                />
-                <Input
-                  label="State"
-                  name="state"
-                  value={Array.isArray(selectedPosition.state) ? selectedPosition.state.join(', ') : selectedPosition.state || ''}
-                  disabled
-                />
-                <Input
-                  label="City"
-                  name="location"
-                  value={Array.isArray(selectedPosition.location) ? selectedPosition.location.join(', ') : selectedPosition.location || ''}
-                  disabled
-                />
-                <Textarea
-                  label="Company Overview"
-                  name="comp_view"
-                  value={selectedPosition.comp_view || ''}
-                  disabled
-                />
-                <Input
-                  label="CTC Start"
-                  name="ctcStart"
-                  value={selectedPosition.ctcStart || ''}
-                  disabled
-                />
-                <Input
-                  label="CTC End"
-                  name="ctcEnd"
-                  value={selectedPosition.ctcEnd || ''}
-                  disabled
-                />
-                <Select
-                  label="Position Category"
-                  name="pos_cat"
-                  value={selectedPosition.pos_cat || ''}
-                  options={["Immediate Hiring", "Interview Drives", "Fast Response", "High Commission", "New"]}
-                  disabled
-                />
-                <Textarea
-                  label="Job Summary"
-                  name="job_desc"
-                  value={selectedPosition.job_desc || ''}
-                  disabled
-                />
-              </div>
-            </div>
-          )}
-        </DialogContent>
-        <DialogActions className="p-4 bg-gray-50">
-          <Button onClick={() => setViewDialogOpen(false)} variant="outlined">Close</Button>
-        </DialogActions>
-      </Dialog>
+      {/* VIEW Modal - full position detail with share URL */}
+      {viewModalOpen && selectedPosition && (
+        <ViewPositionModal
+          position={selectedPosition}
+          onClose={() => { setViewModalOpen(false); setSelectedPosition(null); }}
+        />
+      )}
 
       {/* PAUSE Dialog */}
       <Dialog open={pauseDialogOpen} onClose={() => setPauseDialogOpen(false)} maxWidth="sm" fullWidth>
@@ -838,6 +690,15 @@ const MyAddedPositions = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* EDIT Modal - same form as Add Position, pre-filled with data */}
+      {editModalOpen && selectedPosition && (
+        <EditPositionModal
+          position={selectedPosition}
+          onClose={() => { setEditModalOpen(false); setSelectedPosition(null); }}
+          onSuccess={() => { fetchMyPositions(); showSuccess('Position updated successfully!'); }}
+        />
+      )}
 
       {/* DELETE Dialog */}
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} maxWidth="sm" fullWidth>

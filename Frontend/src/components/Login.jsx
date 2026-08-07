@@ -4,6 +4,11 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { FcGoogle } from "react-icons/fc";
 import { FaLinkedin } from "react-icons/fa";
 import { UserDispatchContext } from "../context/AuthPro";
+import { setAuthToken, clearAuthToken } from "../lib/authToken";
+import { isNativeApp, isRoleAllowedInApp } from "../lib/apiBase";
+
+const APP_ROLE_BLOCKED_MSG =
+  "This app is for Recruiters, Coaches and Experts only. Please sign in to this account on the website at recruiterv.com.";
 import { auth, googleProvider } from "../firebase";
 import { signInWithPopup } from "firebase/auth";
 import { Mail, Lock, Eye, EyeOff, ArrowRight, Loader2, UserCheck } from "lucide-react";
@@ -25,6 +30,14 @@ const Login = () => {
       // Clear the query parameter
       searchParams.delete('inactivity');
       setSearchParams(searchParams, { replace: true });
+    } else if (searchParams.get('expired') === 'true') {
+      setMessage('Your session has expired. Please log in again to continue.');
+      searchParams.delete('expired');
+      setSearchParams(searchParams, { replace: true });
+    } else if (searchParams.get('blocked') === 'true') {
+      setMessage('Your access has been put on hold by the administrator. Please contact support for assistance.');
+      searchParams.delete('blocked');
+      setSearchParams(searchParams, { replace: true });
     }
   }, [searchParams, setSearchParams]);
 
@@ -40,41 +53,62 @@ const Login = () => {
         password,
       }, { withCredentials: true });
       
-      setMessage(res.data.message || "Verified successfully ✅");
-      
       const userData = res.data.user;
-      
-      dispatch({ 
-        type: "LOGIN_SUCCESS", 
-        payload: { 
-          name: userData?.name, 
+
+      // Mobile app: allow only Recruiter / Coach / Expert
+      if (isNativeApp() && !isRoleAllowedInApp(userData?.roleCategory)) {
+        clearAuthToken();
+        dispatch({ type: "LOGIN_FAILURE" });
+        setMessage(APP_ROLE_BLOCKED_MSG);
+        setLoading(false);
+        return;
+      }
+
+      setMessage(res.data.message || "Verified successfully ✅");
+
+      setAuthToken(res.data.token); // for the native app (header auth); harmless on web
+
+      dispatch({
+        type: "LOGIN_SUCCESS",
+        payload: {
+          name: userData?.name,
           email: userData?.email,
           roleCategory: userData?.roleCategory,
-          experienceCategory: userData?.experienceCategory
-        } 
+          experienceCategory: userData?.experienceCategory,
+          agreementSigned: !!userData?.agreementSigned
+        }
       });
 
-      // ✅ SIMPLE ROUTING LOGIC - Backward Compatible
-      setTimeout(() => {
+      // ✅ ROUTING LOGIC — redirect to Open Positions if agreement signed + profile ≥ 80%
+      setTimeout(async () => {
         const role = userData?.roleCategory;
 
-        // If Coach → go to Coach Dashboard
+        if (role === 'Super Admin') {
+          navigate("/superadmin");
+          return;
+        }
+
+        // For Recruiter / Coach / Expert: check agreement + profile before deciding destination
+        const agreementSigned = !!userData?.agreementSigned;
+        let profilePct = 0;
+        if (agreementSigned) {
+          try {
+            const pcRes = await axios.get('/api/profile/profile-completion', { withCredentials: true });
+            profilePct = pcRes.data?.completion?.percentage ?? 0;
+          } catch (_) {}
+        }
+        const readyForPositions = agreementSigned && profilePct >= 80;
+
         if (role === 'Coach') {
-          navigate("/coach-dashboard");
+          navigate(readyForPositions ? "/coach-expert-positions" : "/coach-dashboard");
+        } else if (role === 'Expert') {
+          navigate(readyForPositions ? "/coach-expert-positions" : "/expert-dashboard");
+        } else if (role === 'Referrer') {
+          navigate("/referer-dashboard");
+        } else {
+          navigate(readyForPositions ? "/dash_position" : "/dash_rec");
         }
-        // If Expert → go to Expert Dashboard
-        else if (role === 'Expert') {
-          navigate("/expert-dashboard");
-        }
-        // Super Admin → go to superadmin
-        else if (role === 'Super Admin') {
-          navigate("/superadmin")
-        }
-        // Otherwise (Recruiter, RTS, undefined/old users without roleCategory) → go to /dash_rec
-        else {
-          navigate("/dash_rec");
-        }
-      }, 1000);
+      }, 500);
       
     } catch (err) {
       dispatch({ type: "LOGIN_FAILURE" });
@@ -126,6 +160,16 @@ const Login = () => {
       });
 
       const userData = response.data;
+
+      // Mobile app: allow only Recruiter / Coach / Expert
+      if (isNativeApp() && !isRoleAllowedInApp(userData?.roleCategory)) {
+        clearAuthToken();
+        dispatch({ type: "LOGIN_FAILURE" });
+        setMessage(APP_ROLE_BLOCKED_MSG);
+        return;
+      }
+
+      setAuthToken(response.data.token); // native-app header auth
       console.log("Backend response:", userData);
 
       dispatch({
@@ -134,21 +178,35 @@ const Login = () => {
           name: userData?.name || result.user.displayName,
           email: userData?.email || result.user.email,
           roleCategory: userData?.roleCategory,
-          experienceCategory: userData?.experienceCategory
+          experienceCategory: userData?.experienceCategory,
+          agreementSigned: !!userData?.agreementSigned
         },
       });
 
-      // ✅ SIMPLE ROUTING LOGIC (same as email login)
+      // ✅ ROUTING LOGIC (same as email login)
       const role = userData?.roleCategory;
 
+      if (role === 'Super Admin') {
+        navigate("/superadmin");
+        return;
+      }
+
+      const agreementSigned = !!userData?.agreementSigned;
+      let profilePct = 0;
+      if (agreementSigned) {
+        try {
+          const pcRes = await axios.get('/api/profile/profile-completion', { withCredentials: true });
+          profilePct = pcRes.data?.completion?.percentage ?? 0;
+        } catch (_) {}
+      }
+      const readyForPositions = agreementSigned && profilePct >= 80;
+
       if (role === 'Coach') {
-        navigate("/coach-dashboard");
+        navigate(readyForPositions ? "/coach-expert-positions" : "/coach-dashboard");
       } else if (role === 'Expert') {
-        navigate("/expert-dashboard");
-      } else if (role === 'Super Admin') {
-        navigate("/superadmin")
+        navigate(readyForPositions ? "/coach-expert-positions" : "/expert-dashboard");
       } else {
-        navigate("/dash_rec");
+        navigate(readyForPositions ? "/dash_position" : "/dash_rec");
       }
       
     } catch (error) {
@@ -326,6 +384,26 @@ const Login = () => {
               >
                 Sign Up
               </Link>
+            </div>
+
+            {/* Other account types */}
+            <div className="pt-3 mt-2 border-t border-gray-100">
+              <p className="text-center text-xs text-gray-400 mb-2">Logging in as a different role?</p>
+              <div className="flex items-center justify-center gap-3 text-sm">
+                <Link
+                  to="/clientspoc"
+                  className="font-semibold text-gray-600 hover:text-blue-600 hover:underline transition-colors"
+                >
+                  Client SPOC Login
+                </Link>
+                <span className="text-gray-300">|</span>
+                <Link
+                  to="/vendor"
+                  className="font-semibold text-gray-600 hover:text-blue-600 hover:underline transition-colors"
+                >
+                  Vendor Login
+                </Link>
+              </div>
             </div>
           </div>
         </div>

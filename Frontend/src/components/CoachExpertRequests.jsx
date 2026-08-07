@@ -57,7 +57,8 @@ const CoachExpertRequests = () => {
       );
     } catch (error) {
       console.error('Error updating status:', error);
-      alert('Failed to update request status. Please try again.');
+      const msg = error.response?.data?.message || 'Failed to update request status. Please try again.';
+      alert(msg);
     } finally {
       setUpdatingStatus(null);
     }
@@ -421,4 +422,3 @@ const CoachExpertRequests = () => {
 };
 
 export default CoachExpertRequests;
-

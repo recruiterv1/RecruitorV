@@ -1,10 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { 
-  getPositionStats, 
-  getPositionDetailedStats, 
-  getPositionsByDate 
+const {
+  getPositionStats,
+  getPositionDetailedStats,
+  getPositionsByDate
 } = require('../model_fire/positionStatsF');
+const { cached } = require('../utils/cache');
+const PSTATS_TTL = 3 * 60 * 1000;
 
 /**
  * GET /positionstats/all
@@ -12,8 +14,8 @@ const {
  */
 router.get('/all', async (req, res) => {
   try {
-    const stats = await getPositionStats();
-    
+    const stats = await cached('posStatsAll', PSTATS_TTL, () => getPositionStats());
+
     return res.status(200).json({
       success: true,
       count: stats.length,

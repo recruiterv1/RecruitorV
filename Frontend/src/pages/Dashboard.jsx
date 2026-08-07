@@ -15,11 +15,13 @@ import {
   ChevronRight,
   Calendar,
   Clock,
-  XCircle
+  XCircle,
+  Smartphone
 } from 'lucide-react';
 
 const Dashboard = () => {
   const [summary, setSummary] = useState(null);
+  const [appInstalls, setAppInstalls] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
@@ -70,6 +72,13 @@ const Dashboard = () => {
     fetchCandidates(1);
     fetchStatuses();
   }, [activeFilter]);
+
+  // Mobile app install stats
+  useEffect(() => {
+    axios.get('/api/app/stats', { withCredentials: true })
+      .then(r => { if (r.data?.success) setAppInstalls(r.data); })
+      .catch(() => {});
+  }, []);
 
   // Fetch candidate activity data
   const fetchCandidates = async (page = 1) => {
@@ -263,6 +272,26 @@ const Dashboard = () => {
       bgColor: 'bg-indigo-50',
       iconBg: 'bg-indigo-100',
       iconColor: 'text-indigo-600'
+    },
+    {
+      id: 'app-installs',
+      title: 'App Installs',
+      count: appInstalls?.total || 0,
+      breakdown: (() => {
+        const bt = appInstalls?.byType;
+        if (!bt) return '';
+        // Active installs per user type, e.g. "3(R) 7(C) 4(CS) 2(E) 1(V)"
+        const parts = [
+          [bt.recruiter?.active, 'R'], [bt.coach?.active, 'C'], [bt.clientspoc?.active, 'CS'],
+          [bt.expert?.active, 'E'], [bt.vendor?.active, 'V'],
+        ].filter(([n]) => n > 0).map(([n, l]) => `${n}(${l})`);
+        return parts.length ? parts.join(' ') : `(${appInstalls.active30 || 0} active)`;
+      })(),
+      icon: Smartphone,
+      gradient: 'from-teal-500 to-teal-600',
+      bgColor: 'bg-teal-50',
+      iconBg: 'bg-teal-100',
+      iconColor: 'text-teal-600'
     }
   ];
 

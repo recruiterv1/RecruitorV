@@ -1,6 +1,7 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
+import { SidebarContext } from '../context/Sidebarcontext';
 import NotificationContext from '../context/NotificationContext';
 import axios from 'axios';
 import {
@@ -25,8 +26,12 @@ import {
   CheckCheck,
   UserPlus,
   Award,
-  Users as UsersIcon
+  Users as UsersIcon,
+  FileText,
+  MessageSquare
 } from 'lucide-react';
+import ChatPanel from './ChatPanel';
+import { useChatNotify } from '../context/ChatNotify';
 
 // Import your existing components
 import Ad_Data from '../pages/Ad_Data';
@@ -36,6 +41,7 @@ import Ad_Pos from '../pages/Ad_Pos';
 import My_Positions from '../pages/My_Positions';
 import AccessRequestsManagement from '../pages/AccessRequestsManagement';
 import ClientSpocPositionStats from '../pages/ClientSpocPositionStats';
+import ClientSpocSidebar from './Dash_View_ClientSpocSidebar';
 import ClientSpocMyPositions from '../pages/ClientSpocMyPositions';
 import MyAddedPositions from '../pages/MyAddedPositions';
 import RecruiterPositionStats from '../pages/RecruiterPositionStats';
@@ -44,6 +50,12 @@ import AddCoach from '../pages/AddCoach';
 import AddExpert from '../pages/AddExpert';
 import AllCoaches from '../pages/AllCoaches';
 import AllExperts from '../pages/AllExperts';
+import AllRecruiters from '../pages/AllRecruiters';
+import ClientSpocCoachExpertRequests from '../pages/ClientSpocCoachExpertRequests';
+import CoachRecruiterAssignmentsAdmin from '../pages/CoachRecruiterAssignmentsAdmin';
+import ClientSpocDirectRequests from '../pages/ClientSpocDirectRequests';
+import SuperAdminReports from '../pages/SuperAdminReports';
+import RecruiterReports from '../pages/RecruiterReports';
 
 const Admin = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -54,8 +66,11 @@ const Admin = () => {
   
   const { user } = useContext(UserStateContext);
   const dispatch = useContext(UserDispatchContext);
+  const { isSidebarCollapsed: ctxSidebarCollapsed } = useContext(SidebarContext);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const { total: chatUnread } = useChatNotify();
 
   // Check if user is a recruiter (not ClientSPOC or Admin)
   // Show menu items for recruiters only
@@ -73,21 +88,22 @@ const Admin = () => {
       const tabId = location.hash.slice(1);
       // ClientSPOC tabs that should be accessible via hash
       const clientSpocTabs = [
-        'dashboard', 'candidates', 'positions',
+        'dashboard', 'messages', 'candidates', 'positions',
         'clientspoc-my-positions', 'my-added-positions', 'position-stats',
         'access-requests', 'add-position', 'add-coach', 'add-expert',
-        'all-coaches', 'all-experts'
+        'all-coaches', 'all-experts', 'all-recruiters', 'coach-expert-requests',
+        'direct-coach-expert-requests', 'coach-recruiter-assignments'
       ];
       // Recruiter tabs
       const recruiterTabs = [
-        'dashboard', 'candidates', 'positions', 'my-positions',
-        'recruiter-position-stats', 'access-requests', 'add-position'
+        'dashboard', 'messages', 'candidates', 'positions', 'my-positions',
+        'recruiter-position-stats', 'recruiter-reports', 'access-requests', 'add-position'
       ];
       // Admin tabs
       const adminTabs = [
-        'dashboard', 'candidates', 'positions',
+        'dashboard', 'messages', 'candidates', 'positions',
         'position-stats', 'access-requests', 'add-position',
-        'add-coach', 'add-expert', 'all-coaches', 'all-experts'
+        'add-coach', 'add-expert', 'all-coaches', 'all-experts', 'all-recruiters'
       ];
 
       let validTabs = [];
@@ -199,8 +215,16 @@ const Admin = () => {
       id: 'candidates',
       icon: Users,
       label: 'Candidates',
-      component: <Ad_Candi />
+      component: <Ad_Candi clientSpocView={isClientSpoc} recruiterView={isRecruiter} />
     },
+    // Direct Applications — only for ClientSPOC, navigates to standalone page
+    ...(isClientSpoc ? [{
+      id: 'direct-applications-link',
+      icon: FileText,
+      label: 'Direct Applications',
+      navigateTo: '/clientspoc-direct-applications',
+      clientspocOnly: true
+    }] : []),
     {
       id: 'positions',
       icon: Briefcase,
@@ -221,6 +245,13 @@ const Admin = () => {
       label: 'My Position Stats',
       component: <RecruiterPositionStats />
     }] : []),
+    // Recruiter Reports - Only visible for recruiters
+    ...(isRecruiter ? [{
+      id: 'recruiter-reports',
+      icon: BarChart3,
+      label: 'My Reports',
+      component: <RecruiterReports />
+    }] : []),
 // ClientSPOC My Positions - Only visible for ClientSPOC
     ...(isClientSpoc ? [{
       id: 'clientspoc-my-positions',
@@ -237,17 +268,48 @@ const Admin = () => {
       component: <MyAddedPositions />,
       clientspocOnly: true
     }] : []),
+    // Coach/Expert Requests - Visible for ClientSPOC
+    ...(isClientSpoc ? [{
+      id: 'coach-expert-requests',
+      icon: Users,
+      label: 'Recuiters Requests',
+      component: <ClientSpocCoachExpertRequests />,
+      clientspocOnly: true
+    }] : []),
+    // Direct Coach/Expert Requests (Assign Me) - Visible for ClientSPOC
+    ...(isClientSpoc ? [{
+      id: 'direct-coach-expert-requests',
+      icon: UserCheck,
+      label: 'Direct Coach/Expert Request',
+      component: <ClientSpocDirectRequests />,
+      clientspocOnly: true
+    }] : []),
     {
       id: 'position-stats',
       icon: BarChart3,
       label: 'Candidate Stats',
       component: <ClientSpocPositionStats />
     },
+    // ClientSPOC Reports (navigates to separate route)
+    ...(isClientSpoc ? [{
+      id: 'clientspoc-reports-link',
+      icon: BarChart3,
+      label: 'Reports',
+      navigateTo: '/clientspoc-reports',
+      clientspocOnly: true
+    }] : []),
     {
       id: 'access-requests',
       icon: UserCheck,
       label: 'Access Requests',
       component: <AccessRequestsManagement />
+    },
+    {
+      id: 'coach-recruiter-assignments',
+      icon: UserCheck,
+      label: 'Coach→Recruiter Assignments',
+      component: <CoachRecruiterAssignmentsAdmin />,
+      adminOnly: true
     },
     {
       id: 'add-position',
@@ -284,9 +346,32 @@ const Admin = () => {
       id: 'all-experts',
       icon: UsersIcon,
       label: 'All Experts',
-      component: <AllExperts />,
+      component: <AllExperts embedded={true} />,
       adminOnly: true,
       isRoute: false
+    }] : []),
+    // All Recruiters - Visible for Admin & ClientSPOC
+    ...((isAdmin || isClientSpoc) ? [{
+      id: 'all-recruiters',
+      icon: UsersIcon,
+      label: 'All Recruiters',
+      component: <AllRecruiters embedded={true} />,
+      adminOnly: true,
+      isRoute: false
+    }] : []),
+    {
+      id: 'messages',
+      icon: MessageSquare,
+      label: 'Messages',
+      component: <ChatPanel />
+    },
+    // Reports - Visible for Admin only
+    ...(isAdmin ? [{
+      id: 'reports',
+      icon: BarChart3,
+      label: 'Reports',
+      component: <SuperAdminReports />,
+      adminOnly: true,
     }] : [])
   ];
 
@@ -296,8 +381,13 @@ const Admin = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-orange-50/30">
       
       {/* ========== SIDEBAR - DESKTOP ========== */}
-      <aside 
-        className={`hidden lg:block fixed inset-y-0 left-0 z-40 bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900 shadow-2xl transition-all duration-300 ${
+      {isClientSpoc && (
+        <aside className="hidden lg:block fixed inset-y-0 left-0 z-40 transition-all duration-300">
+          <ClientSpocSidebar />
+        </aside>
+      )}
+      {!isClientSpoc && <aside
+        className={`hidden lg:flex lg:flex-col fixed inset-y-0 left-0 z-40 bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900 shadow-2xl transition-all duration-300 ${
           showExpanded ? 'w-64' : 'w-20'
         }`}
         onMouseEnter={() => setIsHovered(true)}
@@ -355,7 +445,7 @@ const Admin = () => {
         </div>
 
         {/* Navigation Menu - Scrollable */}
-        <nav className="flex-1 py-4 px-3 overflow-y-auto scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-900" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+        <nav className="flex-1 min-h-0 py-4 px-3 overflow-y-auto scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-900">
           <ul className="space-y-2">
 {menuItems
               .filter(item => !item.recruiterOnly || isRecruiter)
@@ -369,7 +459,11 @@ const Admin = () => {
                 <li key={item.id}>
                   <button
                     onClick={() => {
-                      setActiveTab(item.id);
+                      if (item.navigateTo) {
+                        navigate(item.navigateTo);
+                      } else {
+                        setActiveTab(item.id);
+                      }
                       setIsMobileSidebarOpen(false);
                     }}
                     className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group relative ${
@@ -378,15 +472,26 @@ const Admin = () => {
                         : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
                     } ${!showExpanded ? 'justify-center' : ''}`}
                   >
-                    <Icon size={20} className="flex-shrink-0" />
-                    
+                    <span className="relative flex-shrink-0">
+                      <Icon size={20} />
+                      {item.id === 'messages' && chatUnread > 0 && (
+                        <>
+                          <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
+                          <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
+                        </>
+                      )}
+                    </span>
+
                     {showExpanded && (
-                      <span 
-                        className="font-medium text-sm flex-1 truncate text-left opacity-0 animate-fadeIn" 
+                      <span
+                        className="font-medium text-sm flex-1 truncate text-left opacity-0 animate-fadeIn"
                         style={{ animationDelay: `${200 + index * 30}ms` }}
                       >
                         {item.label}
                       </span>
+                    )}
+                    {item.id === 'messages' && chatUnread > 0 && showExpanded && (
+                      <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center animate-chat-blink">{chatUnread}</span>
                     )}
 
                     {/* Tooltip for collapsed state */}
@@ -442,16 +547,22 @@ const Admin = () => {
             )}
           </button>
         </div>
-      </aside>
+      </aside>}
 
       {/* ========== SIDEBAR - MOBILE ========== */}
-      {isMobileSidebarOpen && (
+      {isMobileSidebarOpen && isClientSpoc && (
         <div className="lg:hidden fixed inset-0 z-50">
-          <div 
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsMobileSidebarOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 w-64 animate-slide-in"><ClientSpocSidebar /></aside>
+        </div>
+      )}
+      {isMobileSidebarOpen && !isClientSpoc && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
             onClick={() => setIsMobileSidebarOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 w-64 bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900 shadow-2xl animate-slide-in">
+          <aside className="absolute inset-y-0 left-0 w-64 flex flex-col bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900 shadow-2xl animate-slide-in">
             {/* Logo */}
             <div className="p-6 border-b border-blue-700/50">
               <div className="flex items-center justify-between">
@@ -489,7 +600,7 @@ const Admin = () => {
             </div>
 
             {/* Navigation - Scrollable */}
-            <nav className="flex-1 py-4 px-3 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <nav className="flex-1 min-h-0 py-4 px-3 overflow-y-auto scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-900">
               <ul className="space-y-2">
 {menuItems
                   .filter(item => !item.recruiterOnly || isRecruiter)
@@ -503,6 +614,11 @@ const Admin = () => {
                     <li key={item.id}>
                       <button
                         onClick={() => {
+                          if (item.navigateTo) {
+                            navigate(item.navigateTo);
+                            setIsMobileSidebarOpen(false);
+                            return;
+                          }
                           setActiveTab(item.id);
                           setIsMobileSidebarOpen(false);
                         }}
@@ -549,7 +665,7 @@ const Admin = () => {
       )}
 
       {/* ========== MAIN CONTENT ========== */}
-      <div className={`transition-all duration-300 ${showExpanded ? 'lg:pl-64' : 'lg:pl-20'}`}>
+      <div className={`transition-all duration-300 ${isClientSpoc ? (ctxSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64') : (showExpanded ? 'lg:pl-64' : 'lg:pl-20')}`}>
         
         {/* Top Header */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-lg shadow-md border-b-2 border-blue-100">
@@ -745,7 +861,9 @@ const Admin = () => {
 
         {/* Main Content Area */}
         <main className="min-h-screen">
-          {activeMenuItem?.component}
+          <React.Fragment key={activeTab}>
+            {activeMenuItem?.component}
+          </React.Fragment>
         </main>
 
         {/* Footer */}

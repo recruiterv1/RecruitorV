@@ -2,11 +2,32 @@ const express=require('express');
 const router=express.Router();
 const crypto=require('crypto')
 const bcrypt=require('bcryptjs')
-const brevo=require('@getbrevo/brevo');
 const jwt=require('jsonwebtoken');
 const cookieParser=require('cookie-parser');
+const multer=require('multer');
+const { v4: uuidv4 }=require('uuid');
+const { admin }=require('./firebase_ad');
 
 const recruiter=require('../model_fire/recruiterF')
+const { sendEmail, sendEmailFull, templates, renderEmail } = require('../utils/email');
+
+// Accept all file types here; validate extension server-side so browser MIME quirks don't break the upload
+const resumeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 6 * 1024 * 1024 },
+});
+
+const isProduction = !!process.env.K_SERVICE;
+// Session lifetime — long-lived so a page refresh never logs an active user out.
+// Recruiters additionally have a client-side inactivity auto-logout for security.
+const SESSION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const cookieOptions = isProduction
+  ? { httpOnly: true, secure: true, sameSite: "none", maxAge: SESSION_MS, path: "/", domain: ".recruiterv.com" }
+  : { httpOnly: true, secure: false, sameSite: "lax", maxAge: SESSION_MS, path: "/" };
+// clearCookie must NOT include maxAge — maxAge overrides the past-expiry that clearCookie sets
+const clearCookieOptions = isProduction
+  ? { httpOnly: true, secure: true, sameSite: "none", path: "/", domain: ".recruiterv.com" }
+  : { httpOnly: true, secure: false, sameSite: "lax", path: "/" };
 
 
 function authMiddleware(req, res, next) {
@@ -28,34 +49,34 @@ function authMiddleware(req, res, next) {
 
 
 async function sendOtp(email, otp) {
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+      <h2 style="color:#2563eb;">Your RecruiterV Verification Code</h2>
+      <p>Welcome to RecruiterV! Use the code below to complete your registration:</p>
+      <div style="font-size:36px;font-weight:bold;letter-spacing:8px;text-align:center;
+                  padding:20px;background:#eff6ff;border-radius:12px;color:#1d4ed8;margin:24px 0;">
+        ${otp}
+      </div>
+      <p style="color:#6b7280;font-size:14px;">This code expires in 5 minutes. Do not share it with anyone.</p>
+      <p style="color:#6b7280;font-size:14px;">— RecruiterV Team</p>
+    </div>
+  `;
+
+  const _r = await renderEmail('otpCode', { otp }, { subject: 'Your RecruiterV OTP Code', htmlContent: html });
   try {
-
-    const client=new brevo.TransactionalEmailsApi();
-
-    client.setApiKey(
-      brevo.TransactionalEmailsApiApiKeys.apiKey,
-      process.env.BREVO_API_KEY
-    )
-
-    const emailData=new brevo.SendSmtpEmail();
-  
-    emailData.sender = {
-      name: "Recruiter V",
-      email: "admin@recruiterv.com",
-    };
-    emailData.to = [{ email }];
-    emailData.subject = "RecruiterV OTP Code";
-    emailData.htmlContent = `
-      <p>Welcome to RecruiterV! Your one-time verification code is <strong>${otp}</strong>.</p>
-      <p>Please enter this OTP on the registration page within 5 minutes to complete your signup.</p>
-      <p>Do not share this code with anyone for your account's security.</p>
-    `;
-
-    const response = await client.sendTransacEmail(emailData);
-
-  } catch (err) {
-    console.error("❌ OTP Email Error:", err.message);
-    throw new Error("EMAIL_FAILED");
+    await sendEmail(email, _r.subject, _r.htmlContent, 'noreply@recruiterv.com', 'RecruiterV');
+    console.log(`✅ OTP sent to ${email}`);
+  } catch (firstErr) {
+    console.error(`❌ OTP Email Error (attempt 1) to ${email}:`, firstErr.message);
+    try {
+      await new Promise(r => setTimeout(r, 1500));
+      await sendEmail(email, _r.subject, _r.htmlContent, 'noreply@recruiterv.com', 'RecruiterV');
+      console.log(`✅ OTP sent to ${email} (retry)`);
+    } catch (retryErr) {
+      console.error(`❌ OTP Email Error (attempt 2) to ${email}:`, retryErr.message);
+      throw new Error("EMAIL_FAILED");
+    }
   }
 }
 
@@ -64,9 +85,55 @@ async function sendOtp(email, otp) {
 
 
 
+// Accepts base64-encoded file in JSON body — avoids multipart stream issues on Cloud Run
+router.post('/upload-resume', async (req, res) => {
+  try {
+    const { fileBase64, filename: origName } = req.body;
+    if (!fileBase64) return res.status(400).json({ message: 'No file provided' });
+    if (!(origName || '').toLowerCase().endsWith('.pdf')) {
+      return res.status(400).json({ message: 'Only PDF files are allowed' });
+    }
+    const buffer = Buffer.from(fileBase64, 'base64');
+    if (buffer.length > 6 * 1024 * 1024) {
+      return res.status(400).json({ message: 'File too large (max 6MB)' });
+    }
+    const token = uuidv4();
+    const filename = `resumes/${Date.now()}_${uuidv4()}.pdf`;
+    const bucket = admin.storage().bucket();
+    const storageFile = bucket.file(filename);
+    await storageFile.save(buffer, {
+      resumable: false,
+      contentType: 'application/pdf',
+    });
+    await storageFile.setMetadata({
+      metadata: { firebaseStorageDownloadTokens: token }
+    });
+    const resumeUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filename)}?alt=media&token=${token}`;
+    return res.json({ success: true, resumeUrl });
+  } catch (err) {
+    console.error('Resume upload error:', err);
+    return res.status(500).json({ message: 'Failed to upload resume. ' + err.message });
+  }
+});
+
 router.post('/register',async (req,res)=>{
 
-    let {name,email,mobile,experienceCategory,password,roleCategory,planType,specialization,userType}=req.body;
+    let {name,email,mobile,experienceCategory,password,roleCategory,planType,specialization,skillCategory,userType,resumeUrl,agreementAccepted}=req.body;
+
+    // The user ticks "I agree to the Terms & Conditions" on the registration
+    // form, so the account is created already marked as having signed the
+    // agreement for their role. Set here (rather than only in /agreement/submit)
+    // so the flag is guaranteed even if the PDF confirmation email fails.
+    const agreementFields = agreementAccepted === true || agreementAccepted === 'true'
+      ? {
+          agreementSigned: true,
+          agreementRole: roleCategory,
+          agreementSignedAt: new Date(),
+          agreementVersion: 'v1.0',
+          agreementAcceptedAt: 'registration',
+          ...(roleCategory === 'Recruiter' ? { commisiontype: 'Standard 35% + 5% Variable' } : {}),
+        }
+      : {};
 
     try{
         // Check user based on role - different collections for different roles
@@ -76,6 +143,13 @@ router.post('/register',async (req,res)=>{
             existingUser = await recruiter.findRecruiterByEmail(email);
             if(existingUser && existingUser.isVerified){
                 return res.status(400).json({message : "User Already Registered With Us!"});
+            }
+            // Block if phone is already tied to a different verified recruiter account
+            if (mobile) {
+                const phoneOwner = await recruiter.findVerifiedRecruiterByPhone(mobile);
+                if (phoneOwner && phoneOwner.email.toLowerCase() !== email.toLowerCase()) {
+                    return res.status(400).json({ message: "This phone number is already registered with another account." });
+                }
             }
         } else if (roleCategory === "Coach") {
             // Check coach collection
@@ -115,19 +189,34 @@ router.post('/register',async (req,res)=>{
                 email: email.toLowerCase(),
                 mobile,
                 specialization: specialization || '',
+                skillCategory: skillCategory || '',
                 userType: userType || 'free',
                 password: hashPass,
                 otp: hashedOtp,
                 otpExpires,
-                isVerified: false
+                isVerified: false,
+                // New sign-ups are live immediately — no admin/superadmin approval
+                // needed. Admins can revoke access later (accountStatus: 'blocked').
+                accountStatus: 'approved',
+                ...agreementFields,
+                ...(resumeUrl ? { resumeUrl } : {}),
             };
             
             const newCoach = await coach.createCoach(coachData);
             console.log("✅ Coach registered successfully:", newCoach.id);
-            
-            await sendOtp(email,otp);
-            return res.json({ 
-                message: `OTP Sent to your ${email}!`,
+
+            let coachEmailSent = true;
+            try {
+                await sendOtp(email, otp);
+            } catch (emailErr) {
+                console.error("⚠️ Coach OTP email failed (account kept for retry):", emailErr.message);
+                coachEmailSent = false;
+                // Keep the account — user can resend OTP from the OTP page
+            }
+            return res.json({
+                message: coachEmailSent
+                    ? `OTP Sent to your ${email}!`
+                    : `Account created! If you don't receive an OTP email, use the 'Resend OTP' button on the next page.`,
                 roleCategory: "Coach",
                 userType: userType || 'free'
             });
@@ -140,19 +229,34 @@ router.post('/register',async (req,res)=>{
                 email: email.toLowerCase(),
                 mobile,
                 specialization: specialization || '',
+                skillCategory: skillCategory || '',
                 userType: userType || 'free',
                 password: hashPass,
                 otp: hashedOtp,
                 otpExpires,
-                isVerified: false
+                isVerified: false,
+                // New sign-ups are live immediately — no admin/superadmin approval
+                // needed. Admins can revoke access later (accountStatus: 'blocked').
+                accountStatus: 'approved',
+                ...agreementFields,
+                ...(resumeUrl ? { resumeUrl } : {}),
             };
             
             const newExpert = await expert.createExpert(expertData);
             console.log("✅ Expert registered successfully:", newExpert.id);
-            
-            await sendOtp(email,otp);
-            return res.json({ 
-                message: `OTP Sent to your ${email}!`,
+
+            let expertEmailSent = true;
+            try {
+                await sendOtp(email, otp);
+            } catch (emailErr) {
+                console.error("⚠️ Expert OTP email failed (account kept for retry):", emailErr.message);
+                expertEmailSent = false;
+                // Keep the account — user can resend OTP from the OTP page
+            }
+            return res.json({
+                message: expertEmailSent
+                    ? `OTP Sent to your ${email}!`
+                    : `Account created! If you don't receive an OTP email, use the 'Resend OTP' button on the next page.`,
                 roleCategory: "Expert",
                 userType: userType || 'free'
             });
@@ -166,10 +270,16 @@ router.post('/register',async (req,res)=>{
                 mobile,
                 experienceCategory,
                 roleCategory,
+                skillCategory: skillCategory || '',
                 password:hashPass,
                 otp:hashedOtp,
                 otpExpires,
-                isVerified: false
+                isVerified: false,
+                // New sign-ups are live immediately — no admin/superadmin approval
+                // needed. Admins can revoke access later (accountStatus: 'blocked').
+                accountStatus: 'approved',
+                ...agreementFields,
+                ...(resumeUrl ? { resumeUrl } : {}),
             };
 
             // Add plan type fields only for Recruiters
@@ -182,11 +292,10 @@ router.post('/register',async (req,res)=>{
                 recruiterData.registrationDate = registrationDate;
                 
                 if (selectedPlanType === 0) {
-                    // Free plan: 2 positions max, 30 days limit
-                    recruiterData.maxPositions = 2;
-                    const expiryDate = new Date(registrationDate);
-                    expiryDate.setDate(expiryDate.getDate() + 30);
-                    recruiterData.planExpiryDate = expiryDate;
+                    // Free plan: can work on max 4 positions (those with an active
+                    // candidate). No time-based expiry.
+                    recruiterData.maxPositions = 4;
+                    recruiterData.planExpiryDate = null;
                 } else {
                     // Paid plan: unlimited positions, no expiry
                     recruiterData.maxPositions = null;
@@ -200,21 +309,104 @@ router.post('/register',async (req,res)=>{
                 recruiterData.planExpiryDate = null;
             }
 
-            let user = await recruiter.createRecruiter(recruiterData);
-            console.log("✅ Recruiter registered successfully:", user.id);
+            let user;
+            if (existingUser && !existingUser.isVerified) {
+                // Update the existing unverified record with new OTP instead of creating a duplicate
+                await recruiter.updateRecruiter(existingUser.id, {
+                    name, mobile, experienceCategory, roleCategory,
+                    skillCategory: skillCategory || '',
+                    password: hashPass,
+                    otp: hashedOtp,
+                    otpExpires,
+                    ...(recruiterData.planType !== undefined ? { planType: recruiterData.planType } : {}),
+                    ...(recruiterData.registrationDate ? { registrationDate: recruiterData.registrationDate } : {}),
+                    ...(recruiterData.maxPositions !== undefined ? { maxPositions: recruiterData.maxPositions } : {}),
+                    ...(recruiterData.planExpiryDate !== undefined ? { planExpiryDate: recruiterData.planExpiryDate } : {}),
+                });
+                user = { id: existingUser.id, ...recruiterData };
+                console.log("✅ Recruiter OTP refreshed (existing unverified):", existingUser.id);
+            } else {
+                user = await recruiter.createRecruiter(recruiterData);
+                console.log("✅ Recruiter registered successfully:", user.id);
+            }
 
-            await sendOtp(email,otp);
-            res.json({ 
-                message: `OTP Sent to your ${email}!`,
+            let recruiterEmailSent = true;
+            try {
+                await sendOtp(email, otp);
+            } catch (emailErr) {
+                console.error("⚠️ Recruiter OTP email failed (account kept for retry):", emailErr.message);
+                recruiterEmailSent = false;
+                // Keep the account — user can resend OTP from the OTP page
+            }
+            res.json({
+                message: recruiterEmailSent
+                    ? `OTP Sent to your ${email}!`
+                    : `Account created! If you don't receive an OTP email, use the 'Resend OTP' button on the next page.`,
                 roleCategory: roleCategory || "Recruiter"
             });
         }
     }
     catch(err){
         console.error("❌ Registration error:", err);
-        res.status(500).json({error: err.message})
+        if (err.message === "EMAIL_FAILED") {
+            return res.status(503).json({
+                error: "EMAIL_FAILED",
+                message: "Registration saved but we could not send the OTP email. Please try again in a moment or contact support."
+            });
+        }
+        res.status(500).json({ error: err.message });
     }
 })
+
+router.post("/resend_otp", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    // Find user across all collections
+    let user = await recruiter.findRecruiterByEmail(email);
+    let userCollection = 'recruiter';
+
+    if (!user) {
+      const coach = require('../model_fire/coachF');
+      user = await coach.findCoachByEmail(email);
+      userCollection = 'coach';
+    }
+    if (!user) {
+      const expert = require('../model_fire/expertF');
+      user = await expert.findExpertByEmail(email);
+      userCollection = 'expert';
+    }
+
+    if (!user) return res.status(404).json({ message: "No account found for this email" });
+    if (user.isVerified) return res.status(400).json({ message: "Account is already verified. Please login." });
+
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    const hashedOtp = crypto.createHash("sha256").update(String(otp)).digest('hex');
+    const otpExpires = Date.now() + 60 * 5 * 1000;
+
+    if (userCollection === 'coach') {
+      const coach = require('../model_fire/coachF');
+      await coach.updateCoach(user.id, { otp: hashedOtp, otpExpires });
+    } else if (userCollection === 'expert') {
+      const expert = require('../model_fire/expertF');
+      await expert.updateExpert(user.id, { otp: hashedOtp, otpExpires });
+    } else {
+      await recruiter.updateRecruiter(user.id, { otp: hashedOtp, otpExpires });
+    }
+
+    await sendOtp(email, otp);
+    console.log(`✅ OTP resent to ${email}`);
+    res.json({ message: `OTP resent to ${email}` });
+
+  } catch (err) {
+    console.error("❌ Resend OTP error:", err);
+    if (err.message === "EMAIL_FAILED") {
+      return res.status(503).json({ message: "Failed to send email. Please try again." });
+    }
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 router.post("/otp_verify", async (req, res) => {
   try {
@@ -263,40 +455,42 @@ router.post("/otp_verify", async (req, res) => {
     }
 
     // ---- SUCCESS ----
-    // Update based on collection
+    const sendPendingEmail = async (name, role, toEmail) => {
+      try {
+        const _r = await renderEmail('registrationPending',
+          { name, userType: role },
+          { subject: `We've received your RecruiterV registration — under review`, htmlContent: templates.registrationPending(name, role) });
+        await sendEmailFull({ to: toEmail, subject: _r.subject, htmlContent: _r.htmlContent, fromEmail: 'noreply@recruiterv.com', fromName: 'RecruiterV' });
+      } catch (err) { console.error('Registration pending email failed:', err); }
+    };
+
     if (userCollection === 'coach') {
       const coach = require('../model_fire/coachF');
-      await coach.updateCoach(user.id, {
-        isVerified: true,
-        otp: null,
-        otpExpires: null,
-      });
-      return res.json({ 
-        message: "OTP verified successfully. Redirecting...",
+      await coach.updateCoach(user.id, { isVerified: true, otp: null, otpExpires: null });
+      sendPendingEmail(user.name || user.email, 'Coach', user.email);
+      return res.json({
+        message: "OTP verified successfully.",
+        showPendingModal: true,
         roleCategory: "Coach",
         userType: user.userType || 'free'
       });
     } else if (userCollection === 'expert') {
       const expert = require('../model_fire/expertF');
-      await expert.updateExpert(user.id, {
-        isVerified: true,
-        otp: null,
-        otpExpires: null,
-      });
-      return res.json({ 
-        message: "OTP verified successfully. Redirecting...",
+      await expert.updateExpert(user.id, { isVerified: true, otp: null, otpExpires: null });
+      sendPendingEmail(user.name || user.email, 'Expert', user.email);
+      return res.json({
+        message: "OTP verified successfully.",
+        showPendingModal: true,
         roleCategory: "Expert",
         userType: user.userType || 'free'
       });
     } else {
       // Recruiter
-      await recruiter.updateRecruiter(user.id, {
-        isVerified: true,
-        otp: null,
-        otpExpires: null,
-      });
-      return res.json({ 
-        message: "OTP verified successfully. Redirecting...",
+      await recruiter.updateRecruiter(user.id, { isVerified: true, otp: null, otpExpires: null });
+      sendPendingEmail(user.name || user.email, user.roleCategory || 'Recruiter', user.email);
+      return res.json({
+        message: "OTP verified successfully.",
+        showPendingModal: true,
         roleCategory: user.roleCategory || "Recruiter",
         planType: user.planType
       });
@@ -344,6 +538,18 @@ router.post('/rec_verify',async (req,res)=>{
             userCollection = 'expert';
         }
 
+        // 4. If not found, check referer collection
+        if (!user) {
+            console.log(`🔍 Expert not found, searching referer collection...`);
+            const { db } = require('./firebase_ad');
+            const refSnap = await db.collection('referer_db').where('email', '==', email).limit(1).get();
+            if (!refSnap.empty) {
+                const d = refSnap.docs[0];
+                user = { id: d.id, ...d.data() };
+                userCollection = 'referer';
+            }
+        }
+
         // User not found in any collection
         if(!user) {
             console.log(`❌ User not found in any collection`);
@@ -361,11 +567,65 @@ router.post('/rec_verify',async (req,res)=>{
         console.log(`🔑 Password in DB: ${user.password ? (user.password.startsWith('$2') ? '[BCRYPT_HASH]' : '[PLAIN_TEXT]') : '[MISSING]'}`);
         console.log(`✓ isVerified: ${user.isVerified}`);
 
+        // Block login unless account is explicitly approved (or has no status = legacy pre-migration user).
+        // New sign-ups are 'approved' automatically; 'blocked' is set by an admin/
+        // superadmin (or the recruiter's vendor) to revoke access at any time.
+        if (user.accountStatus && user.accountStatus !== 'approved') {
+            const { SUSPENSION_MESSAGE } = require('../model_fire/inactivityF');
+            const msgs = {
+                pending:  "Your account is pending admin approval. You will receive an email once approved.",
+                waitlist: "Your account is on the waitlist. Please wait for admin approval before logging in.",
+                blocked:  "Your access has been put on hold by the administrator. Please contact support for assistance.",
+                suspended: SUSPENSION_MESSAGE,
+            };
+            return res.status(403).json({
+                success: false,
+                message: msgs[user.accountStatus] || "Your account has not been approved. Please contact support.",
+                errorCode: "ACCOUNT_" + user.accountStatus.toUpperCase(),
+            });
+        }
+
+        // Auto-suspend inactive recruiters at login (safety net between daily sweeps):
+        // registered ≥45 days ago with zero activity (no assignment, no submission,
+        // no referral, no direct applicants) → suspend now and block this login.
+        if (userCollection === 'recruiter' && (!user.accountStatus || user.accountStatus === 'approved')) {
+            try {
+                const { isRecruiterInactiveByEmail, SUSPENSION_MESSAGE } = require('../model_fire/inactivityF');
+                if (await isRecruiterInactiveByEmail(user.email, user)) {
+                    await recruiter.updateRecruiter(user.id, {
+                        accountStatus: 'suspended', isActive: false,
+                        suspendedAt: new Date(), suspendedReason: 'inactivity',
+                    });
+                    return res.status(403).json({ success: false, message: SUSPENSION_MESSAGE, errorCode: 'ACCOUNT_SUSPENDED' });
+                }
+            } catch (e) {
+                console.error('Inactivity check failed (allowing login):', e.message);
+            }
+        }
+
+        // Same inactivity gate for coaches/experts (+ "no team created" condition).
+        if ((userCollection === 'coach' || userCollection === 'expert') && (!user.accountStatus || user.accountStatus === 'approved')) {
+            try {
+                const { isCoachExpertInactiveByEmail, SUSPENSION_MESSAGE } = require('../model_fire/inactivityF');
+                if (await isCoachExpertInactiveByEmail(user.email, user)) {
+                    const model = userCollection === 'coach' ? require('../model_fire/coachF') : require('../model_fire/expertF');
+                    const updateFn = userCollection === 'coach' ? model.updateCoach : model.updateExpert;
+                    await updateFn(user.id, {
+                        accountStatus: 'suspended', isActive: false,
+                        suspendedAt: new Date(), suspendedReason: 'inactivity',
+                    });
+                    return res.status(403).json({ success: false, message: SUSPENSION_MESSAGE, errorCode: 'ACCOUNT_SUSPENDED' });
+                }
+            } catch (e) {
+                console.error('Coach/Expert inactivity check failed (allowing login):', e.message);
+            }
+        }
+
         // Check if user is verified (OTP verified)
         // For coaches/experts added via admin panel, isVerified might not be set
         // They should be able to login without OTP verification
         const requiresOtpVerification = userCollection === 'recruiter' && user.isVerified === false;
-        if (requiresOtpVerification) { 
+        if (requiresOtpVerification) {
             console.log(`⚠️ User is not OTP verified, rejecting login`);
             return res.status(403).json({ 
                 success: false,
@@ -397,55 +657,69 @@ router.post('/rec_verify',async (req,res)=>{
                 }
 
                 let token = jwt.sign(
-                    {email: user.email}, 
-                    process.env.SECKEY, 
-                    { expiresIn: "1h" }
+                    {email: user.email, portal: 'user'},
+                    process.env.SECKEY,
+                    { expiresIn: "30d" }
                 );
                 
-                res.cookie("__session", token, {
-                    httpOnly: true,
-                    secure: true,
-                    sameSite: "none", // Required for cross-site cookies
-                    maxAge: 3600000, // 1 hour in milliseconds
-                    path: "/",
-                    domain: ".recruiterv.com" // Allow subdomain sharing
-                });
-                
+                res.cookie("__session", token, cookieOptions);
+
                 // Return user data based on collection type
                 if (userCollection === 'coach') {
                     res.json({
                         message: "Login Successfully!",
+                        token,
                         user: {
                             name: user.name,
                             email: user.email,
                             roleCategory: "Coach",
                             specialization: user.specialization,
-                            userType: user.userType
+                            skillCategory: user.skillCategory || '',
+                            userType: user.userType,
+                            agreementSigned: !!user.agreementSigned
                         }
                     });
                 } else if (userCollection === 'expert') {
                     res.json({
                         message: "Login Successfully!",
+                        token,
                         user: {
                             name: user.name,
                             email: user.email,
                             roleCategory: "Expert",
                             specialization: user.specialization,
-                            userType: user.userType
+                            skillCategory: user.skillCategory || '',
+                            userType: user.userType,
+                            agreementSigned: !!user.agreementSigned
+                        }
+                    });
+                } else if (userCollection === 'referer') {
+                    res.json({
+                        message: "Login Successfully!",
+                        token,
+                        user: {
+                            name: user.name,
+                            email: user.email,
+                            roleCategory: "Referrer",
+                            skillCategory: user.skillCategory || '',
+                            agreementSigned: true
                         }
                     });
                 } else {
                     res.json({
                         message: "Login Successfully!",
+                        token,
                         user: {
                             name: user.name,
                             email: user.email,
                             roleCategory: user.roleCategory,
                             experienceCategory: user.experienceCategory,
+                            skillCategory: user.skillCategory || '',
                             planType: user.planType,
                             maxPositions: user.maxPositions,
                             planExpiryDate: user.planExpiryDate,
-                            registrationDate: user.registrationDate
+                            registrationDate: user.registrationDate,
+                            agreementSigned: !!user.agreementSigned
                         }
                     });
                 }
@@ -464,7 +738,7 @@ router.post('/rec_verify',async (req,res)=>{
                 if(result){
                     // Update lastActive timestamp on successful login
                     const lastActiveUpdate = { lastActive: new Date() };
-                    
+
                     if (userCollection === 'recruiter') {
                         await recruiter.updateRecruiter(user.id, lastActiveUpdate);
                     } else if (userCollection === 'coach') {
@@ -476,56 +750,69 @@ router.post('/rec_verify',async (req,res)=>{
                     }
 
                     let token = jwt.sign(
-                        {email: user.email}, 
-                        process.env.SECKEY, 
-                        { expiresIn: "1h" }
+                        {email: user.email, portal: 'user'},
+                        process.env.SECKEY,
+                        { expiresIn: "30d" }
                     );
-                    
-                    res.cookie("__session", token, {
-                        httpOnly: true,
-                        secure: true,
-                        sameSite: "none", // Required for cross-site cookies
-                        maxAge: 3600000, // 1 hour in milliseconds
-                        path: "/",
-                        domain: ".recruiterv.com" // Allow subdomain sharing
-                    });
-                    
+
+                    res.cookie("__session", token, cookieOptions);
+
                     // Return user data based on collection type
                     if (userCollection === 'coach') {
                         res.json({
                             message: "Login Successfully!",
+                        token,
                             user: {
                                 name: user.name,
                                 email: user.email,
                                 roleCategory: "Coach",
                                 specialization: user.specialization,
-                                userType: user.userType
+                                skillCategory: user.skillCategory || '',
+                                userType: user.userType,
+                                agreementSigned: !!user.agreementSigned
                             }
                         });
                     } else if (userCollection === 'expert') {
                         res.json({
                             message: "Login Successfully!",
+                        token,
                             user: {
                                 name: user.name,
                                 email: user.email,
                                 roleCategory: "Expert",
                                 specialization: user.specialization,
-                                userType: user.userType
+                                skillCategory: user.skillCategory || '',
+                                userType: user.userType,
+                                agreementSigned: !!user.agreementSigned
                             }
                         });
-                    } else {
-                        // Recruiter (existing behavior)
+                    } else if (userCollection === 'referer') {
                         res.json({
                             message: "Login Successfully!",
+                        token,
                             user: {
                                 name: user.name,
                                 email: user.email,
-                                roleCategory: user.roleCategory,  // undefined for old database users
+                                roleCategory: "Referrer",
+                                skillCategory: user.skillCategory || '',
+                                agreementSigned: true
+                            }
+                        });
+                    } else {
+                        res.json({
+                            message: "Login Successfully!",
+                        token,
+                            user: {
+                                name: user.name,
+                                email: user.email,
+                                roleCategory: user.roleCategory,
                                 experienceCategory: user.experienceCategory,
+                                skillCategory: user.skillCategory || '',
                                 planType: user.planType,
                                 maxPositions: user.maxPositions,
                                 planExpiryDate: user.planExpiryDate,
-                                registrationDate: user.registrationDate
+                                registrationDate: user.registrationDate,
+                                agreementSigned: !!user.agreementSigned
                             }
                         });
                     }
@@ -561,7 +848,16 @@ router.get('/check', authMiddleware, async (req,res)=>{
         }
 
         const decode = jwt.verify(token, process.env.SECKEY);
-        
+
+        // NOTE: We intentionally do NOT reject `portal: 'admin'` tokens here.
+        // AuthPro calls /admin/authcheck FIRST — a genuine admin/clientspoc is
+        // already resolved there. We only reach this point when /admin/authcheck
+        // failed, which means the user is NOT a resolvable admin and SHOULD be
+        // resolved as a recruiter/coach/expert/superadmin (e.g. a SuperAdmin who
+        // lives in recruiter_db but signs in via the admin portal). Rejecting
+        // here would log those users out on refresh. Dual-account disambiguation
+        // is handled entirely by the /admin/authcheck `portal: 'user'` gate.
+
         // Check all four collections
         let user = await recruiter.findRecruiterByEmail(decode.email);
         let userCollection = 'recruiter';
@@ -587,36 +883,54 @@ router.get('/check', authMiddleware, async (req,res)=>{
 
         if (!user) return res.status(404).json({ message: "User not found" });
 
+        // Access revoked by an admin/superadmin (or the recruiter's vendor) —
+        // reject here too, so an already-signed-in user loses access on their next
+        // page load instead of keeping a working session until the token expires.
+        if ((user.accountStatus || '') === 'blocked') {
+            return res.status(403).json({
+                message: "Your access has been put on hold by the administrator.",
+                errorCode: "ACCOUNT_BLOCKED",
+            });
+        }
+
         // Return user data based on collection type
         if (userCollection === 'coach') {
             res.status(200).json({
                 message: "User authenticated",
                 user: {
-                    uid: user.id,  // Include database ID for API calls
+                    uid: user.id,
                     name: user.name,
                     email: user.email,
                     roleCategory: "Coach",
                     specialization: user.specialization,
-                    userType: user.userType
+                    skillCategory: user.skillCategory || '',
+                    userType: user.userType,
+                    isEmployee: !!user.isEmployee,
+                    designation: user.designation || '',
+                    agreementSigned: !!user.agreementSigned
                 }
             });
         } else if (userCollection === 'expert') {
             res.status(200).json({
                 message: "User authenticated",
                 user: {
-                    uid: user.id,  // Include database ID for API calls
+                    uid: user.id,
                     name: user.name,
                     email: user.email,
                     roleCategory: "Expert",
                     specialization: user.specialization,
-                    userType: user.userType
+                    skillCategory: user.skillCategory || '',
+                    userType: user.userType,
+                    isEmployee: !!user.isEmployee,
+                    designation: user.designation || '',
+                    agreementSigned: !!user.agreementSigned
                 }
             });
         } else if (userCollection === 'clientspoc') {
             res.status(200).json({
                 message: "User authenticated",
                 user: {
-                    uid: user.id,  // Include database ID for API calls
+                    uid: user.id,
                     name: user.name,
                     email: user.email,
                     roleCategory: "ClientSPOC",
@@ -629,15 +943,20 @@ router.get('/check', authMiddleware, async (req,res)=>{
             res.status(200).json({
                 message: "User authenticated",
                 user: {
-                    uid: user.id,  // Include database ID for API calls
+                    uid: user.id,
                     name: user.name,
                     email: user.email,
                     roleCategory: user.roleCategory,
+                    role: user.role,
                     experienceCategory: user.experienceCategory,
+                    skillCategory: user.skillCategory || '',
+                    isEmployee: !!user.isEmployee,
+                    designation: user.designation || '',
                     planType: user.planType,
                     maxPositions: user.maxPositions,
                     planExpiryDate: user.planExpiryDate,
-                    registrationDate: user.registrationDate
+                    registrationDate: user.registrationDate,
+                    agreementSigned: !!user.agreementSigned
                 }
             });
         }
@@ -708,13 +1027,7 @@ router.get('/check-plan-limits', authMiddleware, async (req, res) => {
 });
 
 router.post('/logout', (req,res)=>{
-    res.clearCookie("__session", {
-    httpOnly: true,
-    sameSite: "none",
-    secure: true,
-    path: "/",
-    domain: ".recruiterv.com"
- });
+    res.clearCookie("__session", clearCookieOptions);
     res.status(200).json({ "message" : "Loggedout Successfully!" })
 })
 
@@ -741,23 +1054,7 @@ router.post('/send-recruiter-email', async (req, res) => {
             });
         }
 
-        // Send email using Brevo
-        const client = new brevo.TransactionalEmailsApi();
-        client.setApiKey(
-            brevo.TransactionalEmailsApiApiKeys.apiKey,
-            process.env.BREVO_API_KEY
-        );
-
-        const emailData = new brevo.SendSmtpEmail();
-        emailData.sender = {
-            name: "RecruiterV Admin",
-            email: "admin@recruiterv.com",
-        };
-        emailData.to = [{ email: to }];
-        emailData.subject = subject;
-        emailData.htmlContent = body.replace(/\n/g, '<br>'); // Convert newlines to HTML breaks
-
-        await client.sendTransacEmail(emailData);
+        await sendEmail(to, subject, body.replace(/\n/g, '<br>'), 'admin@recruiterv.com', 'RecruiterV Admin');
 
         res.status(200).json({
             success: true,
@@ -859,13 +1156,27 @@ router.post('/forgot-password', async (req, res) => {
             });
         }
 
-        // Find user by email
-        const user = await recruiter.findRecruiterByEmail(email);
+        // Search across all three user collections
+        const coach = require('../model_fire/coachF');
+        const expert = require('../model_fire/expertF');
 
-        // Don't reveal whether user exists - just show success
-        // This prevents email enumeration attacks
+        let user = null;
+        let updateFn = null;
+
+        const rec = await recruiter.findRecruiterByEmail(email);
+        if (rec) { user = rec; updateFn = (id, data) => recruiter.updateRecruiter(id, data); }
+
         if (!user) {
-            // User not found, but don't reveal this to potential attacker
+            const cch = await coach.findCoachByEmail(email);
+            if (cch) { user = cch; updateFn = (id, data) => coach.updateCoach(id, data); }
+        }
+
+        if (!user) {
+            const exp = await expert.findExpertByEmail(email);
+            if (exp) { user = exp; updateFn = (id, data) => expert.updateExpert(id, data); }
+        }
+
+        if (!user) {
             return res.status(200).json({
                 success: true,
                 message: 'If an account exists with this email, a password reset link has been sent.'
@@ -878,11 +1189,10 @@ router.post('/forgot-password', async (req, res) => {
             .createHash("sha256")
             .update(resetToken)
             .digest('hex');
-        
+
         const resetExpires = Date.now() + 60 * 60 * 1000; // 1 hour
 
-        // Store hashed token and expiry in user record
-        await recruiter.updateRecruiter(user.id, {
+        await updateFn(user.id, {
             resetToken: hashedToken,
             resetExpires: resetExpires
         });
@@ -890,45 +1200,14 @@ router.post('/forgot-password', async (req, res) => {
         // Build reset link
         const resetLink = `${process.env.FRONTURL || 'https://www.recruiterv.com'}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
 
-        // Send email with reset link using Brevo
-        const client = new brevo.TransactionalEmailsApi();
-        client.setApiKey(
-            brevo.TransactionalEmailsApiApiKeys.apiKey,
-            process.env.BREVO_API_KEY
+        const { templates: emailTemplates } = require('../utils/email');
+        await sendEmail(
+            user.email,
+            'Password Reset — RecruiterV',
+            emailTemplates.forgotPassword(resetLink, user.name),
+            'noreply@recruiterv.com',
+            'RecruiterV'
         );
-
-        const emailData = new brevo.SendSmtpEmail();
-        emailData.sender = {
-            name: "RecruiterV",
-            email: "admin@recruiterv.com",
-        };
-        emailData.to = [{ email: user.email }];
-        emailData.subject = "Password Reset - RecruiterV";
-        emailData.htmlContent = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #2563eb;">Password Reset Request</h2>
-                <p>Hello ${user.name},</p>
-                <p>You requested to reset your password. Click the button below to create a new password:</p>
-                <p style="text-align: center; margin: 30px 0;">
-                    <a href="${resetLink}" style="background: linear-gradient(to right, #2563eb, #f97316); color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
-                        Reset Password
-                    </a>
-                </p>
-                <p style="color: #6b7280; font-size: 14px;">
-                    This link will expire in <strong>1 hour</strong> for security purposes.
-                </p>
-                <p style="color: #6b7280; font-size: 14px;">
-                    If you didn't request this password reset, please ignore this email.
-                </p>
-                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-                <p style="color: #9ca3af; font-size: 12px;">
-                    RecruiterV Team<br>
-                    admin@recruiterv.com
-                </p>
-            </div>
-        `;
-
-        await client.sendTransacEmail(emailData);
 
         console.log(`✅ Password reset email sent to ${user.email}`);
 
@@ -959,8 +1238,25 @@ router.post('/reset-password', async (req, res) => {
             });
         }
 
-        // Find user
-        const user = await recruiter.findRecruiterByEmail(email);
+        // Search across all three user collections
+        const coach = require('../model_fire/coachF');
+        const expert = require('../model_fire/expertF');
+
+        let user = null;
+        let updateFn = null;
+
+        const rec = await recruiter.findRecruiterByEmail(email);
+        if (rec) { user = rec; updateFn = (id, data) => recruiter.updateRecruiter(id, data); }
+
+        if (!user) {
+            const cch = await coach.findCoachByEmail(email);
+            if (cch) { user = cch; updateFn = (id, data) => coach.updateCoach(id, data); }
+        }
+
+        if (!user) {
+            const exp = await expert.findExpertByEmail(email);
+            if (exp) { user = exp; updateFn = (id, data) => expert.updateExpert(id, data); }
+        }
 
         if (!user) {
             return res.status(400).json({
@@ -978,11 +1274,7 @@ router.post('/reset-password', async (req, res) => {
         }
 
         if (Number(user.resetExpires) < Date.now()) {
-            // Clear expired token
-            await recruiter.updateRecruiter(user.id, {
-                resetToken: null,
-                resetExpires: null
-            });
+            await updateFn(user.id, { resetToken: null, resetExpires: null });
             return res.status(400).json({
                 success: false,
                 message: 'Reset link has expired. Please request a new one.'
@@ -1014,8 +1306,7 @@ router.post('/reset-password', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-        // Update user password and clear reset tokens
-        await recruiter.updateRecruiter(user.id, {
+        await updateFn(user.id, {
             password: hashedPassword,
             resetToken: null,
             resetExpires: null

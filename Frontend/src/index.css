@@ -1,3 +1,50 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ===========================================================================
+   Native app (Capacitor) mobile layout fixes.
+   Scoped to .native-app (added to <html> only inside the app) so the website
+   is completely unaffected. Goal: no left/right page scroll; wide content
+   (tables) scrolls inside its own container and fits the screen.
+   =========================================================================== */
+.native-app,
+.native-app body,
+.native-app #root {
+  max-width: 100vw;
+  overflow-x: clip;              /* clip = no horizontal page scroll, keeps sticky working */
+}
+
+/* Plain HTML tables scroll within themselves instead of widening the page.
+   (Material React Table is excluded — it already has its own scroll container.) */
+.native-app table:not(.MuiTable-root) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.native-app .MuiTableContainer-root {
+  max-width: 100% !important;
+}
+
+/* Media and code never overflow the viewport */
+.native-app img,
+.native-app svg,
+.native-app video,
+.native-app pre {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Trim oversized horizontal padding/margins on small phones */
+@media (max-width: 640px) {
+  .native-app .container {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+  /* Tame fixed-min-width card grids so a column can never exceed the screen */
+  .native-app [style*="minmax("] {
+    grid-template-columns: 1fr !important;
+  }
+}

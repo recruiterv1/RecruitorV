@@ -48,10 +48,11 @@ const CoachExpert = () => {
   const handleLogout = async () => {
     try {
       await axios.post("/auth/logout", {}, { withCredentials: true });
-      dispatch({ type: "LOGOUT" });
-      navigate('/', { replace: true });
     } catch (err) {
       console.error("Logout failed:", err);
+    } finally {
+      dispatch({ type: "LOGOUT" });
+      window.location.href = '/log_rec';
     }
   };
 

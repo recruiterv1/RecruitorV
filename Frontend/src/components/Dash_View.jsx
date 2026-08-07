@@ -1,195 +1,115 @@
 import React, { useState, useContext, useEffect } from 'react';
-import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { SidebarProvider, SidebarContext } from '../context/Sidebarcontext';
 import { UserStateContext } from '../context/AuthPro';
 import Dash_See from '../pages/Dash_See';
 import Sidebar from '../pages/Sidebar';
 import Dash_Header from '../pages/Dash_Header';
 import Footer from '../pages/Footer';
+import PublicHeader from '../pages/Header';
 import ClientSpocSidebar from './Dash_View_ClientSpocSidebar';
 import axios from 'axios';
-import { LayoutDashboard, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Users, DollarSign, TrendingUp, Briefcase, BarChart2, UserPlus, MapPin, ArrowRight, ExternalLink } from 'lucide-react';
 
-// Coach/Expert Sidebar Component (copied from CoachExpertDashboard)
-const CoachExpertSidebar = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { user } = useContext(UserStateContext);
-  const { isSidebarCollapsed, setIsSidebarCollapsed } = useContext(SidebarContext);
-  const isCollapsed = isSidebarCollapsed || false;
+// ── Related Positions Sidebar ─────────────────────────────────────────────────
+const RelatedPositionsSidebar = ({ currentPosId }) => {
+  const [related, setRelated] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleLogout = async () => {
-    try {
-      await axios.post("/auth/logout", {}, { withCredentials: true });
-      navigate('/', { replace: true });
-    } catch (err) {
-      console.error("Logout failed:", err);
-    }
+  useEffect(() => {
+    if (!currentPosId) return;
+    // Fetch full position detail to get skill_category, then find related
+    axios.get(`/api/direct-apply/position/${currentPosId}`)
+      .then(async res => {
+        const skillCat = res.data?.position?.skill_category || '';
+        // Load all active positions
+        const listRes = await axios.get('/api/direct-apply/positions');
+        const all = listRes.data?.positions || [];
+        const filtered = all
+          .filter(p => String(p.pos_id) !== String(currentPosId) && p.skill_category === skillCat)
+          .slice(0, 5);
+        setRelated(filtered);
+      })
+      .catch(() => setRelated([]))
+      .finally(() => setLoading(false));
+  }, [currentPosId]);
+
+  const locArray = (loc) => {
+    if (!loc) return [];
+    if (Array.isArray(loc)) return loc.filter(Boolean);
+    return loc.split(',').map(s => s.trim()).filter(Boolean);
   };
-
-  const toggleCollapse = () => {
-    setIsSidebarCollapsed(!isCollapsed);
-  };
-
-  const isActive = (path) => location.pathname === path;
-
-  // Determine if user is Coach or Expert
-  const isCoach = user?.roleCategory === 'Coach';
-  const isExpert = user?.roleCategory === 'Expert';
-
-  // Menu items for Coach/Expert
-  const menuItems = [
-    {
-      icon: LayoutDashboard,
-      label: 'Dashboard',
-      path: isCoach ? '/coach-dashboard' : '/expert-dashboard',
-      badge: null
-    },
-    {
-      icon: ClipboardList,
-      label: 'All Requests',
-      path: isCoach ? '/coach-requests' : '/expert-requests',
-      badge: null
-    }
-  ];
 
   return (
-    <div
-      className={`${
-        isCollapsed ? 'w-20' : 'w-64'
-      } bg-gradient-to-b from-orange-600 to-orange-800 transition-all duration-300 shadow-2xl flex flex-col overflow-hidden`}
-      style={{ height: '100%' }}
-    >
-      {/* ========== LOGO SECTION ========== */}
-      <div className="flex-shrink-0 p-4 sm:p-6 border-b border-orange-500/50">
-        <div className="flex items-center justify-between">
-          {!isCollapsed && (
-            <div className="flex items-center gap-3 overflow-hidden">
-              <img
-                src="https://www.recruiterv.com/recruitorV.png"
-                alt="RecruiterV Logo"
-                className="w-auto object-contain"
-                style={{ height: '100%' }}
-              />
-            </div>
-          )}
-
-          {isCollapsed && (
-            <img
-              src="https://www.recruiterv.com/recruitorV.png"
-              alt="RecruiterV Logo"
-              className="w-auto object-contain mx-auto"
-              style={{ height: '100%' }}
-            />
-          )}
-
-          <button
-            onClick={toggleCollapse}
-            className={`p-2 text-white hover:bg-orange-500 rounded-lg transition-colors flex-shrink-0 ${
-              isCollapsed ? 'mx-auto mt-4' : ''
-            }`}
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {isCollapsed ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-            )}
-          </button>
+    <aside className="w-full lg:w-80 xl:w-96 flex-shrink-0">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden sticky top-4">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-5 py-4">
+          <h3 className="text-white font-bold text-base">Related Positions</h3>
+          <p className="text-orange-100 text-xs mt-0.5">Similar openings you might like</p>
         </div>
-      </div>
 
-      {/* ========== USER PROFILE SECTION ========== */}
-      <div className="flex-shrink-0 p-4 border-b border-orange-500/50">
-        <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : ''}`}>
-          <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-orange-400 rounded-full flex items-center justify-center flex-shrink-0">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-          </div>
-
-          {!isCollapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-semibold text-sm truncate">
-                {user?.name || (isCoach ? 'Coach' : 'Expert')}
-              </p>
-              <p className="text-orange-200 text-xs truncate">
-                {isCoach ? 'Career Coach' : 'Industry Expert'}
-              </p>
+        {/* List */}
+        <div className="divide-y divide-gray-100">
+          {loading ? (
+            <div className="flex justify-center py-10">
+              <div className="w-7 h-7 border-3 border-orange-400 border-t-transparent rounded-full animate-spin" style={{borderWidth:'3px'}} />
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* ========== NAVIGATION MENU ========== */}
-      <nav className="flex-1 py-4 sm:py-6 px-3 overflow-y-auto">
-        <ul className="space-y-2">
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.path);
-
-            return (
-              <li key={item.path}>
-                <button
-                  onClick={() => navigate(item.path)}
-                  className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group relative w-full text-left ${
-                    active
-                      ? 'bg-white text-orange-600 shadow-lg'
-                      : 'text-orange-100 hover:bg-orange-500/50 hover:text-white'
-                  } ${isCollapsed ? 'justify-center' : ''}`}
-                  title={isCollapsed ? item.label : ''}
+          ) : related.length === 0 ? (
+            <div className="px-5 py-8 text-center text-sm text-gray-400">No related positions found</div>
+          ) : (
+            related.map(pos => {
+              const cities = locArray(pos.location);
+              return (
+                <a
+                  key={pos.pos_id}
+                  href={`/position/${pos.pos_id}`}
+                  className="block px-5 py-4 hover:bg-orange-50 transition-colors group"
                 >
-                  <Icon size={20} className="flex-shrink-0" />
-
-                  {!isCollapsed && (
-                    <span className="font-medium text-sm flex-1 truncate">
-                      {item.label}
-                    </span>
+                  <p className="font-semibold text-gray-900 text-sm group-hover:text-orange-600 transition-colors line-clamp-2 leading-snug">
+                    {pos.position}
+                  </p>
+                  {pos.client && (
+                    <p className="text-xs text-gray-500 mt-1">{pos.client}</p>
                   )}
-
-                  {/* Tooltip for collapsed state */}
-                  {isCollapsed && (
-                    <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none shadow-xl">
-                      {item.label}
-                    </div>
+                  {cities.length > 0 && (
+                    <p className="text-xs text-gray-400 flex items-center gap-1 mt-1">
+                      <MapPin size={11} className="flex-shrink-0" />
+                      {cities.slice(0, 2).join(', ')}{cities.length > 2 ? ` +${cities.length - 2}` : ''}
+                    </p>
                   )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+                  {pos.experience && (
+                    <p className="text-xs text-orange-500 font-semibold mt-1.5">{pos.experience}</p>
+                  )}
+                </a>
+              );
+            })
+          )}
+        </div>
 
-      {/* ========== LOGOUT BUTTON ========== */}
-      <div className="flex-shrink-0 p-4 border-t border-orange-500/50">
-        <button
-          onClick={handleLogout}
-          className={`flex items-center gap-3 w-full px-3 py-3 rounded-lg text-orange-100 hover:bg-red-600 hover:text-white transition-all duration-200 ${
-            isCollapsed ? 'justify-center' : ''
-          }`}
-          title={isCollapsed ? 'Logout' : ''}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16,17 21,12 16,7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          {!isCollapsed && <span className="font-medium text-sm">Logout</span>}
-        </button>
+        {/* View All */}
+        <div className="p-4 border-t border-gray-100 bg-gray-50">
+          <a
+            href="https://www.recruiterv.com/apply"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition-colors"
+          >
+            View All Positions <ExternalLink size={14} />
+          </a>
+        </div>
       </div>
-    </div>
+    </aside>
   );
 };
 
+// Coach/Expert Sidebar Component
 const Dash_View = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchParams] = useSearchParams();
-  const isShareView = searchParams.get('view') === 'share';
+  const location = useLocation();
+  // /position/:pos_id is the public share URL — always render without shell
+  const isShareView = searchParams.get('view') === 'share' || location.pathname.startsWith('/position/');
   const { user } = useContext(UserStateContext);
   const [isSidebarMounted, setIsSidebarMounted] = useState(false);
 
@@ -214,7 +134,7 @@ const Dash_View = () => {
       return <ClientSpocSidebar />;
     }
     if (isCoachOrExpert) {
-      return <CoachExpertSidebar />;
+      return <Sidebar />;
     }
     return <Sidebar />;
   };
@@ -287,8 +207,10 @@ const SidebarContentWrapper = ({ isSidebarOpen, setIsSidebarOpen, isShareView, i
         isShareView ? '' : (isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64')
       }`}
     >
-      {/* ========== HEADER (STICKY) - HIDE IN SHARE VIEW ONLY ========== */}
-      {!isShareView && (
+      {/* ========== HEADER ========== */}
+      {isShareView ? (
+        <PublicHeader />
+      ) : (
         <header className="sticky top-0 z-30 bg-white shadow-sm">
           <Dash_Header onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
         </header>
@@ -305,8 +227,8 @@ const SidebarContentWrapper = ({ isSidebarOpen, setIsSidebarOpen, isShareView, i
         </div>
       </main>
 
-      {/* ========== FOOTER (HIDE IN SHARE VIEW ONLY) ========== */}
-      {!isShareView && <Footer />}
+      {/* ========== FOOTER ========== */}
+      <Footer />
     </div>
   );
 };

@@ -36,6 +36,7 @@ const ClientSpocPositionStats = () => {
   const [summary, setSummary] = useState({
     totalPositions: 0,
     totalCandidates: 0,
+    totalActiveCandidates: 0,
     totalMaxCandidates: 0,
     totalRemaining: 0
   });
@@ -239,7 +240,7 @@ const ClientSpocPositionStats = () => {
       )}
 
       {/* Main Content */}
-      <div className={`transition-all duration-300 ${isCollapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+      <div className={`transition-all duration-300 ${isCollapsed ? 'lg:pl-20' : 'lg:pl-10'}`}>
         
         {/* Header */}
         <header className="sticky top-0 z-30 bg-white shadow-sm">
@@ -300,7 +301,7 @@ const ClientSpocPositionStats = () => {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
           <div className="bg-white rounded-xl p-4 shadow-lg border-2 border-blue-100">
             <div className="flex items-center justify-between">
               <div>
@@ -321,6 +322,18 @@ const ClientSpocPositionStats = () => {
               </div>
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-orange-100 rounded-full flex items-center justify-center">
                 <Users className="text-orange-600 w-5 h-5 sm:w-6 sm:h-6" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 shadow-lg border-2 border-emerald-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Active Candidates</p>
+                <p className="text-2xl sm:text-3xl font-bold text-emerald-600">{formatNumber(summary.totalActiveCandidates ?? 0)}</p>
+              </div>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-full flex items-center justify-center">
+                <CheckCircle className="text-emerald-600 w-5 h-5 sm:w-6 sm:h-6" />
               </div>
             </div>
           </div>
@@ -361,6 +374,7 @@ const ClientSpocPositionStats = () => {
                   <th className="px-4 py-3 text-left text-xs sm:text-sm font-semibold">Position Name</th>
                   <th className="px-4 py-3 text-left text-xs sm:text-sm font-semibold">Client</th>
                   <th className="px-4 py-3 text-center text-xs sm:text-sm font-semibold">Candidates</th>
+                  <th className="px-4 py-3 text-center text-xs sm:text-sm font-semibold">Active Candidates</th>
                   <th className="px-4 py-3 text-center text-xs sm:text-sm font-semibold">Max Limit</th>
                   <th className="px-4 py-3 text-center text-xs sm:text-sm font-semibold">Remaining</th>
                   <th className="px-4 py-3 text-center text-xs sm:text-sm font-semibold">More Candidate</th>
@@ -369,7 +383,7 @@ const ClientSpocPositionStats = () => {
               <tbody className="divide-y divide-gray-100">
                 {positions.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="px-4 py-12 text-center text-gray-500">
+                    <td colSpan="9" className="px-4 py-12 text-center text-gray-500">
                       <div className="flex flex-col items-center">
                         <Briefcase className="w-12 h-12 text-gray-300 mb-3" />
                         <p className="text-lg font-medium">No positions found</p>
@@ -417,11 +431,16 @@ const ClientSpocPositionStats = () => {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`inline-flex items-center justify-center px-2 py-1 rounded-full text-xs sm:text-sm font-bold ${
-                            position.isFull 
-                              ? 'bg-orange-100 text-orange-700' 
+                            position.isFull
+                              ? 'bg-orange-100 text-orange-700'
                               : 'bg-green-100 text-green-700'
                           }`}>
                             {position.candidateCount}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center justify-center px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs sm:text-sm font-bold">
+                            {position.activeCount ?? '—'}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-center">
@@ -461,7 +480,7 @@ const ClientSpocPositionStats = () => {
                       {/* Expanded Row - Candidate Details */}
                       {expandedRows.has(position.id) && (
                         <tr className="bg-gray-50">
-                          <td colSpan="8" className="px-4 py-4">
+                          <td colSpan="9" className="px-4 py-4">
                             {loadingCandidates[position.id] ? (
                               <div className="flex items-center justify-center py-8">
                                 <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-3"></div>

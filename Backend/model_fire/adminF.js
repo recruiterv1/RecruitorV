@@ -800,8 +800,16 @@ const CreatePosition = async (data) => {
   const posAdd = await ad_pos.add({
     ...data,
     pos_id: newPosId,
-    state: Array.isArray(data.state) ? data.state : [],
-    location: Array.isArray(data.location) ? data.location : [],
+    state: Array.isArray(data.state)
+      ? data.state
+      : typeof data.state === 'string'
+      ? data.state.split(',').map(s => s.trim()).filter(Boolean)
+      : [],
+    location: Array.isArray(data.location)
+      ? data.location
+      : typeof data.location === 'string'
+      ? data.location.split(',').map(s => s.trim()).filter(Boolean)
+      : [],
     datePosted: new Date(),
     commison: Number(data.commison)
   });
@@ -829,9 +837,19 @@ const updatePositionById = async (id, data) => {
   // Normalize arrays
   const payload = {
     ...data,
-    state: Array.isArray(data.state) ? data.state : [],
-    location: Array.isArray(data.location) ? data.location : [],
-    commison: data.commison ? Number(data.commison) : 0,
+    state: Array.isArray(data.state)
+      ? data.state
+      : typeof data.state === 'string'
+      ? data.state.split(',').map(s => s.trim()).filter(Boolean)
+      : [],
+    location: Array.isArray(data.location)
+      ? data.location
+      : typeof data.location === 'string'
+      ? data.location.split(',').map(s => s.trim()).filter(Boolean)
+      : [],
+    commison: (data.commison !== undefined && data.commison !== null && data.commison !== '')
+      ? Number(data.commison)
+      : (snap.data().commison ?? 0),
     updatedAt: new Date()
   };
 
@@ -1023,4 +1041,3 @@ module.exports={
   REJECTION_STATUSES,
   CLOSED_STATUSES
 }
-

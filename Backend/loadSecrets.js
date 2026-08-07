@@ -12,7 +12,18 @@ const SECRET_KEYS = [
   "BREVO_SMTP_USER",
   "BREVO_SMTP_PASS",
   "BREVO_API_KEY",
-  "FRONTURL"
+  "FRONTURL",
+  "GMAIL_REPLY_USER",
+  "GMAIL_REPLY_PASS",
+  "ANTHROPIC_API_KEY",
+  "RESEND_API_KEY",
+  "RAZORPAY_KEY_ID",
+  "RAZORPAY_KEY_SECRET",
+  "RAZORPAY_PLAN_MONTHLY",
+  "RAZORPAY_PLAN_6MONTH",
+  "RAZORPAY_PLAN_1YEAR",
+  "RAZORPAY_WEBHOOK_SECRET",
+  "RAZORPAY_CURRENCY"
 ];
 
 const SECRETS = SECRET_KEYS.map(key => ({
@@ -22,7 +33,8 @@ const SECRETS = SECRET_KEYS.map(key => ({
 
 function loadSecretsIntoProcessEnv() {
   for (const { key, secret } of SECRETS) {
-    process.env[key] = secret.value();
+    const val = secret.value();
+    process.env[key] = typeof val === 'string' ? val.trim() : val;
   }
 }
 

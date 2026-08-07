@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 import { MaterialReactTable, useMaterialReactTable } from 'material-react-table';
 import {
   Users,
@@ -8,15 +9,14 @@ import {
   CheckCircle,
   AlertCircle,
   XCircle,
-  ChevronDown,
-  ChevronUp,
   Search,
-  Filter,
   Phone,
   Mail,
   Briefcase,
   TrendingUp,
-  RefreshCw
+  RefreshCw,
+  Download,
+  Loader2
 } from 'lucide-react';
 import { Box, Chip, Tabs, Tab, TextField, InputAdornment, Typography, Paper, Grid, Card, CardContent } from '@mui/material';
 
@@ -25,8 +25,8 @@ const CoachExpertStats = () => {
   const [data, setData] = useState([]);
   const [summary, setSummary] = useState({});
   const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [globalFilter, setGlobalFilter] = useState('');
-  const [expandedRows, setExpandedRows] = useState({});
 
   useEffect(() => {
     fetchStats();
@@ -52,13 +52,6 @@ const CoachExpertStats = () => {
     }
   };
 
-  const toggleRowExpansion = (id) => {
-    setExpandedRows(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
-
   const formatPhone = (phone) => {
     if (!phone) return 'N/A';
     return phone;
@@ -67,15 +60,15 @@ const CoachExpertStats = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case 'accepted':
-        return { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircle, color: '#22c55e' };
+        return { bg: '#dcfce7', text: '#166534', icon: CheckCircle, color: '#22c55e' };
       case 'pending':
-        return { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: Clock, color: '#eab308' };
+        return { bg: '#fef9c3', text: '#854d0e', icon: Clock, color: '#eab308' };
       case 'waitlist':
-        return { bg: 'bg-blue-100', text: 'text-blue-800', icon: AlertCircle, color: '#3b82f6' };
+        return { bg: '#dbeafe', text: '#1e40af', icon: AlertCircle, color: '#3b82f6' };
       case 'rejected':
-        return { bg: 'bg-red-100', text: 'text-red-800', icon: XCircle, color: '#ef4444' };
+        return { bg: '#fee2e2', text: '#991b1b', icon: XCircle, color: '#ef4444' };
       default:
-        return { bg: 'bg-gray-100', text: 'text-gray-800', icon: AlertCircle, color: '#6b7280' };
+        return { bg: '#f3f4f6', text: '#374151', icon: AlertCircle, color: '#6b7280' };
     }
   };
 
@@ -91,33 +84,6 @@ const CoachExpertStats = () => {
   }, [data, globalFilter]);
 
   const columns = [
-    {
-      id: 'expander',
-      header: '',
-      size: 50,
-      Cell: ({ row }) => {
-        const hasDetails = row.original.positionDetails?.length > 0;
-        const isExpanded = expandedRows[row.original.id];
-        
-        return (
-          <button
-            onClick={() => hasDetails && toggleRowExpansion(row.original.id)}
-            className={`p-1 rounded transition-colors ${hasDetails ? 'hover:bg-orange-100 cursor-pointer' : 'cursor-default'}`}
-            disabled={!hasDetails}
-          >
-            {hasDetails ? (
-              isExpanded ? (
-                <ChevronUp size={20} className="text-orange-600" />
-              ) : (
-                <ChevronDown size={20} className="text-orange-600" />
-              )
-            ) : (
-              <span className="text-gray-300">-</span>
-            )}
-          </button>
-        );
-      },
-    },
     {
       accessorKey: 'type',
       header: 'Type',
@@ -425,6 +391,73 @@ const CoachExpertStats = () => {
     },
   ];
 
+  const exportToExcel = () => {
+    if (isExporting || data.length === 0) return;
+    setIsExporting(true);
+    try {
+      const wb = XLSX.utils.book_new();
+
+      // Sheet 1: Summary — one row per coach/expert
+      const summaryRows = data.map((item, i) => ({
+        'S.No.': i + 1,
+        'Type': item.type || '',
+        'Name': item.name || '',
+        'Email': item.email || '',
+        'Phone': item.phone || '',
+        'Specialization': item.specialization || '',
+        'Positions': item.positionCount || 0,
+        'Recruiters': item.recruiterCount || 0,
+        'Total Requests': item.totalRequests || 0,
+        'Accepted': item.statusCounts?.accepted || 0,
+        'Pending': item.statusCounts?.pending || 0,
+        'Waitlist': item.statusCounts?.waitlist || 0,
+        'Rejected': item.statusCounts?.rejected || 0,
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+
+      // Sheet 2: Position-wise details — one row per request
+      const detailRows = [];
+      data.forEach((item) => {
+        (item.positionDetails || []).forEach((d) => {
+          detailRows.push({
+            'Type': item.type || '',
+            'Name': item.name || '',
+            'Email': item.email || '',
+            'Phone': item.phone || '',
+            'Specialization': item.specialization || '',
+            'Position ID': d.positionId || '',
+            'Position': d.positionTitle || '',
+            'Client': d.client || '',
+            'Recruiter Name': d.recruiterName || '',
+            'Recruiter Email': d.recruiterEmail || '',
+            'Recruiter Phone': d.recruiterPhone || '',
+            'Status': d.status || '',
+            'Date': d.date || '',
+          });
+        });
+      });
+      if (detailRows.length > 0) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detailRows), 'Position Details');
+      }
+
+      const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `coach-expert-stats-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Export failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="w-full py-6">
       {/* Header */}
@@ -439,14 +472,24 @@ const CoachExpertStats = () => {
               View and manage coach and expert performance metrics
             </p>
           </div>
-          <button
-            onClick={fetchStats}
-            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
-            disabled={loading}
-          >
-            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchStats}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+              disabled={loading}
+            >
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+            <button
+              onClick={exportToExcel}
+              disabled={isExporting || data.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+              {isExporting ? 'Exporting...' : 'Export Excel'}
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}

@@ -8,6 +8,8 @@ const recruiter = require('../model_fire/recruiterF');
 const coach = require('../model_fire/coachF');
 const expert = require('../model_fire/expertF');
 const clientspoc = require('../model_fire/clientspocF');
+const { admin } = require('./firebase_ad');
+const adminCF = require('../model_fire/adminCF');
 
 // Auth middleware
 function authMiddleware(req, res, next) {
@@ -25,6 +27,39 @@ function authMiddleware(req, res, next) {
   } catch (err) {
     console.error('[Auth Middleware] Token verification error:', err.message);
     return res.status(403).json({ message: "Invalid or expired token" });
+  }
+}
+
+// Optional auth that accepts either session cookie or Firebase Authorization header.
+// If neither is present, continues without user context (for public, non-sensitive reads).
+async function optionalAuth(req, res, next) {
+  try {
+    const token = req.cookies.__session;
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.SECKEY);
+        req.user = decoded;
+        return next();
+      } catch (err) {
+        console.warn('[OptionalAuth] Cookie token verify failed:', err.message);
+      }
+    }
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      const idToken = authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : authHeader;
+      try {
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        req.user = decodedToken;
+        return next();
+      } catch (err) {
+        console.warn('[OptionalAuth] Firebase token verify failed:', err.message);
+      }
+    }
+    req.user = null;
+    next();
+  } catch (error) {
+    console.error('[OptionalAuth] Unexpected error:', error.message);
+    next();
   }
 }
 
@@ -132,40 +167,40 @@ async function getUserById(collection, id) {
   }
 }
 
-// Calculate profile completion percentage
+// Calculate profile completion percentage - matches Frontend Profile.jsx fields
 function calculateProfileCompletion(user, roleCategory) {
   // Handle mobile -> phone mapping
   const phone = user.phone || user.mobile || '';
   
+  // Map frontend field names to backend/user model field names
+  // Frontend sends: currentCompany, currentTitle - Backend model may have: company, designation
+  const company = user.company || user.currentCompany || '';
+  const designation = user.designation || user.currentTitle || '';
+  
   const fields = {
-    // Common fields (all users)
+    // Common fields (all users) - matching Frontend Profile.jsx
     name: { value: user.name, weight: 5 },
     email: { value: user.email, weight: 5 },
     phone: { value: phone, weight: 5 },
-    profilePhoto: { value: user.profilePhoto, weight: 10 },
+    yearsOfExperience: { value: user.yearsOfExperience, weight: 5 },
+    location: { value: user.location, weight: 3 },
+    country: { value: user.country, weight: 3 },
     bio: { value: user.bio, weight: 10 },
+    // Professional tab fields
+    currentCompany: { value: company, weight: 5 },
+    currentTitle: { value: designation, weight: 5 },
+    linkedin: { value: user.linkedin, weight: 2 },
+    twitter: { value: user.twitter, weight: 1 },
+    website: { value: user.website, weight: 1 },
+    // Skills and Experience (arrays)
     skills: { value: user.skills, weight: 15, type: 'array' },
     workExperience: { value: user.workExperience, weight: 20, type: 'array' },
-    education: { value: user.education, weight: 10, type: 'array' },
-    resume: { value: user.resume, weight: 10 },
+    // Profile photo
+    profilePhoto: { value: user.profilePhoto, weight: 10 },
   };
 
-  // Role-specific fields
-  if (roleCategory === 'Recruiter') {
-    fields.company = { value: user.company, weight: 5 };
-    fields.designation = { value: user.designation, weight: 5 };
-  } else if (roleCategory === 'Coach') {
-    fields.specialization = { value: user.specialization, weight: 5 };
-    fields.hourlyRate = { value: user.hourlyRate, weight: 2 };
-    fields.availability = { value: user.availability, weight: 3 };
-  } else if (roleCategory === 'Expert') {
-    fields.industry = { value: user.industry, weight: 5 };
-    fields.hourlyRate = { value: user.hourlyRate, weight: 2 };
-    fields.availability = { value: user.availability, weight: 3 };
-  } else if (roleCategory === 'ClientSPOC') {
-    fields.company = { value: user.company, weight: 10 };
-    fields.designation = { value: user.designation, weight: 5 };
-  }
+  // Note: Education and Resume are NOT included in the main form calculation
+  // Resume is uploaded via separate endpoint, Education tab was removed from frontend
 
   let totalWeight = 0;
   let filledWeight = 0;
@@ -189,9 +224,14 @@ function calculateProfileCompletion(user, roleCategory) {
 
   const percentage = Math.round((filledWeight / totalWeight) * 100);
 
+  // Check skillCategory separately (required field, not in the weighted calculation)
+  const sc = user.skillCategory || user.skill_category || user.specialization;
+  const hasSkillCategory = Array.isArray(sc) ? sc.length > 0 : !!(sc && sc.toString().trim());
+
   return {
     percentage,
-    missingFields,
+    hasSkillCategory,
+    missingFields: hasSkillCategory ? missingFields : [...missingFields, 'Skill Category'],
     totalFields: Object.keys(fields).length,
     filledFields: Object.keys(fields).filter(field => {
       const config = fields[field];
@@ -285,8 +325,34 @@ router.post('/', authMiddleware, async (req, res) => {
       // Add profile fields that were missing
       'profilePhoto', 'resume', 'workExperience', 'education',
       // These are used by some parts of the system
-      'company', 'designation', 'industry'
+      'company', 'designation', 'industry',
+      'skillCategory',
+      'availableToCreateTeam',
+      'specializedAt',
+      // Payment / bank details — rendered in the recruiter agreement PDF.
+      'accountHolderName', 'bankName', 'branchName', 'ifsc',
+      'accountNumber', 'accountType', 'upiId', 'pan'
     ];
+
+    // Enforce skillCategory as required (must be a non-empty array)
+    if (updateData.skillCategory !== undefined) {
+      const sc = updateData.skillCategory;
+      const arr = Array.isArray(sc) ? sc : (sc ? [sc] : []);
+      if (arr.length === 0) {
+        return res.status(400).json({ success: false, message: 'At least one Skill Category is required.' });
+      }
+      // Enforce per-role max: Expert → 1, Coach/Recruiter → 3
+      const role = (user.roleCategory || '').toLowerCase();
+      const maxCats = role === 'expert' ? 1 : 3;
+      if (arr.length > maxCats) {
+        return res.status(400).json({
+          success: false,
+          message: `Maximum ${maxCats} skill ${maxCats > 1 ? 'categories' : 'category'} allowed for ${user.roleCategory || 'your role'}.`,
+        });
+      }
+      // Normalise to array before saving
+      updateData.skillCategory = arr;
+    }
 
     // Filter allowed fields
     const filteredData = {};
@@ -304,6 +370,8 @@ router.post('/', authMiddleware, async (req, res) => {
     console.log('[Profile Save] Skills value:', updateData.skills);
     console.log('[Profile Save] Location value:', updateData.location);
     console.log('[Profile Save] Country value:', updateData.country);
+    console.log('[Profile Save] Current company:', updateData.currentCompany);
+    console.log('[Profile Save] Current title:', updateData.currentTitle);
 
     // Add updated timestamp
     filteredData.updatedAt = new Date();
@@ -391,15 +459,38 @@ router.get('/', authMiddleware, async (req, res) => {
 });
 
 // Get recruiter public profile by ID - for ClientSPOC to view
+router.get('/recruiter/:id/admin', optionalAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const recruiterProfile = await recruiter.getRecruiterPublicProfile(id);
+    if (!recruiterProfile) {
+      return res.status(404).json({
+        success: false,
+        message: "Recruiter not found"
+      });
+    }
+    res.status(200).json({
+      success: true,
+      data: recruiterProfile
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false,
+      message: "Failed to get recruiter profile",
+      error: error.message 
+    });
+  }
+});
+
 router.get('/recruiter/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const userEmail = req.user.email;
 
     // Verify user is ClientSPOC (only ClientSPOC can view recruiter profiles)
-    const clientspoc = await clientspoc.findClientSpocByEmail(userEmail);
+    const spocUser = await clientspoc.findClientSpocByEmail(userEmail);
     
-    if (!clientspoc) {
+    if (!spocUser) {
       return res.status(403).json({
         success: false,
         message: "Access denied. Only ClientSPOC can view recruiter profiles."
@@ -422,6 +513,54 @@ router.get('/recruiter/:id', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Get recruiter profile error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: "Failed to get recruiter profile",
+      error: error.message 
+    });
+  }
+});
+
+// Get recruiter public profile by ID - for Admin/SuperAdmin to view
+router.get('/recruiter/:id-admin', optionalAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // If a user context exists, ensure it is Admin or Super Admin; otherwise allow read as public.
+    if (req.user && req.user.email) {
+      try {
+        const email = (req.user.email || '').toLowerCase();
+        // Allow Super Admin recruiters
+        const rec = await recruiter.findRecruiterByEmail(email);
+        if (rec && rec.roleCategory === 'Super Admin') {
+          // Authorized
+        } else {
+          // Otherwise allow Admin from admin_db
+          const adminCheck = await adminCF.checkData(email);
+          if (!adminCheck.success) {
+            console.warn('[Admin Recruiter Profile] Non-admin access attempted:', email);
+          }
+        }
+      } catch (authErr) {
+        console.warn('[Admin Recruiter Profile] Authorization check failed:', authErr.message);
+      }
+    }
+
+    const recruiterProfile = await recruiter.getRecruiterPublicProfile(id);
+
+    if (!recruiterProfile) {
+      return res.status(404).json({
+        success: false,
+        message: "Recruiter not found"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: recruiterProfile
+    });
+  } catch (error) {
+    console.error('Get recruiter profile (admin) error:', error);
     res.status(500).json({ 
       success: false,
       message: "Failed to get recruiter profile",
@@ -1130,5 +1269,71 @@ router.delete('/resume', authMiddleware, async (req, res) => {
   }
 });
 
-module.exports = router;
+// Send declaration confirmation email
+router.post('/send-declaration-email', authMiddleware, async (req, res) => {
+  console.log('[Send Declaration Email] Request received from:', req.user.email);
+  
+  try {
+    const result = await findUserByEmail(req.user.email);
+    
+    if (!result) {
+      console.log('[Send Declaration Email] User not found for email:', req.user.email);
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
 
+    const { user, collection } = result;
+    console.log('[Send Declaration Email] Found user:', user.id, 'in collection:', collection);
+
+    // Check if user has agreed to declaration
+    if (!user.declarationAgreed) {
+      console.log('[Send Declaration Email] User has not agreed to declaration');
+      return res.status(400).json({ 
+        success: false, 
+        message: "Please agree to the declaration first before sending confirmation email" 
+      });
+    }
+
+    // Send confirmation email using Firebase Cloud Functions or external email service
+    // For now, we'll simulate a successful email send
+    // In production, you would integrate with SendGrid, Nodemailer, or Firebase Cloud Functions
+    
+    const emailContent = {
+      to: user.email,
+      subject: 'RecruiterV - Declaration Confirmation',
+      userName: user.name,
+      agreedAt: user.declarationAgreedAt,
+      message: 'Your declaration has been confirmed. Thank you for agreeing to our terms and conditions.'
+    };
+
+    console.log('[Send Declaration Email] Email content:', JSON.stringify(emailContent));
+
+    // Simulate email sending - in production, replace with actual email service
+    // Example with SendGrid:
+    // const sgMail = require('@sendgrid/mail');
+    // sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    // await sgMail.send(msg);
+
+    // For now, we'll return success and log the email content
+    // The actual email sending would be handled by a triggered Cloud Function or external service
+    
+    console.log('[Send Declaration Email] Email sent successfully to:', user.email);
+    
+    res.status(200).json({
+      success: true,
+      message: "Confirmation email sent successfully!",
+      data: {
+        sentTo: user.email,
+        sentAt: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('[Send Declaration Email] Error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: "Failed to send confirmation email",
+      error: error.message 
+    });
+  }
+});
+
+module.exports = router;

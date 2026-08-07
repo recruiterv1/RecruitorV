@@ -11,6 +11,14 @@
     ],
     "rewrites": [
       {
+        "source": "/position/**",
+        "function": "api"
+      },
+      {
+        "source": "/dash_view/**",
+        "function": "api"
+      },
+      {
         "source": "/auth/**",
         "function": "api"
       },
@@ -67,6 +75,14 @@
         "function": "api"
       },
       {
+        "source": "/vendor/**",
+        "function": "api"
+      },
+      {
+        "source": "/activity/**",
+        "function": "api"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
@@ -75,11 +91,29 @@
     "trailingSlash": false,
     "headers": [
       {
-        "source": "/api/**",
+        "source": "/assets/**",
         "headers": [
           {
-            "key": "Access-Control-Allow-Origin",
-            "value": "*"
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
           }
         ]
       }
@@ -90,11 +124,16 @@
       "source": "Backend",
       "codebase": "default",
       "runtime": "nodejs20",
+      "secrets": ["EMAIL","PASSW","SECKEY","LINKEDIN_CLIENT_ID","LINKEDIN_CLIENT_SECRET","LINKEDIN_REDIRECT_URI","BREVO_SMTP_HOST","BREVO_SMTP_PORT","BREVO_SMTP_USER","BREVO_SMTP_PASS","BREVO_API_KEY","FRONTURL","ANTHROPIC_API_KEY"],
       "ignore": [
         "node_modules",
         "firebase-debug.log",
         "firebase-debug.*.log",
-        "*.local"
+        "*.local",
+        ".env",
+        ".env.*",
+        "serviceAccountKey.json",
+        "login_diagnostic.js"
       ]
     }
   ],

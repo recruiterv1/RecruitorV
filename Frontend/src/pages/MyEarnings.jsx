@@ -18,17 +18,55 @@ const MyEarnings = () => {
   const [earningsData, setEarningsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
 
   // Fetch earnings data
   const fetchEarnings = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.get('/api/recruiter-earnings', { withCredentials: true });
-      if (response.data.success) {
-        setEarningsData(response.data.data);
+      // Load profile for role/email
+      let profile = userProfile;
+      let profileCollection = null;
+      if (!profile) {
+        const profRes = await axios.get('/api/profile', { withCredentials: true });
+        if (profRes.data?.success) {
+          profile = profRes.data.user;
+          profileCollection = profRes.data.collection;
+          setUserProfile(profile);
+        }
+      }
+
+      const role =
+        profile?.roleCategory ||
+        (profileCollection === 'coach' ? 'Coach' : profileCollection === 'expert' ? 'Expert' : 'Recruiter');
+      const email = profile?.email;
+
+      if (role === 'Recruiter') {
+        const response = await axios.get('/api/recruiter-earnings', { withCredentials: true });
+        if (response.data.success) {
+          setEarningsData(response.data.data);
+        } else {
+          setError('Failed to fetch earnings data');
+        }
+      } else if (role === 'Coach' || role === 'Expert') {
+        const response = await axios.get(`/api/coach-expert/earnings`, {
+          params: { email, type: role.toLowerCase() },
+          withCredentials: true
+        });
+        if (response.data.success) {
+          setEarningsData(response.data.data);
+        } else {
+          setError(response.data.message || 'Failed to fetch earnings data');
+        }
       } else {
-        setError('Failed to fetch earnings data');
+        // Unknown role – default to recruiter logic
+        const response = await axios.get('/api/recruiter-earnings', { withCredentials: true });
+        if (response.data.success) {
+          setEarningsData(response.data.data);
+        } else {
+          setError('Failed to fetch earnings data');
+        }
       }
     } catch (err) {
       console.error('Error fetching earnings:', err);
@@ -85,14 +123,21 @@ const MyEarnings = () => {
   }
 
   if (error) {
+    const isCoachNotRecruiter = typeof error === 'string' && /recruiter not found/i.test(error);
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-orange-50/30">
         <div className="text-center bg-red-50 border-2 border-red-200 rounded-xl p-8 max-w-md">
           <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <X className="text-red-600" size={24} />
           </div>
-          <h3 className="text-xl font-bold text-red-800 mb-2">Error Loading Earnings</h3>
-          <p className="text-red-600 mb-4">{error}</p>
+          <h3 className="text-xl font-bold text-red-800 mb-2">
+            {isCoachNotRecruiter ? 'Earnings Not Available' : 'Error Loading Earnings'}
+          </h3>
+          <p className="text-red-600 mb-4">
+            {isCoachNotRecruiter
+              ? 'Earnings are available for recruiter accounts. As a Coach/Expert, this page does not apply.'
+              : error}
+          </p>
           <button
             onClick={fetchEarnings}
             className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"

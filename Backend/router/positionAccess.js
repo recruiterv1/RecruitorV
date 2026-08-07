@@ -6,6 +6,7 @@ const recruiterModel = require('../model_fire/recruiterF');
 const clientspocModel = require('../model_fire/clientspocF');
 const notificationModel = require('../model_fire/notificationF');
 const ad_Pos = require('../model_fire/adminF');
+const { sendPushToEmails } = require('../utils/push');
 
 // Middleware to check authentication
 function authMiddleware(req, res, next) {
@@ -56,49 +57,10 @@ router.post('/request', authMiddleware, async (req, res) => {
       });
     }
 
-    // Check plan limits based on plan type
-    // Free plan (planType = 0): max 4 position requests
-    // Paid plans (planType > 0): higher limits or no limits
-    const stats = await positionAccess.getRecruiterAccessStats(userEmail);
-    
-    // Define limits based on plan type
-    const isFreePlan = user.planType === 0;
-    const maxRequests = isFreePlan ? 4 : 40; // Free: 4, Paid: 40
-    const maxApproved = isFreePlan ? 2 : 40; // Free: 2, Paid: 40
-
-    // Check if user has reached the request limit
-    if (stats.totalRequested >= maxRequests) {
-      return res.status(403).json({
-        success: false,
-        errorCode: "REQUEST_LIMIT_REACHED",
-        message: `Position request limit reached! Your ${isFreePlan ? 'free' : 'paid'} plan allows maximum ${maxRequests} position requests.`,
-        details: {
-          currentCount: stats.totalRequested,
-          maxAllowed: maxRequests,
-          planType: isFreePlan ? 'free' : 'paid',
-          suggestion: isFreePlan 
-            ? "Upgrade to paid plan for unlimited requests, or release existing positions to make room."
-            : "Release existing approved positions to make room for new requests."
-        }
-      });
-    }
-
-    // Check if user has reached the approved limit
-    if (stats.currentlyApproved >= maxApproved) {
-      return res.status(403).json({
-        success: false,
-        errorCode: "APPROVED_LIMIT_REACHED",
-        message: `Position limit reached! Your ${isFreePlan ? 'free' : 'paid'} plan allows maximum ${maxApproved} approved positions at a time.`,
-        details: {
-          currentApproved: stats.currentlyApproved,
-          maxAllowed: maxApproved,
-          planType: isFreePlan ? 'free' : 'paid',
-          suggestion: isFreePlan
-            ? "Upgrade to paid plan for up to 10 approved positions, or release an existing position to request a new one."
-            : "Release an existing position to request a new one."
-        }
-      });
-    }
+    // Note: requesting/assigning a position is unrestricted. The free-plan limit of 4
+    // only counts positions that have an active candidate, so it is enforced at
+    // candidate submission time (see /addit/data/candi), not here.
+    // (30-day expiry removed; access is auto-approved — no ClientSPOC approval.)
 
     // Create the request
     const result = await positionAccess.createAccessRequest(
@@ -190,16 +152,14 @@ router.get('/recruiter/stats', authMiddleware, async (req, res) => {
       user = await clientspocModel.findClientSpocByEmail(userEmail);
     }
     
-    const now = new Date();
-    const expiryDate = user?.planExpiryDate?.toDate ? user.planExpiryDate.toDate() : 
-                      (user?.planExpiryDate ? new Date(user.planExpiryDate) : null);
-    
-    const daysRemaining = expiryDate ? Math.max(0, Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24))) : 30;
-
-    // Set limits based on plan type
+    // Set limits based on plan type. Free recruiters can work on max 4 positions,
+    // where a "working" position has at least 1 active (non-rejected) candidate.
     const isFreePlan = user?.planType === 0;
     const maxPositions = isFreePlan ? 4 : 40;  // Free: 4, Paid: 40
-    const maxApproved = isFreePlan ? 2 : 40;   // Free: 2, Paid: 40
+    const maxApproved = isFreePlan ? 4 : 40;
+
+    // Authoritative count used for the free-plan limit
+    const { count: currentlyWorking } = await positionAccess.countActiveWorkingPositions(userEmail);
 
     res.status(200).json({
       success: true,
@@ -207,8 +167,10 @@ router.get('/recruiter/stats', authMiddleware, async (req, res) => {
         ...stats,
         maxPositions: maxPositions,
         maxApproved: maxApproved,
-        daysRemaining: daysRemaining,
-        planExpiryDate: expiryDate,
+        currentlyWorking: currentlyWorking,
+        // Expiry removed for free plan
+        daysRemaining: null,
+        planExpiryDate: null,
         isFreePlan: isFreePlan
       }
     });
@@ -318,6 +280,15 @@ router.put('/:requestId/status', authMiddleware, async (req, res) => {
         });
         
         console.log(`✅ Notification sent to recruiter ${requestDetails.recruiterEmail} about ${status} request`);
+
+        // 🔔 Push to the recruiter
+        if (status === 'approved') {
+          sendPushToEmails([requestDetails.recruiterEmail], {
+            title: 'Request accepted',
+            body: `Your access request for "${positionTitle}"${clientName ? ` · ${clientName}` : ''} was accepted.`,
+            data: { type: 'access-approved', posId: requestDetails.positionId || '' },
+          }).catch(() => {});
+        }
       }
     } catch (notificationError) {
       console.error("❌ Error sending notification:", notificationError);
@@ -486,28 +457,13 @@ router.get('/recruiter/position-count', authMiddleware, async (req, res) => {
       user = await clientspocModel.findClientSpocByEmail(userEmail);
     }
 
-    // Get current assignment count
-    const currentCount = await positionAccess.getRecruiterAssignmentCount(userEmail);
+    // Current count = positions the recruiter is actively working on
+    // (≥1 active candidate, excluding released positions). No time-based expiry.
+    const { count: currentCount } = await positionAccess.countActiveWorkingPositions(userEmail);
 
-    // Determine plan type and limits - Updated to 40 for paid plan
     const isFreePlan = user?.planType === 0;
     const maxPositions = isFreePlan ? 4 : 40;
     const remaining = Math.max(0, maxPositions - currentCount);
-
-    // Get plan expiry info if free plan
-    let planInfo = {};
-    if (isFreePlan) {
-      const now = new Date();
-      const expiryDate = user?.planExpiryDate?.toDate ? user.planExpiryDate.toDate() : 
-                        (user?.planExpiryDate ? new Date(user.planExpiryDate) : null);
-      
-      const daysRemaining = expiryDate ? Math.max(0, Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24))) : 30;
-      
-      planInfo = {
-        planExpiryDate: expiryDate,
-        daysRemaining: daysRemaining
-      };
-    }
 
     res.status(200).json({
       success: true,
@@ -516,8 +472,7 @@ router.get('/recruiter/position-count', authMiddleware, async (req, res) => {
         maxPositions: maxPositions,
         positionsRemaining: remaining,
         isFreePlan: isFreePlan,
-        canAssignMore: currentCount < maxPositions,
-        ...planInfo
+        canAssignMore: currentCount < maxPositions
       }
     });
 

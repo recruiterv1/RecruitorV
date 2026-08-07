@@ -19,12 +19,31 @@ import {
   ChevronRight,
   BookOpen,
   Building2,
-  UserCheck
+  UserCheck,
+  ClipboardList,
+  Wrench,
+  BarChart2,
+  FileBarChart2,
+  Layers,
+  List,
+  UserPlus,
+  Store,
+  Crown,
+  Mail,
+  Inbox,
+  Landmark,
+  Sparkles,
+  MessageSquare,
+  BadgeCheck,
 } from 'lucide-react';
+import SuperAdminAIReports from '../pages/SuperAdminAIReports';
+import ChatPanel from './ChatPanel';
+import { useChatNotify } from '../context/ChatNotify';
 
 import ClientSpocAdd from '../pages/ClientSpocAdd';
 import Footer from '../pages/Footer';
 import ClientSpocCompany from '../pages/ClientSpocCompany';
+import AllCompanies from '../pages/AllCompanies';
 import BlogManagement from '../pages/BlogManagement';
 import RecruiterStats from '../pages/RecruiterStats';
 import PositionStats from '../pages/PositionStats';
@@ -33,9 +52,102 @@ import ClientStats from '../pages/ClientStats';
 import Dashboard from '../pages/Dashboard';
 import CandidateStats from '../pages/CandidateStats';
 import CoachExpertStats from '../pages/CoachExpertStats';
+import AllCoaches from '../pages/AllCoaches';
+import AllExperts from '../pages/AllExperts';
+import AllRecruiters from '../pages/AllRecruiters';
+import AllClientSpocs from '../pages/AllClientSpocs';
+import SuperAdminCoachExpertRequests from '../pages/SuperAdminCoachExpertRequests';
+import CoachRecruiterAssignmentsAdmin from '../pages/CoachRecruiterAssignmentsAdmin';
+import { PendingUsersPanel, VendorManagement } from './AdminDashboard';
+import AllVendors from '../pages/AllVendors';
+import SuperAdminAssignedPositions from '../pages/SuperAdminAssignedPositions';
+import CoachVendorRequests from '../pages/CoachVendorRequests';
+import SuperAdminReports from '../pages/SuperAdminReports';
+import RecruiterReport from '../pages/RecruiterReport';
+import CoachReport from '../pages/CoachReport';
+import ExpertReport from '../pages/ExpertReport';
+import ClientSpocReport from '../pages/ClientSpocReport';
+import PositionReport from '../pages/PositionReport';
+import AdminRegistrationReport from '../pages/AdminRegistrationReport';
+import VendorReport from '../pages/VendorReport';
+import CategoryCreate from '../pages/CategoryCreate';
+import CategoryList from '../pages/CategoryList';
+import AllPositions from '../pages/AllPositions';
+import SuperAdminTeams from '../pages/SuperAdminTeams';
+import SuperAdminEmployees from '../pages/SuperAdminEmployees';
+import DirectApplicants from '../pages/DirectApplicants';
+import SuperAdminSendEmail from '../pages/SuperAdminSendEmail';
+import SuperAdminEmailTemplates from '../pages/SuperAdminEmailTemplates';
+import SuperAdminInboxAccess from '../pages/SuperAdminInboxAccess';
+import SuperAdminCompanyAccess from '../pages/SuperAdminCompanyAccess';
+import SuperAdminPublicJobs from '../pages/SuperAdminPublicJobs';
+import SuperAdminConsultingFirms from '../pages/SuperAdminConsultingFirms';
+
+// ─── Admin Tools (inline) ─────────────────────────────────────────────────────
+const AdminTools = () => {
+  const [status, setStatus] = React.useState(null);
+  const [running, setRunning] = React.useState(false);
+
+  const runCleanup = async () => {
+    if (!window.confirm('This will permanently delete duplicate recruiter records (same email + phone). Continue?')) return;
+    setRunning(true);
+    setStatus(null);
+    try {
+      const res = await axios.post('/admin/cleanup-duplicate-recruiters', {}, { withCredentials: true });
+      setStatus({ ok: true, data: res.data });
+    } catch (err) {
+      setStatus({ ok: false, msg: err.response?.data?.message || err.message });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-10">
+      <h2 className="text-xl font-bold text-gray-800 mb-6">Admin Tools</h2>
+
+      {/* Cleanup card */}
+      <div className="bg-white rounded-2xl shadow border border-gray-200 p-6 mb-6">
+        <h3 className="font-semibold text-gray-800 mb-1">Remove Duplicate Recruiters</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Scans the recruiter database for records that share the same email <em>and</em> phone number.
+          Keeps the best record (verified first, then newest) and permanently deletes the duplicates.
+        </p>
+        <button
+          onClick={runCleanup}
+          disabled={running}
+          className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg disabled:opacity-50 transition-colors"
+        >
+          {running ? 'Running…' : 'Run Cleanup'}
+        </button>
+
+        {status && (
+          <div className={`mt-4 p-4 rounded-xl text-sm ${status.ok ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'}`}>
+            {status.ok ? (
+              <>
+                <p className="font-semibold mb-2">{status.data.message}</p>
+                {status.data.deleted.length > 0 && (
+                  <ul className="list-disc pl-5 space-y-0.5 text-xs">
+                    {status.data.deleted.map(d => (
+                      <li key={d.id}>{d.email} — <span className="font-mono">{d.id}</span> {d.isVerified ? '(verified)' : '(unverified)'}</li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            ) : (
+              <p>{status.msg}</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const SuperAdmin = () => {
+  const { total: chatUnread } = useChatNotify();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [openGroups, setOpenGroups] = useState({});
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -58,10 +170,11 @@ const SuperAdmin = () => {
   const handleLogout = async () => {
     try {
       await axios.post("/auth/logout", {}, { withCredentials: true });
-      dispatch({ type: "LOGOUT" });
-      navigate('/', { replace: true });
     } catch (err) {
       console.error("Logout failed:", err);
+    } finally {
+      dispatch({ type: "LOGOUT" });
+      window.location.href = '/log_rec';
     }
   };
 
@@ -73,34 +186,194 @@ const SuperAdmin = () => {
       component: <Dashboard />
     },
     {
-      id: 'candidatestats',
+      id: 'ai-reports',
+      icon: Sparkles,
+      label: 'AI Reports',
+      component: <SuperAdminAIReports />
+    },
+    {
+      id: 'users',
       icon: Users,
-      label: 'Candidate Statistics',
-      component: <CandidateStats />
+      label: 'Users',
+      children: [
+        {
+          id: 'users-all-experts',
+          icon: User,
+          label: 'All Experts',
+          component: <AllExperts embedded />
+        },
+        {
+          id: 'users-all-coaches',
+          icon: UserCheck,
+          label: 'All Coach',
+          component: <AllCoaches embedded />
+        },
+        {
+          id: 'users-all-recruiters',
+          icon: Users,
+          label: 'All Recruiter',
+          component: <AllRecruiters embedded />
+        },
+        {
+          id: 'users-all-clientspocs',
+          icon: Building2,
+          label: 'All ClientSPOC',
+          component: <AllClientSpocs embedded />
+        },
+        {
+          id: 'users-all-vendors',
+          icon: Store,
+          label: 'All Vendor',
+          component: <AllVendors embedded />
+        },
+      ]
     },
     {
-      id: 'recruiterstats',
+      id: 'newly-registered',
+      icon: UserPlus,
+      label: 'Newly Registered',
+      children: [
+        {
+          id: 'newly-registered-experts',
+          icon: User,
+          label: 'Experts',
+          component: <PendingUsersPanel userType="expert" />
+        },
+        {
+          id: 'newly-registered-coaches',
+          icon: UserCheck,
+          label: 'Coaches',
+          component: <PendingUsersPanel userType="coach" />
+        },
+        {
+          id: 'newly-registered-recruiters',
+          icon: Users,
+          label: 'Recruiters',
+          component: <PendingUsersPanel userType="recruiter" />
+        },
+      ]
+    },
+    {
+      id: 'vendor-management',
+      icon: Store,
+      label: 'Vendor Management',
+      component: <VendorManagement />
+    },
+    {
+      id: 'vendor-upgrade-requests',
+      icon: Crown,
+      label: 'New Vendor Request',
+      component: <CoachVendorRequests />
+    },
+    {
+      id: 'statistics',
       icon: Database,
-      label: 'Recruiter Statistics',
-      component: <RecruiterStats />
+      label: 'Statistics',
+      children: [
+        {
+          id: 'candidatestats',
+          icon: Users,
+          label: 'Candidate Statistics',
+          component: <CandidateStats />
+        },
+        {
+          id: 'recruiterstats',
+          icon: Database,
+          label: 'Recruiter Statistics',
+          component: <RecruiterStats />
+        },
+        {
+          id: 'clientstats',
+          icon: Building2,
+          label: 'Client Statistics',
+          component: <ClientStats />
+        },
+        {
+          id: 'positionstats',
+          icon: Briefcase,
+          label: 'Position Statistics',
+          component: <PositionStats />
+        },
+        {
+          id: 'coach-expert-stats',
+          icon: UserCheck,
+          label: 'Coach & Expert Stats',
+          component: <CoachExpertStats />
+        }
+      ]
     },
     {
-      id: 'positionstats',
+      id: 'all-positions',
       icon: Briefcase,
-      label: 'Position Statistics',
-      component: <PositionStats />
+      label: 'All Positions',
+      component: <AllPositions />
     },
-    // {
-    //   id: 'clientspocstats',
-    //   icon: Users,
-    //   label: 'Client SPOC Statistics',
-    //   component: <ClientSpocStats />
-    // },
     {
-      id: 'clientstats',
-      icon: Building2,
-      label: 'Clients Statistics',
-      component: <ClientStats />
+      id: 'assigned-positions',
+      icon: Users,
+      label: 'All Assigned Positions',
+      component: <SuperAdminAssignedPositions />
+    },
+    {
+      id: 'direct-applicants',
+      icon: UserPlus,
+      label: 'Direct Applicants',
+      component: <DirectApplicants />
+    },
+    {
+      id: 'reports',
+      icon: BarChart2,
+      label: 'Reports',
+      children: [
+        {
+          id: 'report-candidate',
+          icon: FileBarChart2,
+          label: 'Candidate Report',
+          component: <SuperAdminReports />
+        },
+        {
+          id: 'report-recruiter',
+          icon: FileBarChart2,
+          label: 'Recruiter Report',
+          component: <RecruiterReport />
+        },
+        {
+          id: 'report-coach',
+          icon: FileBarChart2,
+          label: 'Coach Report',
+          component: <CoachReport />
+        },
+        {
+          id: 'report-expert',
+          icon: FileBarChart2,
+          label: 'Expert Report',
+          component: <ExpertReport />
+        },
+        {
+          id: 'report-clientspoc',
+          icon: FileBarChart2,
+          label: 'Client SPOC Report',
+          component: <ClientSpocReport />
+        },
+        {
+          id: 'report-position',
+          icon: FileBarChart2,
+          label: 'Position Report',
+          component: <PositionReport />
+        },
+        {
+          id: 'report-admin',
+          icon: FileBarChart2,
+          label: 'Admin Report',
+          component: <AdminRegistrationReport />
+        },
+        {
+          id: 'report-vendor',
+          icon: FileBarChart2,
+          label: 'Vendor Report',
+          component: <VendorReport />
+        },
+      ]
     },
     {
       id: 'blogs',
@@ -109,24 +382,124 @@ const SuperAdmin = () => {
       component: <BlogManagement />
     },
     {
-      id: 'coach-expert-stats',
+      id: 'superadmin-coach-expert-requests',
+      icon: ClipboardList,
+      label: 'Coach/Expert Request',
+      component: <SuperAdminCoachExpertRequests />
+    },
+    {
+      id: 'coach-recruiter-assignments',
       icon: UserCheck,
-      label: 'Coach & Expert Stats',
-      component: <CoachExpertStats />
+      label: 'Coach→Recruiter Assignments',
+      component: <CoachRecruiterAssignmentsAdmin />
+    },
+    {
+      id: 'teams',
+      icon: Users,
+      label: 'Teams',
+      component: <SuperAdminTeams />
+    },
+    {
+      id: 'employees',
+      icon: BadgeCheck,
+      label: 'Employees',
+      component: <SuperAdminEmployees />
+    },
+    {
+      id: 'send-email',
+      icon: Mail,
+      label: 'Send Email',
+      component: <SuperAdminSendEmail />
+    },
+    {
+      id: 'email-templates',
+      icon: Mail,
+      label: 'Email Templates',
+      component: <SuperAdminEmailTemplates />
+    },
+    {
+      id: 'inbox-access',
+      icon: Inbox,
+      label: 'Inbox Access',
+      component: <SuperAdminInboxAccess />
+    },
+    {
+      id: 'company-access',
+      icon: Building2,
+      label: 'Company Access',
+      component: <SuperAdminCompanyAccess />
+    },
+    {
+      id: 'public-jobs',
+      icon: Briefcase,
+      label: 'Public Job Requests',
+      component: <SuperAdminPublicJobs />
+    },
+    {
+      id: 'consulting-firms',
+      icon: Landmark,
+      label: 'Consulting Firms',
+      component: <SuperAdminConsultingFirms />
     },
     {
       id: 'company',
-      icon: Users,
-      label: 'Add New Company',
-      component: <ClientSpocCompany/>
+      icon: Building2,
+      label: 'Company',
+      children: [
+        {
+          id: 'company-add',
+          icon: PlusCircle,
+          label: 'Add New Company',
+          component: <ClientSpocCompany/>
+        },
+        {
+          id: 'company-all',
+          icon: Building2,
+          label: 'All Companies',
+          component: <AllCompanies/>
+        },
+      ],
     },
     {
       id: 'clientspoc',
       icon: PlusCircle,
-      label: 'Client SPOC Add',
+      label: 'Add User',
       component: <ClientSpocAdd />
-    }
+    },
+    {
+      id: 'admin-tools',
+      icon: Wrench,
+      label: 'Admin Tools',
+      component: <AdminTools />
+    },
+    {
+      id: 'messages',
+      icon: MessageSquare,
+      label: 'Messages',
+      component: <ChatPanel />
+    },
+    {
+      id: 'category',
+      icon: Layers,
+      label: 'Category',
+      children: [
+        {
+          id: 'category-create',
+          icon: PlusCircle,
+          label: 'Create Menu',
+          component: <CategoryCreate />
+        },
+        {
+          id: 'category-list',
+          icon: List,
+          label: 'All Menu',
+          component: <CategoryList />
+        },
+      ]
+    },
   ];
+
+
 
   const activeMenuItem = menuItems.find(item => item.id === activeTab);
 
@@ -134,8 +507,8 @@ const SuperAdmin = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-orange-50/30">
       
       {/* ========== SIDEBAR - DESKTOP ========== */}
-      <aside 
-        className={`hidden lg:block fixed inset-y-0 left-0 z-40 bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900 shadow-2xl transition-all duration-300 ${
+      <aside
+        className={`hidden lg:flex lg:flex-col fixed inset-y-0 left-0 z-40 bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900 shadow-2xl transition-all duration-300 ${
           showExpanded ? 'w-64' : 'w-20'
         }`}
         onMouseEnter={() => setIsHovered(true)}
@@ -195,48 +568,112 @@ const SuperAdmin = () => {
         </div>
 
         {/* Navigation Menu */}
-        <nav className="flex-1 py-6 px-3 overflow-y-auto scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-900">
+        <nav className="flex-1 min-h-0 py-6 px-3 overflow-y-auto scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-900">
           <ul className="space-y-2">
             {menuItems.map((item, index) => {
-              const Icon = item.icon;
-              const active = activeTab === item.id;
-              
-              return (
-                <li key={item.id}>
-                  <button
-                    onClick={() => {
-                      setActiveTab(item.id);
-                      setIsMobileSidebarOpen(false);
-                    }}
-                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group relative ${
-                      active
-                        ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg'
-                        : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
-                    } ${!showExpanded ? 'justify-center' : ''}`}
-                  >
-                    <Icon size={20} className="flex-shrink-0" />
-                    
-                    {showExpanded && (
-                      <span 
-                        className="font-medium text-sm flex-1 truncate text-left opacity-0 animate-fadeIn" 
-                        style={{ animationDelay: `${200 + index * 30}ms` }}
-                      >
-                        {item.label}
+              if (item.children && Array.isArray(item.children)) {
+                const Icon = item.icon;
+                const isOpen = !!openGroups[item.id];
+                return (
+                  <li key={item.id}>
+                    <button
+                      onClick={() => setOpenGroups(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-blue-100 hover:bg-blue-700/50 hover:text-white transition-all ${!showExpanded ? 'justify-center' : ''}`}
+                    >
+                      <Icon size={18} className="flex-shrink-0" />
+                      {showExpanded && (
+                        <span className="font-semibold text-sm flex-1 truncate text-left">
+                          {item.label}
+                        </span>
+                      )}
+                      {showExpanded && (
+                        <span className="text-xs">{isOpen ? '▾' : '▸'}</span>
+                      )}
+                    </button>
+                    <ul className={`mt-1 space-y-1 ${isOpen ? '' : 'hidden'}`}>
+                      {item.children.map((child, cidx) => {
+                        const ChildIcon = child.icon;
+                        const active = activeTab === child.id;
+                        return (
+                          <li key={child.id}>
+                            <button
+                              onClick={() => {
+                                setActiveTab(child.id);
+                                setIsMobileSidebarOpen(false);
+                              }}
+                              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${
+                                active
+                                  ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg'
+                                  : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
+                              } ${!showExpanded ? 'justify-center' : ''}`}
+                            >
+                              <ChildIcon size={18} className="flex-shrink-0" />
+                              {showExpanded && (
+                                <span 
+                                  className="text-sm flex-1 truncate text-left opacity-0 animate-fadeIn" 
+                                  style={{ animationDelay: `${220 + cidx * 30}ms` }}
+                                >
+                                  {child.label}
+                                </span>
+                              )}
+                              {!showExpanded && !isHovered && (
+                                <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none shadow-xl">
+                                  {child.label}
+                                </div>
+                              )}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                );
+              } else {
+                const Icon = item.icon;
+                const active = activeTab === item.id;
+                return (
+                  <li key={item.id}>
+                    <button
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setIsMobileSidebarOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group relative ${
+                        active
+                          ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg'
+                          : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
+                      } ${!showExpanded ? 'justify-center' : ''}`}
+                    >
+                      <span className="relative flex-shrink-0">
+                        <Icon size={20} />
+                        {item.id === 'messages' && chatUnread > 0 && (
+                          <>
+                            <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
+                            <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
+                          </>
+                        )}
                       </span>
-                    )}
-
-                    {/* Tooltip for collapsed state */}
-                    {!showExpanded && !isHovered && (
-                      <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none shadow-xl">
-                        {item.label}
-                      </div>
-                    )}
-                  </button>
-                </li>
-              );
+                      {showExpanded && (
+                        <span
+                          className="font-medium text-sm flex-1 truncate text-left opacity-0 animate-fadeIn"
+                          style={{ animationDelay: `${200 + index * 30}ms` }}
+                        >
+                          {item.label}
+                        </span>
+                      )}
+                      {item.id === 'messages' && chatUnread > 0 && showExpanded && (
+                        <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center animate-chat-blink">{chatUnread}</span>
+                      )}
+                      {!showExpanded && !isHovered && (
+                        <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none shadow-xl">
+                          {item.label}
+                        </div>
+                      )}
+                    </button>
+                  </li>
+                );
+              }
             })}
-
-
           </ul>
         </nav>
 
@@ -265,7 +702,7 @@ const SuperAdmin = () => {
             className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
             onClick={() => setIsMobileSidebarOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 w-64 bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900 shadow-2xl animate-slide-in">
+          <aside className="absolute inset-y-0 left-0 w-64 flex flex-col bg-gradient-to-b from-blue-900 via-blue-800 to-blue-900 shadow-2xl animate-slide-in">
             {/* Logo */}
             <div className="p-6 border-b border-blue-700/50">
               <div className="flex items-center justify-between">
@@ -302,7 +739,7 @@ const SuperAdmin = () => {
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 py-6 px-3 overflow-y-auto">
+            <nav className="flex-1 min-h-0 py-6 px-3 overflow-y-auto scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-900">
               <ul className="space-y-2">
                 {menuItems.map((item) => {
                   const Icon = item.icon;
@@ -395,7 +832,7 @@ const SuperAdmin = () => {
 
         {/* Main Content Area */}
         <main className="min-h-screen">
-          {activeMenuItem?.component}
+          {(activeMenuItem?.component) || (menuItems.filter(mi => mi.children).flatMap(mi => mi.children).find(ch => ch.id === activeTab)?.component)}
         </main>
 
         {/* Footer */}

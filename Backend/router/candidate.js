@@ -13,6 +13,180 @@ const path=require('path');
 const ad_Pos = require('../model_fire/adminF')
 const positionAccess = require('../model_fire/positionAccessF')
 const notificationModel = require('../model_fire/notificationF')
+const clientspocModel = require('../model_fire/clientspocF')
+const emailModel = require('../model_fire/recruiterEmailF')
+const { sendEmail, sendEmailFull, renderEmail } = require('../utils/email');
+const { sendPushToEmails } = require('../utils/push');
+const { TEMPLATE_MAP, substitute } = require('../utils/emailTemplates');
+
+/**
+ * Send email to ClientSPOC about new candidate submission
+ */
+const sendClientSpocEmailForNewCandidate = async (data) => {
+  console.log(`📧 sendClientSpocEmailForNewCandidate → to: ${data.clientspocEmail}`);
+
+  const {
+    clientspocEmail,
+    clientspocName,
+    positionTitle,
+    positionId,
+    clientName,
+    candidateName,
+    candidateEmail,
+    candidateMobile,
+    relExp,
+    totalExp,
+    currentCTC,
+    expectedCTC,
+    noticePeriod,
+    currentEmployer,
+    rhId,
+    highestEducation,
+    currentLocation,
+    preferredLocation,
+    techSkills,
+    nonTechSkills,
+    recruiterName,
+    recruiterEmail,
+    recruiterPhone,
+    dateSubmitted,
+  } = data;
+
+  const row = (label, value) =>
+    value
+      ? `<tr>
+           <td style="padding:8px 12px;font-size:13px;color:#6b7280;width:170px;vertical-align:top;">${label}</td>
+           <td style="padding:8px 12px;font-size:13px;color:#111827;font-weight:500;">${value}</td>
+         </tr>`
+      : '';
+
+  const skillBadge = (s) =>
+    `<span style="display:inline-block;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;
+      border-radius:20px;padding:2px 10px;font-size:12px;margin:2px;">${s}</span>`;
+
+  const allSkills = [
+    ...(Array.isArray(techSkills) ? techSkills : techSkills ? [techSkills] : []),
+    ...(Array.isArray(nonTechSkills) ? nonTechSkills : nonTechSkills ? [nonTechSkills] : []),
+  ].filter(Boolean);
+
+  const htmlContent = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="max-width:620px;margin:30px auto;background:#ffffff;border-radius:16px;
+       overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#2563eb 0%,#f97316 100%);padding:32px 30px;text-align:center;">
+      <div style="font-size:28px;margin-bottom:8px;">🎯</div>
+      <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;letter-spacing:-0.3px;">
+        New Candidate Submitted
+      </h1>
+      <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">
+        RecruiterV &mdash; Recruitment Management System
+      </p>
+    </div>
+
+    <!-- Body -->
+    <div style="padding:30px;">
+      <p style="margin:0 0 20px;color:#374151;font-size:14px;">
+        Dear <strong>${clientspocName || 'ClientSPOC'}</strong>,
+      </p>
+      <p style="margin:0 0 24px;color:#374151;font-size:14px;">
+        A new candidate profile has been submitted for your position. Please find the complete details below.
+      </p>
+
+      <!-- Position Info -->
+      <div style="background:#eff6ff;border-left:4px solid #2563eb;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
+        <p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.8px;">Position</p>
+        <p style="margin:0;font-size:18px;font-weight:700;color:#1e3a8a;">${positionTitle || '—'}</p>
+        <p style="margin:4px 0 0;font-size:12px;color:#3b82f6;">ID: ${positionId || '—'} &nbsp;|&nbsp; Client: ${clientName || '—'}</p>
+      </div>
+
+      <!-- Candidate Details -->
+      <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:20px;">
+        <div style="background:#f9fafb;padding:10px 16px;border-bottom:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.6px;">
+            👤 Candidate Details
+          </p>
+        </div>
+        <table style="width:100%;border-collapse:collapse;">
+          ${row('Full Name', `<strong>${candidateName || '—'}</strong>`)}
+          ${row('Email', candidateEmail || '—')}
+          ${row('Mobile', candidateMobile || '—')}
+          ${row('RH ID', rhId || '—')}
+          ${row('Current Employer', currentEmployer || '—')}
+          ${row('Highest Education', highestEducation || '—')}
+          ${row('Current Location', currentLocation || '—')}
+          ${row('Preferred Location', preferredLocation || '—')}
+          ${row('Relevant Experience', relExp ? `${relExp} yrs` : '—')}
+          ${row('Total Experience', totalExp ? `${totalExp} yrs` : '—')}
+          ${row('Current CTC', currentCTC ? `₹${currentCTC} LPA` : '—')}
+          ${row('Expected CTC', expectedCTC ? `₹${expectedCTC} LPA` : '—')}
+          ${row('Notice Period', noticePeriod ? `${noticePeriod} days` : '—')}
+        </table>
+      </div>
+
+      <!-- Skills -->
+      ${allSkills.length > 0 ? `
+      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin-bottom:20px;">
+        <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.6px;">
+          🛠️ Skills
+        </p>
+        <div>${allSkills.map(skillBadge).join('')}</div>
+      </div>` : ''}
+
+      <!-- Recruiter & Date -->
+      <div style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+        <div style="background:#f9fafb;padding:10px 16px;border-bottom:1px solid #e5e7eb;">
+          <p style="margin:0;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.6px;">
+            📋 Submission Info
+          </p>
+        </div>
+        <table style="width:100%;border-collapse:collapse;">
+          ${row('Recruiter Name', recruiterName || '—')}
+          ${row('Recruiter Email', recruiterEmail || '—')}
+          ${row('Recruiter Phone', recruiterPhone || '—')}
+          ${row('Date Submitted', dateSubmitted || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'long', timeStyle: 'short' }))}
+        </table>
+      </div>
+
+      <!-- CTA -->
+      <div style="text-align:center;margin-bottom:24px;">
+        <a href="https://www.recruiterv.com"
+           style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#2563eb,#f97316);
+             color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">
+          Review on Dashboard →
+        </a>
+      </div>
+
+      <!-- Footer -->
+      <div style="border-top:1px solid #e5e7eb;padding-top:16px;text-align:center;color:#9ca3af;font-size:11px;">
+        <p style="margin:0 0 4px;font-weight:700;font-size:14px;
+          background:linear-gradient(135deg,#2563eb,#f97316);
+          -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+          RecruiterV
+        </p>
+        <p style="margin:0;">This is an automated notification. Please do not reply to this email.</p>
+        <p style="margin:4px 0 0;">© ${new Date().getFullYear()} RecruiterV. All rights reserved.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  try {
+    const _r = await renderEmail('candidateSubmitted',
+      { candidateName, positionName: positionTitle, dashboardUrl: 'https://www.recruiterv.com/ad_panel#candidates' },
+      { subject: `New Candidate Submitted — ${positionTitle} | ${candidateName}`, htmlContent });
+    const result = await sendEmail(clientspocEmail, _r.subject, _r.htmlContent, 'admin@recruiterv.com', 'RecruiterV');
+    console.log(`✅ ClientSPOC email sent to ${clientspocEmail} — messageId: ${result?.messageId}`);
+    return true;
+  } catch (error) {
+    console.error('❌ ClientSPOC email error:', error.message);
+    return false;
+  }
+};
 
 /**
  * Statuses that indicate a position is CLOSED and cannot accept new candidates
@@ -127,42 +301,157 @@ const isLoggedIn = async (req, res, next) => {
 
 
 
+// True if a candidate with this email or phone has ALREADY been submitted to
+// this position (any status). Resume-bank template records (source
+// 'clientspoc_bulk') are ignored since they are not position submissions.
+async function alreadySubmittedToPosition(pos_id, emails, mob) {
+  const { db } = require('../router/firebase_ad');
+  const email = (emails || '').trim().toLowerCase();
+  const phone = (mob || '').toString().replace(/\D/g, '');
+  if (!pos_id || (!email && !phone)) return false;
+  const snap = await db.collection('candidate_db').where('pos_id', '==', pos_id).get();
+  return snap.docs.some(d => {
+    const c = d.data();
+    if (c.source === 'clientspoc_bulk') return false;
+    const e = (c.emails || '').trim().toLowerCase();
+    const p = (c.mob || '').toString().replace(/\D/g, '');
+    return (email && e === email) || (phone && p && p === phone);
+  });
+}
+
 router.post('/data/candi', isLoggedIn, async (req,res)=>{
   try {
     let news = (await recruiter.findRecruiterByEmail(req.user.email)) ||
                (await google.findByEmail(req.user.email)) ||
                (await linkwa.findByEmails(req.user.email));
 
-    if(!news) return res.status(400).json({ message : "Recruiter Not Found!"});
+    let isCoachOrExpert = false;
+    let submitterRole = 'Recruiter';
+    if (!news) {
+      const coachModel = require('../model_fire/coachF');
+      news = await coachModel.findCoachByEmail(req.user.email);
+      if (news) { isCoachOrExpert = true; submitterRole = 'Coach'; }
+    }
+    if (!news) {
+      const expertModel = require('../model_fire/expertF');
+      news = await expertModel.findExpertByEmail(req.user.email);
+      if (news) { isCoachOrExpert = true; submitterRole = 'Expert'; }
+    }
 
-    let { 
+    if(!news) return res.status(400).json({ message : "User Not Found!"});
+
+let {
       id,statusa,clientspoc,client,hr_name,pos_name,candidate,rel_exp,total_exp,current_ctc,self_rate,
       notice_period,last_day,exp_ctc,curr_state,curr_loc,pref_state,pref_loc,offer_hand,offer_amt,curr_emp,skill_type,
       tech_category,tech_subcategory,tech_skill,tech_exp,nontech_category,nontech_subcategory,nontech_skill,nontech_exp,
-      mob,pos_id,emails,cv_url
+      mob,pos_id,emails,cv_url,photo_url,dob,jr_number,pan_number,rh_id,highest_education,client_answers
     } = req.body;
+
+    // For coach/expert: verify they have access to this position. Access can come
+    // from either collection — a direct request raised to the SPOC
+    // (coach_expert_direct_requests, 'approved') or the coach/expert assigning the
+    // position to themselves (coach_expert_requests, 'accepted'). Checking only the
+    // first blocked every self-assigned coach from submitting.
+    if (isCoachOrExpert) {
+      const { db } = require('../router/firebase_ad');
+      const emailLower = req.user.email.toLowerCase();
+      // 2-field queries (avoid composite index requirement); status filtered in JS
+      const [directSnap, assignSnap] = await Promise.all([
+        db.collection('coach_expert_direct_requests')
+          .where('coachExpertEmail', '==', emailLower)
+          .where('positionId', '==', pos_id).get(),
+        db.collection('coach_expert_requests')
+          .where('coachExpertEmail', '==', emailLower)
+          .where('positionId', '==', pos_id).get(),
+      ]);
+      const hasAccess =
+        directSnap.docs.some(d => d.data().status === 'approved') ||
+        assignSnap.docs.some(d => ['accepted', 'approved'].includes(d.data().status));
+      if (!hasAccess) {
+        return res.status(403).json({ message: "You don't have approved access to submit candidates for this position." });
+      }
+    }
 
     // 🔒 VALIDATION: Check if position is active and recruiter has access
     const positionValidation = await validatePositionForCandidateSubmission(pos_id, news.email);
     if (!positionValidation.valid) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: positionValidation.message,
         positionStatus: positionValidation.position?.status || 'unknown'
       });
+    }
+
+    // 🔒 Free-plan limit: a free recruiter can work on a maximum of 4 positions
+    // (positions with at least 1 active candidate, excluding released ones). Block
+    // submitting a candidate to a NEW position once they already have 4 working
+    // positions. (Coaches/Experts exempt.)
+    if (!isCoachOrExpert && news.planType === 0) {
+      const { count, posIds } = await positionAccess.countActiveWorkingPositions(news.email);
+      if (!posIds.has(pos_id) && count >= 4) {
+        return res.status(403).json({
+          errorCode: "REQUEST_LIMIT_REACHED",
+          message: "Free plan limit reached: you can work on a maximum of 4 positions (those with at least 1 active candidate). Release a position from My Access Requests before submitting candidates to a new one."
+        });
+      }
+      // Submitting a candidate re-engages a previously released position so it counts again.
+      await positionAccess.reengageReleasedPosition(news.email, pos_id);
     }
 
     if (typeof tech_skill === "string") tech_skill = JSON.parse(tech_skill);
     if (typeof tech_exp === "string") tech_exp = JSON.parse(tech_exp);
     if (typeof nontech_skill === "string") nontech_skill = JSON.parse(nontech_skill);
     if (typeof nontech_exp === "string") nontech_exp = JSON.parse(nontech_exp);
+    if (typeof client_answers === "string") { try { client_answers = JSON.parse(client_answers); } catch (_) { client_answers = []; } }
+    if (!Array.isArray(client_answers)) client_answers = [];
+
+    // 🔒 A candidate already submitted to this position cannot be submitted again.
+    if (await alreadySubmittedToPosition(pos_id, emails, mob)) {
+      return res.status(409).json({
+        message: "This candidate has already been submitted to this position and cannot be submitted again.",
+      });
+    }
+
+    // 🎁 Carry referral attribution forward. If this candidate was originally
+    // referred — a manual marketplace upload OR a direct applicant who arrived
+    // via a recruiter's share link — copy the referral owner onto this new
+    // submission so their commission follows any future use by any recruiter.
+    let carryReferral = {};
+    try {
+      const runs = [];
+      if (emails) runs.push(db.collection('candidate_db').where('emails', '==', emails).get());
+      if (mob)    runs.push(db.collection('candidate_db').where('mob', '==', mob).get());
+      const snaps = await Promise.all(runs);
+      let origin = null;
+      for (const s of snaps) {
+        for (const doc of s.docs) {
+          const dd = doc.data();
+          if (dd.referredBy) { origin = dd; break; }
+        }
+        if (origin) break;
+      }
+      if (origin && origin.referredBy) {
+        carryReferral = {
+          referredBy:      origin.referredBy,
+          referredById:    origin.referredById   || '',
+          referredByName:  origin.referredByName  || '',
+          referredByRole:  origin.referredByRole  || '',
+          referredByPhone: origin.referredByPhone || '',
+          referredByPlan:  origin.referredByPlan  || '',
+          referrerProfile: origin.referrerProfile || {},
+          referralCarried: true,   // commission owner inherited from an earlier referral
+        };
+      }
+    } catch (_) { /* attribution is best-effort; never block a submission */ }
 
 
     const user = await candida.createCandidate({
+      ...carryReferral,
       id,
       recId: news.id,
       clientspoc,
-      recEmail: news.email,
+      recEmail: (news.email || '').toLowerCase().trim(),
       recName: news.name,
+      recRole: submitterRole,
       source: news.source,
       hr_name,
       pos_id,
@@ -195,22 +484,68 @@ router.post('/data/candi', isLoggedIn, async (req,res)=>{
       nontech_exp,
       mob,
       emails,
-      statusa:'Submitted'
+      statusa:'Submitted',
+      dob,
+      jr_number,
+      pan_number,
+      rh_id: rh_id || '',
+      highest_education: highest_education || '',
+      photo_url: photo_url || '',
+      client_answers
     });
 
-    // 🔔 Send notification to ClientSPOC about new candidate submission
+    // 🔔 Push to the coach/expert who assigned this position to the submitting recruiter
+    if (!isCoachOrExpert) {
+      try {
+        const { db } = require('../router/firebase_ad');
+        const craSnap = await db.collection('coach_recruiter_assignments')
+          .where('recruiterEmail', '==', news.email)
+          .where('positionId', '==', pos_id)
+          .get();
+        const coachEmails = [...new Set(craSnap.docs
+          .filter(d => (d.data().status || '').toLowerCase() !== 'rejected')
+          .map(d => d.data().coachEmail).filter(Boolean))];
+        if (coachEmails.length) {
+          sendPushToEmails(coachEmails, {
+            title: 'New candidate submitted',
+            body: `${news.name || 'A recruiter'} submitted ${candidate || 'a candidate'} for "${pos_name || ''}"`,
+            data: { type: 'candidate', posId: pos_id || '' },
+          }).catch(() => {});
+        }
+      } catch (_) { /* ignore */ }
+    }
+
+    // 🔔 Send notification and email to ClientSPOC about new candidate submission
     try {
       // Get position details
       const position = positionValidation.position;
       
-      // Get recruiter name
+      // Get recruiter details
       const recruiterName = news.name || news.firstName || req.user.email.split('@')[0];
+      const recruiterPhone = news.phone || news.mobile || news.mob || '';
+      
+      // Get ClientSPOC name
+      let clientspocName = null;
+      try {
+        const clientspocUser = await clientspocModel.findClientSpocByEmail(position.clientspoc);
+        clientspocName = clientspocUser?.name || null;
+      } catch (e) {
+        console.log('Could not fetch ClientSPOC name');
+      }
+      
+      // Get candidate skills for the email
+      let candidateSkills = '';
+      if (tech_skill && Array.isArray(tech_skill)) {
+        candidateSkills = tech_skill.join(', ');
+      } else if (tech_skill) {
+        candidateSkills = String(tech_skill);
+      }
       
       // Send notification to ClientSPOC
       if (position && position.clientspoc) {
         await notificationModel.notifyClientSpocNewCandidate({
           clientspocEmail: position.clientspoc,
-          clientspocName: null, // Will be fetched in the model if needed
+          clientspocName: clientspocName,
           positionId: pos_id,
           positionTitle: position.position,
           clientName: position.client,
@@ -220,10 +555,131 @@ router.post('/data/candi', isLoggedIn, async (req,res)=>{
           recruiterName: recruiterName
         });
         console.log(`✅ Notification sent to ClientSPOC ${position.clientspoc} for new candidate ${candidate}`);
+        
+        // Send email to ClientSPOC
+        console.log(`📧 Sending candidate submission email to ClientSPOC: ${position.clientspoc}`);
+        const emailSent = await sendClientSpocEmailForNewCandidate({
+          clientspocEmail: position.clientspoc,
+          clientspocName: clientspocName,
+          positionTitle: position.position,
+          positionId: pos_id,
+          clientName: position.client,
+          candidateName: candidate,
+          candidateEmail: emails || '',
+          candidateMobile: mob || '',
+          relExp: rel_exp || '',
+          totalExp: total_exp || '',
+          currentCTC: current_ctc || '',
+          expectedCTC: exp_ctc || '',
+          noticePeriod: notice_period || '',
+          currentEmployer: curr_emp || '',
+          rhId: rh_id || '',
+          highestEducation: highest_education || '',
+          currentLocation: curr_loc ? `${curr_loc}${curr_state ? ', ' + curr_state : ''}` : '',
+          preferredLocation: pref_loc ? `${pref_loc}${pref_state ? ', ' + pref_state : ''}` : '',
+          techSkills: Array.isArray(tech_skill) ? tech_skill : (tech_skill ? [tech_skill] : []),
+          nonTechSkills: Array.isArray(nontech_skill) ? nontech_skill : (nontech_skill ? [nontech_skill] : []),
+          recruiterName: recruiterName,
+          recruiterEmail: news.email,
+          recruiterPhone: recruiterPhone,
+          dateSubmitted: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'long', timeStyle: 'short' }),
+        });
+        console.log(`📧 Email to ClientSPOC result: ${emailSent ? 'sent' : 'failed/skipped'}`);
+
+        // Save notification to ClientSPOC's in-app inbox
+        const dateStr = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'long', timeStyle: 'short' });
+        await emailModel.createEmail({
+          recruiterEmail: position.clientspoc.toLowerCase(),
+          folder: 'inbox',
+          from: 'noreply@recruiterv.com',
+          fromName: `RecruiterV – ${recruiterName}`,
+          to: position.clientspoc.toLowerCase(),
+          toName: clientspocName || '',
+          subject: `New Candidate Submitted — ${position.position} (${pos_id}) | ${candidate}`,
+          body: `Position: ${position.position}\nPosition ID: ${pos_id}\nClient: ${position.client || '—'}\n\nCandidate Name: ${candidate}\nCandidate Email: ${emails || '—'}\nCandidate Phone: ${mob || '—'}\nRH ID: ${rh_id || '—'}\nCurrent Employer: ${curr_emp || '—'}\nHighest Education: ${highest_education || '—'}\nCurrent Location: ${curr_loc || '—'}\nRelevant Exp: ${rel_exp || '—'} yrs\nTotal Exp: ${total_exp || '—'} yrs\nCurrent CTC: ${current_ctc ? '₹' + current_ctc + ' LPA' : '—'}\nExpected CTC: ${exp_ctc ? '₹' + exp_ctc + ' LPA' : '—'}\nNotice Period: ${notice_period || '—'} days\n\nRecruiter Name: ${recruiterName}\nRecruiter Email: ${news.email}\nRecruiter Phone: ${recruiterPhone || '—'}\n\nDate Submitted: ${dateStr}`,
+          read: false,
+        });
+        console.log(`📥 In-app inbox message saved for ClientSPOC ${position.clientspoc}`);
       }
     } catch (notificationError) {
-      console.error("❌ Error sending notification:", notificationError);
+      console.error("❌ Error sending notification/email:", notificationError);
       // Don't fail the main request if notification fails
+    }
+
+    // 📧 "Candidate and JD" — email the CANDIDATE with the role-aware position/JD
+    // link (attributed to the submitter via ?rec=), full submitted details and
+    // resume. A copy is stored in the submitter's Inbox → Sent so they have a
+    // record. Fully isolated: never fails the submission.
+    try {
+      const candidateEmail = (emails || '').toString().trim();
+      if (candidateEmail) {
+        const position = positionValidation.position || {};
+        const dash = '—';
+        const skillsStr = (arr) => (Array.isArray(arr) && arr.length ? arr.join(', ') : (arr ? String(arr) : dash));
+        const positionLink = `https://www.recruiterv.com/position/${encodeURIComponent(pos_id || '')}?view=share&rec=${encodeURIComponent((news.email || '').toLowerCase())}`;
+        const dateSubmitted = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'long', timeStyle: 'short' });
+
+        const vars = {
+          submitterName: news.name || (news.email || '').split('@')[0],
+          submitterRole: submitterRole,
+          positionTitle: pos_name || position.position || dash,
+          positionId: pos_id || dash,
+          clientName: client || position.client || dash,
+          positionLink,
+          candidateName: candidate || dash,
+          candidateEmail: candidateEmail,
+          candidatePhone: mob || dash,
+          relExp: rel_exp || dash,
+          totalExp: total_exp || dash,
+          currentCTC: current_ctc ? `₹${current_ctc} LPA` : dash,
+          expectedCTC: exp_ctc ? `₹${exp_ctc} LPA` : dash,
+          noticePeriod: notice_period ? `${notice_period} days` : dash,
+          currentEmployer: curr_emp || dash,
+          currentLocation: curr_loc ? `${curr_loc}${curr_state ? ', ' + curr_state : ''}` : dash,
+          preferredLocation: pref_loc ? `${pref_loc}${pref_state ? ', ' + pref_state : ''}` : dash,
+          highestEducation: highest_education || dash,
+          techSkills: skillsStr(tech_skill),
+          nonTechSkills: skillsStr(nontech_skill),
+          rhId: rh_id || dash,
+          resumeUrl: cv_url || '',
+          dateSubmitted,
+        };
+
+        const def = TEMPLATE_MAP.candidateAndJd;
+        const _r = await renderEmail('candidateAndJd', vars, {
+          subject: substitute(def.subject, vars),
+          htmlContent: substitute(def.body, vars),
+        });
+
+        // Send to the candidate; reply-to = submitter's real email so replies reach them.
+        await sendEmailFull({
+          to: [{ email: candidateEmail, name: candidate || undefined }],
+          subject: _r.subject,
+          htmlContent: _r.htmlContent,
+          fromEmail: 'noreply@recruiterv.com',
+          fromName: news.name || 'RecruiterV',
+          replyTo: (news.email || '').toLowerCase() || undefined,
+        });
+
+        // Store a copy in the submitter's Inbox → Sent (ownerEmail = derived @recruiterv.com).
+        const senderAddr = emailModel.getRecruiterSenderEmail(news.name);
+        await emailModel.createEmail({
+          ownerId: news.id,
+          ownerEmail: senderAddr,
+          folder: 'sent',
+          from: senderAddr,
+          fromName: news.name || 'RecruiterV',
+          to: candidateEmail,
+          toName: candidate || '',
+          subject: _r.subject,
+          body: _r.htmlContent,
+          isHtml: true,
+          read: true,
+        });
+        console.log(`📧 Candidate-and-JD email sent to ${candidateEmail}; Sent copy stored for ${senderAddr}`);
+      }
+    } catch (candJdErr) {
+      console.error('❌ Candidate-and-JD email error:', candJdErr.message);
     }
 
     return res.status(200).json({
@@ -295,7 +751,11 @@ router.get('/show/candi',isLoggedIn,async (req,res)=>{
 router.get('/show/all/candi', async(req,res)=>{
   try{
     const canudo= await candida.showAllCandidate()
-    return res.status(200).json(canudo)
+    // Strip very large fields (full resume text + match tokens) so the response
+    // stays within Cloud Function size/time limits. Skill fields (skills,
+    // skillsText, skillCategory) are kept so keyword search still works.
+    const slim = canudo.map(({ resumeText, matchTokens, skillsTextTokens, ...rest }) => rest);
+    return res.status(200).json(slim)
 
   } catch(error){
     console.log("Error while showing all candidate:",error)
@@ -303,17 +763,257 @@ router.get('/show/all/candi', async(req,res)=>{
   }
 })
 
+// GET /candidate/lookup-by-email?email=xxx
+// Returns the most recent candidate_db record matching that email so the
+// submit-candidate form can be pre-filled.
+router.get('/lookup-by-email', async (req, res) => {
+  try {
+    const { db } = require('./firebase_ad');
+    const email = (req.query.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ found: false, message: 'Email required' });
+
+    const snap = await db.collection('candidate_db')
+      .where('emails', '==', email)
+      .limit(5)
+      .get();
+
+    if (snap.empty) return res.json({ found: false });
+
+    // Pick the most recently posted doc among results (no orderBy to avoid index requirement)
+    const sorted = snap.docs.sort((a, b) => {
+      const aS = a.data().datePosted?._seconds || 0;
+      const bS = b.data().datePosted?._seconds || 0;
+      return bS - aS;
+    });
+    const d = sorted[0].data();
+    // Return all fields that the submit-candidate form can use
+    return res.json({
+      found: true,
+      candidate: {
+        candidate:        d.candidate        || '',
+        mob:              d.mob              || '',
+        dob:              d.dob              || '',
+        curr_emp:         d.curr_emp         || '',
+        highest_education: d.highest_education || '',
+        current_ctc:      d.current_ctc      || '',
+        exp_ctc:          d.exp_ctc          || '',
+        total_exp:        d.total_exp        || '',
+        rel_exp:          d.rel_exp          || '',
+        notice_period:    d.notice_period    || '',
+        curr_state:       d.curr_state       || '',
+        curr_loc:         d.curr_loc         || '',
+        pref_state:       d.pref_state       || '',
+        pref_loc:         d.pref_loc         || '',
+        skill_type:       d.skill_type       || '',
+        tech_category:    d.tech_category    || '',
+        tech_subcategory: d.tech_subcategory || '',
+        tech_skill:       d.tech_skill       || [],
+        tech_exp:         d.tech_exp         || [],
+        nontech_category:    d.nontech_category    || '',
+        nontech_subcategory: d.nontech_subcategory || '',
+        nontech_skill:    d.nontech_skill    || [],
+        nontech_exp:      d.nontech_exp      || [],
+        self_rate:        d.self_rate        || '',
+        pan_number:       d.pan_number       || '',
+        jr_number:        d.jr_number        || '',
+        cv_data:          d.cv_data          || '',
+      }
+    });
+  } catch (err) {
+    console.error('lookup-by-email error:', err.message);
+    return res.status(500).json({ found: false, message: err.message });
+  }
+});
+
+// Candidates submitted by the logged-in Recruiter — only those whose recEmail matches
+router.get('/show/recruiter/candi', async (req, res) => {
+  try {
+    const token = req.cookies?.__session;
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const decoded = jwt.verify(token, process.env.SECKEY);
+    const email = (decoded.email || '').toLowerCase().trim();
+    const { db } = require('../router/firebase_ad');
+    const snap = await db.collection('candidate_db')
+      .where('recEmail', '==', email)
+      .get();
+    const candidates = snap.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+    return res.status(200).json(candidates);
+  } catch (error) {
+    console.log('Error fetching recruiter candidates:', error);
+    res.status(500).json({ error: error.message });
+  }
+})
+
+// Candidates for the logged-in ClientSpoc — only those whose clientspoc field matches
+router.get('/show/clientspoc/candi', async (req, res) => {
+  try {
+    const token = req.cookies?.__session;
+    if (!token) return res.status(401).json({ error: 'Not authenticated' });
+    const decoded = jwt.verify(token, process.env.SECKEY);
+    const email = (decoded.email || '').toLowerCase().trim();
+    const { db } = require('../router/firebase_ad');
+    const lc = (s) => (s || '').toString().toLowerCase().trim();
+
+    // Resolve the canonical ClientSPOC email from admin_db (candidate.clientspoc is
+    // stored in that exact case — must match it, not just the lowercased login email).
+    let recEmail = decoded.email;
+    try {
+      let admSnap = await db.collection('admin_db').where('email', '==', decoded.email).limit(1).get();
+      if (admSnap.empty) admSnap = await db.collection('admin_db').where('email', '==', email).limit(1).get();
+      if (!admSnap.empty) recEmail = admSnap.docs[0].data().email || decoded.email;
+    } catch { /* fall back to token email */ }
+
+    const accepted = new Set([email, lc(recEmail)]);
+    const byId = {};
+
+    // 1) Candidates whose clientspoc field matches (same logic the My Positions count uses)
+    const variants = [...new Set([recEmail, decoded.email, email].filter(Boolean))].slice(0, 10);
+    if (variants.length) {
+      const snap = await db.collection('candidate_db').where('clientspoc', 'in', variants).get().catch(() => ({ docs: [] }));
+      snap.docs.forEach(doc => { byId[doc.id] = { ...doc.data(), id: doc.id }; });
+    }
+
+    // 2) Plus all candidates on positions owned by this ClientSPOC (case-insensitive)
+    const posSnap = await db.collection('admin_AddPos').get();
+    const myPosIds = [...new Set(
+      posSnap.docs.map(d => d.data()).filter(p => accepted.has(lc(p.clientspoc))).map(p => p.pos_id).filter(Boolean)
+    )];
+    for (let i = 0; i < myPosIds.length; i += 10) {
+      const batch = myPosIds.slice(i, i + 10);
+      if (!batch.length) continue;
+      const snap = await db.collection('candidate_db').where('pos_id', 'in', batch).get();
+      snap.docs.forEach(doc => { byId[doc.id] = byId[doc.id] || { ...doc.data(), id: doc.id }; });
+    }
+
+    return res.status(200).json(Object.values(byId));
+  } catch (error) {
+    console.log('Error fetching clientspoc candidates:', error);
+    res.status(500).json({ error: error.message });
+  }
+})
+
+
+// Reject-type statuses that require a rejection reason (matches the frontend set).
+const REJECT_STATUSES = new Set([
+  'screen reject', 'l1 reject', 'l2 reject', 'l3 reject', 'hr reject',
+  'background verification reject', 'negotiation reject', 'test reject',
+  'client drop', 'candidate drop', 'duplicate', 'offer declined', 'position on hold',
+]);
 
 router.patch("/update/status/:id", async (req, res) => {
   try {
     const id = req.params.id;
-    const { statusa } = req.body;
+    const { statusa, rejectReason } = req.body;
 
     if (!statusa) {
       return res.status(400).json({ error: "Status is required" });
     }
 
-    const updated = await candida.updatePositionStatus(id, statusa);
+    // A rejection reason is mandatory for any reject-type status.
+    const isReject = REJECT_STATUSES.has(String(statusa).toLowerCase().trim());
+    if (isReject && !(rejectReason || '').toString().trim()) {
+      return res.status(400).json({ error: "A rejection reason is required for this status." });
+    }
+
+    // Best-effort: identify who is changing the status (from the session cookie).
+    let changedBy = '';
+    let changedByName = '';
+    try {
+      const token = req.cookies?.__session;
+      if (token) {
+        const decoded = jwt.verify(token, process.env.SECKEY);
+        changedBy = decoded.email || '';
+        changedByName = decoded.name || decoded.firstName ||
+          (decoded.email ? decoded.email.split('@')[0] : '');
+      }
+    } catch { /* unauthenticated / invalid token — leave changer blank */ }
+
+    const updated = await candida.updatePositionStatus(id, statusa, {
+      changedBy, changedByName,
+      rejectReason: isReject ? String(rejectReason).trim() : '',
+    });
+
+    // ── Send email to recruiter about status change ──────────────────────────
+    try {
+      const recEmail = updated.recEmail || updated.recruiterEmail;
+      const recName  = updated.recName  || updated.recruiterName || 'Recruiter';
+      const candName = updated.candidate || updated.candidateName || '—';
+      const posId    = updated.pos_id;
+
+      if (recEmail) {
+        let positionTitle = updated.pos_name || posId || '—';
+        let clientName    = updated.client   || '';
+
+        // Try to get full position details
+        if (posId) {
+          try {
+            const pos = await ad_Pos.findPositionByPosId(posId);
+            if (pos) {
+              positionTitle = pos.position || positionTitle;
+              clientName    = pos.client   || clientName;
+            }
+          } catch (_) {}
+        }
+
+        const { templates, renderEmail } = require('../utils/email');
+        const { REASON_TEXTS } = require('../utils/screenRejectReasons');
+        const isScreenReject = String(statusa).toLowerCase().trim() === 'screen reject';
+        const reasonKey = String(rejectReason || '').trim();
+        const reasonText = isScreenReject ? REASON_TEXTS[reasonKey] : null;
+
+        if (reasonText) {
+          // ── Screen-reject with a specific reason → send the reason guidance ──
+          const paras = reasonText.split('\n\n').map(p =>
+            `<p style="margin:0 0 14px;color:#374151;font-size:14px;line-height:1.6">${p.replace(/\n/g, '<br/>')}</p>`
+          ).join('');
+          const htmlContent = `
+            <div style="font-family:Segoe UI,Arial,sans-serif;max-width:640px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+              <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:22px 26px;color:#fff">
+                <h2 style="margin:0;font-size:19px">Screening Feedback — ${reasonKey}</h2>
+              </div>
+              <div style="padding:24px 26px">
+                <p style="margin:0 0 14px;color:#1f2937;font-size:14px">Dear <strong>${recName}</strong>,</p>
+                <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin:0 0 18px;font-size:13px;color:#475569">
+                  <div><strong>Candidate:</strong> ${candName}</div>
+                  <div><strong>Position:</strong> ${positionTitle}${clientName ? ` (${clientName})` : ''}</div>
+                  <div><strong>Status:</strong> Screen Reject &middot; <strong>Reason:</strong> ${reasonKey}</div>
+                </div>
+                ${paras}
+                <p style="margin:18px 0 0;color:#374151;font-size:14px">Best regards,<br/>The Talent Acquisition Team<br/>RecruiterV</p>
+              </div>
+            </div>`;
+          const _r = await renderEmail(`screenReject_${reasonKey.replace(/\s+/g, '')}`,
+            { recruiterName: recName, candidateName: candName, positionTitle, client: clientName, reason: reasonKey },
+            { subject: `Screening Feedback: ${candName} — ${reasonKey} | ${positionTitle}`, htmlContent });
+          await sendEmailFull({
+            to: recEmail, toName: recName, subject: _r.subject, htmlContent: _r.htmlContent,
+            fromEmail: 'noreply@recruiterv.com', fromName: 'RecruiterV',
+          });
+          console.log(`✅ Screen-reject reason email (${reasonKey}) sent to recruiter ${recEmail}`);
+        } else {
+          const _vars = {
+            recruiterName: recName, candidateName: candName, positionTitle,
+            clientName: clientName ? ` (${clientName})` : '', newStatus: statusa,
+            dashboardUrl: 'https://www.recruiterv.com/',
+          };
+          const _r = await renderEmail('candidateStatusUpdated', _vars, {
+            subject: `Candidate Status Update: ${candName} → ${statusa} | ${positionTitle}`,
+            htmlContent: templates.candidateStatusUpdated(recName, candName, positionTitle, clientName, statusa, 'https://www.recruiterv.com/'),
+          });
+          await sendEmailFull({
+            to: recEmail,
+            subject: _r.subject,
+            htmlContent: _r.htmlContent,
+            fromEmail: 'noreply@recruiterv.com',
+            fromName: 'RecruiterV',
+          });
+          console.log(`✅ Status-update email sent to recruiter ${recEmail} — status: ${statusa}`);
+        }
+      }
+    } catch (emailErr) {
+      console.error('❌ Recruiter status-update email failed:', emailErr.message);
+      // Don't fail the main request
+    }
 
     return res.json({
       success: true,
@@ -326,26 +1026,220 @@ router.patch("/update/status/:id", async (req, res) => {
   }
 });
 
+// POST /addit/bulk-screen-reject — ClientSPOC bulk-rejects non-matching direct
+// applicants: sets status "Screen Reject" and emails each candidate.
+// Body: { ids: [<candidate ids>], rejectReason }
+router.post('/bulk-screen-reject', async (req, res) => {
+  try {
+    const { db } = require('../router/firebase_ad');
+    const { ids, rejectReason } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'No candidates selected.' });
+    }
+    const reason = (rejectReason || '').toString().trim() ||
+      'Your profile did not match the current screening criteria for this position.';
+
+    // Identify the ClientSPOC from the session and the positions they own, so a
+    // SPOC can only reject candidates that belong to them.
+    const token = req.cookies?.__session;
+    if (!token) return res.status(401).json({ success: false, message: 'Not authenticated' });
+    const decoded = jwt.verify(token, process.env.SECKEY);
+    const lc = (s) => (s || '').toString().toLowerCase().trim();
+    const loginEmail = lc(decoded.email);
+
+    let canonEmail = decoded.email;
+    try {
+      let admSnap = await db.collection('admin_db').where('email', '==', decoded.email).limit(1).get();
+      if (admSnap.empty) admSnap = await db.collection('admin_db').where('email', '==', loginEmail).limit(1).get();
+      if (!admSnap.empty) canonEmail = admSnap.docs[0].data().email || decoded.email;
+    } catch { /* fall back to token email */ }
+    const accepted = new Set([loginEmail, lc(canonEmail)]);
+
+    // Positions owned by this SPOC (case-insensitive) — for candidates whose own
+    // clientspoc field may be blank but sit on the SPOC's position.
+    const posSnap = await db.collection('admin_AddPos').get();
+    const ownedPosIds = new Set(
+      posSnap.docs.map(d => d.data()).filter(p => accepted.has(lc(p.clientspoc))).map(p => p.pos_id).filter(Boolean)
+    );
+
+    const changedBy = decoded.email || '';
+    const changedByName = decoded.name || (decoded.email ? decoded.email.split('@')[0] : '');
+
+    let rejected = 0, emailed = 0, skipped = 0;
+    const { sendEmailFull, renderEmail } = require('../utils/email');
+
+    for (const id of ids) {
+      try {
+        const doc = await db.collection('candidate_db').doc(id).get();
+        if (!doc.exists) { skipped++; continue; }
+        const c = doc.data();
+
+        // Ownership guard
+        const owns = accepted.has(lc(c.clientspoc)) || ownedPosIds.has(c.pos_id);
+        if (!owns) { skipped++; continue; }
+
+        // Don't re-reject someone already in a reject/terminal status
+        if (REJECT_STATUSES.has(lc(c.statusa))) { skipped++; continue; }
+
+        await candida.updatePositionStatus(id, 'Screen Reject', {
+          changedBy, changedByName, rejectReason: reason,
+        });
+        rejected++;
+
+        // Email the candidate
+        const candEmail = c.emails;
+        const candName  = c.candidate || 'Candidate';
+        const posTitle  = c.pos_name || c.pos_id || 'the position';
+        const client    = c.client || '';
+        if (candEmail) {
+          try {
+            const fallbackHtml = `
+              <div style="font-family:Segoe UI,Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden">
+                <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:24px 28px;color:#fff">
+                  <h2 style="margin:0;font-size:20px">Application Update</h2>
+                </div>
+                <div style="padding:24px 28px;color:#1f2937;font-size:14px;line-height:1.6">
+                  <p>Dear <strong>${candName}</strong>,</p>
+                  <p>Thank you for your interest in the <strong>${posTitle}</strong>${client ? ` role with ${client}` : ''} and for taking the time to apply.</p>
+                  <p>After careful review of the applications received, we regret to inform you that your profile has not been shortlisted for this position at this stage.</p>
+                  <p style="background:#f9fafb;border-left:3px solid #f97316;padding:10px 14px;border-radius:6px"><strong>Reason:</strong> ${reason}</p>
+                  <p>We truly appreciate your effort and encourage you to apply for other opportunities that match your profile in the future. We wish you all the best in your job search.</p>
+                  <p style="margin-top:20px">Warm regards,<br/>The Talent Acquisition Team<br/>RecruiterV</p>
+                </div>
+              </div>`;
+            const _r = await renderEmail('screenRejectNotification',
+              { candidateName: candName, positionTitle: posTitle, client, rejectReason: reason },
+              { subject: `Update on your application — ${posTitle}`, htmlContent: fallbackHtml });
+            await sendEmailFull({
+              to: candEmail, toName: candName, subject: _r.subject, htmlContent: _r.htmlContent,
+              fromEmail: 'noreply@recruiterv.com', fromName: 'RecruiterV',
+            });
+            emailed++;
+          } catch (mailErr) {
+            console.error('bulk-screen-reject email failed for', candEmail, mailErr.message);
+          }
+        }
+      } catch (rowErr) {
+        console.error('bulk-screen-reject row error for', id, rowErr.message);
+        skipped++;
+      }
+    }
+
+    return res.json({ success: true, rejected, emailed, skipped });
+  } catch (err) {
+    console.error('bulk-screen-reject error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /addit/update/direct-applicant/:id — recruiter edits a direct applicant's details
+router.patch('/update/direct-applicant/:id', isLoggedIn, async (req, res) => {
+  try {
+    const { db } = require('../router/firebase_ad');
+    const id = req.params.id;
+    const allowed = [
+      'candidate','emails','mob','curr_emp','highest_education',
+      'current_ctc','exp_ctc','total_exp','rel_exp','notice_period',
+      'curr_state','curr_loc','pref_state','pref_loc','self_rate',
+      'skill_type','tech_category','tech_subcategory','tech_skill','tech_exp',
+      'nontech_category','nontech_subcategory','nontech_skill','nontech_exp','dob',
+    ];
+    const update = {};
+    allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
+    update.updatedAt = new Date();
+    await db.collection('candidate_db').doc(id).update(update);
+    return res.json({ success: true, message: 'Candidate updated' });
+  } catch (err) {
+    console.error('update/direct-applicant error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.post("/data/check", isLoggedIn, async (req, res) => {
   try {
     
 
     let email = req.body.emails?.trim().toLowerCase();
     let mob = req.body.mob?.trim();
+    let pan = req.body.pan_number?.trim();
 
 
-    if (!email && !mob) {
-      return res.status(400).json({ error: "Email or phone required" });
+    if (!email && !mob && !pan) {
+      return res.status(400).json({ error: "Email, phone or PAN required" });
     }
 
-    const emailExists = await candida.findCandidateByEmail(email);
-    const phoneExists = await candida.findCandidateByPhone(mob);
+    const [emailExists, phoneExists, panExists] = await Promise.all([
+      candida.findCandidateByEmail(email),
+      candida.findCandidateByPhone(mob),
+      candida.findCandidateByPan(pan),
+    ]);
 
-    return res.json({
+    const match = emailExists || phoneExists || panExists || null;
+
+    // Existing behaviour: does this candidate exist anywhere in the system?
+    const payload = {
       emailExists: !!emailExists,
       phoneExists: !!phoneExists,
-    });
-    
+      panExists: !!panExists,
+      exists: !!match,
+    };
+
+    // Autofill source — the known details of the matched candidate, so the form
+    // can prefill and the user only completes what's missing. Only safe,
+    // form-relevant fields are returned (no internal/system metadata).
+    if (match) {
+      const pick = (k) => (match[k] === undefined || match[k] === null ? '' : match[k]);
+      payload.match = {
+        candidate: pick('candidate'), emails: pick('emails'), mob: pick('mob'),
+        dob: pick('dob'), pan_number: pick('pan_number'), curr_emp: pick('curr_emp'),
+        highest_education: pick('highest_education'), current_ctc: pick('current_ctc'),
+        exp_ctc: pick('exp_ctc'), total_exp: pick('total_exp'), rel_exp: pick('rel_exp'),
+        notice_period: pick('notice_period'), last_day: pick('last_day'),
+        curr_state: pick('curr_state'), curr_loc: pick('curr_loc'),
+        pref_state: pick('pref_state'), pref_loc: pick('pref_loc'),
+        offer_hand: pick('offer_hand'), offer_amt: pick('offer_amt'),
+        self_rate: pick('self_rate'), skill_type: pick('skill_type'),
+        tech_category: pick('tech_category'), tech_subcategory: pick('tech_subcategory'),
+        tech_skill: pick('tech_skill'), tech_exp: pick('tech_exp'),
+        nontech_category: pick('nontech_category'), nontech_subcategory: pick('nontech_subcategory'),
+        nontech_skill: pick('nontech_skill'), nontech_exp: pick('nontech_exp'),
+        cv_data: pick('cv_data'), photo_url: pick('photo_url'),
+        source: pick('source'),
+      };
+    }
+
+    // Same-position duplicate: has this candidate already been submitted for THIS
+    // position by anyone? Existing elsewhere is fine (and is what enables reuse of
+    // a referred candidate) — only a clash on the same position blocks submission.
+    const posId = (req.body.pos_id || '').toString().trim();
+    if (posId) {
+      const { db } = require('../router/firebase_ad');
+      const seen = new Set();
+      const dupDocs = [];
+      const runs = [
+        email ? db.collection('candidate_db').where('pos_id', '==', posId).where('emails', '==', email).get() : null,
+        mob ? db.collection('candidate_db').where('pos_id', '==', posId).where('mob', '==', mob).get() : null,
+        pan ? db.collection('candidate_db').where('pos_id', '==', posId).where('pan_number', '==', pan).get() : null,
+      ].filter(Boolean);
+      const snaps = await Promise.all(runs);
+      snaps.forEach(s => s.docs.forEach(d => { if (!seen.has(d.id)) { seen.add(d.id); dupDocs.push(d.data()); } }));
+
+      if (dupDocs.length) {
+        const d = dupDocs[0];
+        payload.duplicateOnPosition = true;
+        payload.duplicateInfo = {
+          submittedBy: d.recName || d.recEmail || 'another user',
+          submittedByEmail: d.recEmail || '',
+          status: d.statusa || 'Submitted',
+          candidate: d.candidate || '',
+        };
+      } else {
+        payload.duplicateOnPosition = false;
+      }
+    }
+
+    return res.json(payload);
+
   } catch (err) {
     console.error("Duplicate check error:", err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -371,11 +1265,6 @@ router.get('/overview/:name', async (req, res) => {
 
 
 
-
-// Backend API endpoint for sending emails using Brevo
-// Add this to your existing routes file
-
-const brevo = require('@getbrevo/brevo');
 
 /**
  * POST /addit/send/email
@@ -404,14 +1293,6 @@ router.post('/send/email', async (req, res) => {
       });
     }
 
-    // Initialize Brevo client
-    const brevoClient = new brevo.TransactionalEmailsApi();
-    brevoClient.setApiKey(
-      brevo.TransactionalEmailsApiApiKeys.apiKey,
-      process.env.BREVO_API_KEY
-    );
-
-    // Build CC list
     const ccList = [];
     if (ccRecruiter) ccList.push({ email: ccRecruiter });
     if (ccHR) ccList.push({ email: ccHR });
@@ -590,32 +1471,14 @@ Please do not reply directly to this email.
 © ${new Date().getFullYear()} RecruiterV. All rights reserved.
     `.trim();
 
-    // Create Brevo email object
-    const emailData = new brevo.SendSmtpEmail();
-    
-    emailData.sender = {
-      name: "RecruiterV Team",
-      email: "admin@recruiterv.com",
-    };
-    
-    emailData.to = [{ email: to , name: recName || '' }];
-    
-    if (ccList.length > 0) {
-      emailData.cc = ccList;
-    }
-    
-    emailData.subject = subject;
-    emailData.htmlContent = htmlContent;
-    emailData.textContent = textContent;
-
-    // Optional: Add reply-to
-    // emailData.replyTo = {
-    //   email: "hr@recruiterv.com",
-    //   name: "HR Team"
-    // };
-
-    // Send email via Brevo
-    const response = await brevoClient.sendTransacEmail(emailData);
+    const response = await sendEmailFull({
+      to: [{ email: to, name: recName || '' }],
+      subject,
+      htmlContent,
+      fromEmail: 'admin@recruiterv.com',
+      fromName: 'RecruiterV Team',
+      cc: ccList.length ? ccList : undefined,
+    });
 
     console.log('✅ Email sent successfully:', response.messageId);
 
@@ -666,13 +1529,6 @@ router.post('/send/bulk-email', async (req, res) => {
         error: 'Subject and message are required'
       });
     }
-
-    // Initialize Brevo client
-    const brevoClient = new brevo.TransactionalEmailsApi();
-    brevoClient.setApiKey(
-      brevo.TransactionalEmailsApiApiKeys.apiKey,
-      process.env.BREVO_API_KEY
-    );
 
     const results = [];
     
@@ -736,18 +1592,7 @@ router.post('/send/bulk-email', async (req, res) => {
           </html>
         `;
 
-        const emailData = new brevo.SendSmtpEmail();
-        emailData.sender = {
-          name: "RecruiterV Team",
-          email: "admin@recruiterv.com",
-        };
-        emailData.to = [{ email: recipient.email, name: recipient.name || '' }];
-        emailData.subject = subject;
-        emailData.htmlContent = htmlContent;
-        emailData.textContent = message;
-
-        const response = await brevoClient.sendTransacEmail(emailData);
-        
+        const response = await sendEmail(recipient.email, subject, htmlContent, 'admin@recruiterv.com', 'RecruiterV Team');
         results.push({
           email: recipient.email,
           name: recipient.name,
@@ -807,12 +1652,6 @@ router.post('/send/status-update', async (req, res) => {
         error: 'Missing required fields'
       });
     }
-
-    const brevoClient = new brevo.TransactionalEmailsApi();
-    brevoClient.setApiKey(
-      brevo.TransactionalEmailsApiApiKeys.apiKey,
-      process.env.BREVO_API_KEY
-    );
 
     // Status-specific messages and colors
     const getStatusDetails = (status) => {
@@ -912,16 +1751,10 @@ router.post('/send/status-update', async (req, res) => {
       </html>
     `;
 
-    const emailData = new brevo.SendSmtpEmail();
-    emailData.sender = {
-      name: "RecruiterV Team",
-      email: "admin@recruiterv.com",
-    };
-    emailData.to = [{ email, name }];
-    emailData.subject = `Application Status Update - ${position}`;
-    emailData.htmlContent = htmlContent;
-
-    const response = await brevoClient.sendTransacEmail(emailData);
+    const _r = await renderEmail('applicationStatusUpdate',
+      { candidateName: name || 'Candidate', position, client: client || '', oldStatus: oldStatus || '', newStatus },
+      { subject: `Application Status Update - ${position}`, htmlContent });
+    const response = await sendEmail(email, _r.subject, _r.htmlContent, 'admin@recruiterv.com', 'RecruiterV Team');
 
     console.log('✅ Status update email sent:', response.messageId);
 
@@ -941,5 +1774,198 @@ router.post('/send/status-update', async (req, res) => {
   }
 });
 
+
+// ─── Resume-bank "Matching Candidates" tab (Submit Candidate modal) ──────────
+
+// GET /addit/bank-candidate/:id — full details of a matching/bank candidate
+// (for the "View details" modal).
+router.get('/bank-candidate/:id', isLoggedIn, async (req, res) => {
+  try {
+    const { db } = require('../router/firebase_ad');
+    const doc = await db.collection('candidate_db').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Candidate not found' });
+    res.json({ success: true, candidate: { id: doc.id, ...doc.data() } });
+  } catch (err) {
+    console.error('bank-candidate get error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /addit/bank-candidate/:id — recruiter edits a matching candidate's
+// details and saves. Only a safe set of fields can be changed.
+router.patch('/bank-candidate/:id', isLoggedIn, async (req, res) => {
+  try {
+    const { db } = require('../router/firebase_ad');
+    const { computeMatchTokens, invalidateCache } = require('../utils/resumeBankMatch');
+    const ref = db.collection('candidate_db').doc(req.params.id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.status(404).json({ success: false, message: 'Candidate not found' });
+    const existing = snap.data();
+
+    const b = req.body || {};
+    const update = { updatedAt: new Date() };
+    // All editable candidate fields (mirrors the submission form).
+    const strFields = ['candidate', 'emails', 'mob', 'curr_loc', 'pref_loc', 'curr_state', 'pref_state',
+      'total_exp', 'rel_exp', 'current_ctc', 'exp_ctc', 'notice_period', 'curr_emp', 'last_day',
+      'offer_hand', 'offer_amt', 'self_rate', 'dob', 'jr_number', 'pan_number', 'rh_id',
+      'skill_type', 'tech_category', 'tech_subcategory', 'nontech_category', 'nontech_subcategory',
+      'highest_education', 'skillCategory'];
+    for (const f of strFields) if (b[f] !== undefined) update[f] = String(b[f]).trim();
+    if (b.emails !== undefined) update.emails = String(b.emails).trim().toLowerCase();
+
+    // Array fields (skills + tech/non-tech skill & experience lists).
+    const arrFields = ['skills', 'tech_skill', 'tech_exp', 'nontech_skill', 'nontech_exp'];
+    for (const f of arrFields) {
+      if (b[f] !== undefined) {
+        update[f] = Array.isArray(b[f]) ? b[f].map(s => String(s).trim()).filter(Boolean) : [];
+      }
+    }
+    if (update.skills) update.skillsText = update.skills.join(', ');
+    // Recompute the match-tokens blob so future match counts reflect the edit.
+    const merged = { ...existing, ...update };
+    update.matchTokens = computeMatchTokens(merged.resumeText, merged);
+
+    await ref.update(update);
+    invalidateCache();   // refresh match counts / list after an edit
+    res.json({ success: true });
+  } catch (err) {
+    console.error('bank-candidate patch error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /addit/pos/:pos_id/submit-from-bank — submit up to 2 selected matching
+// candidates against the position, attributed to the logged-in recruiter, with
+// their details auto-filled. Mirrors the /data/candi validations.
+router.post('/pos/:pos_id/submit-from-bank', isLoggedIn, async (req, res) => {
+  try {
+    const { db } = require('../router/firebase_ad');
+    const { pos_id } = req.params;
+    let ids = Array.isArray(req.body?.candidateIds) ? req.body.candidateIds.filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ success: false, message: 'No candidates selected.' });
+    if (ids.length > 2) return res.status(400).json({ success: false, message: 'You can submit a maximum of 2 candidates at a time.' });
+
+    // Identify the submitter (recruiter / coach / expert) — same as /data/candi.
+    let news = (await recruiter.findRecruiterByEmail(req.user.email)) ||
+               (await google.findByEmail(req.user.email)) ||
+               (await linkwa.findByEmails(req.user.email));
+    let submitterRole = 'Recruiter';
+    if (!news) { const cm = require('../model_fire/coachF'); news = await cm.findCoachByEmail(req.user.email); if (news) submitterRole = 'Coach'; }
+    if (!news) { const em = require('../model_fire/expertF'); news = await em.findExpertByEmail(req.user.email); if (news) submitterRole = 'Expert'; }
+    if (!news) return res.status(400).json({ success: false, message: 'User Not Found!' });
+
+    // Position must be active + accessible to this recruiter.
+    const positionValidation = await validatePositionForCandidateSubmission(pos_id, news.email);
+    if (!positionValidation.valid) {
+      return res.status(400).json({ success: false, message: positionValidation.message });
+    }
+    const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', pos_id).limit(1).get();
+    const pos = posSnap.empty ? {} : posSnap.docs[0].data();
+
+    // If the position's company requires a candidate photo, only candidates that
+    // already have a photo can be submitted from the bank (same rule as the
+    // "Use your own" form, where a photo must be uploaded).
+    let photoRequired = false;
+    if (pos.client) {
+      try {
+        const { fetchCompanyOverview } = require('../model_fire/companyF');
+        const comp = await fetchCompanyOverview(pos.client);
+        photoRequired = comp?.photoRequired === true;
+      } catch (_) { /* non-fatal */ }
+    }
+
+    // Free-plan 4-position cap (recruiters only) — same rule as /data/candi.
+    if (submitterRole === 'Recruiter' && news.planType === 0) {
+      const { count, posIds } = await positionAccess.countActiveWorkingPositions(news.email);
+      if (!posIds.has(pos_id) && count >= 4) {
+        return res.status(403).json({
+          success: false, errorCode: 'REQUEST_LIMIT_REACHED',
+          message: 'Free plan limit reached: you can work on a maximum of 4 positions. Release one before submitting to a new position.',
+        });
+      }
+      await positionAccess.reengageReleasedPosition(news.email, pos_id);
+    }
+
+    const submitted = [], skipped = [];
+    for (const id of ids) {
+      const cdoc = await db.collection('candidate_db').doc(id).get();
+      if (!cdoc.exists) { skipped.push({ id, reason: 'not found' }); continue; }
+      const c = cdoc.data();
+      const emails = (c.emails || '').trim().toLowerCase();
+
+      // A candidate already submitted to this position cannot be submitted again.
+      if (await alreadySubmittedToPosition(pos_id, emails, c.mob)) {
+        skipped.push({ id, candidate: c.candidate || emails, reason: 'already submitted to this position' });
+        continue;
+      }
+
+      // Enforce the company photo requirement.
+      if (photoRequired && !(c.photo_url || c.photo)) {
+        skipped.push({ id, candidate: c.candidate || emails, reason: 'candidate photo required — add it via View details' });
+        continue;
+      }
+
+      // Carry referral attribution forward from the source candidate so any
+      // future use credits the original referrer (see the single-submit path).
+      const bulkCarry = c.referredBy ? {
+        referredBy:      c.referredBy,
+        referredById:    c.referredById   || '',
+        referredByName:  c.referredByName  || '',
+        referredByRole:  c.referredByRole  || '',
+        referredByPhone: c.referredByPhone || '',
+        referredByPlan:  c.referredByPlan  || '',
+        referrerProfile: c.referrerProfile || {},
+        referralCarried: true,
+      } : {};
+
+      const created = await candida.createCandidate({
+        ...bulkCarry,
+        recId: news.id,
+        recEmail: (news.email || '').toLowerCase().trim(),
+        recName: news.name,
+        recRole: submitterRole,
+        source: news.source,
+        clientspoc: pos.clientspoc || '',
+        client: pos.client || '',
+        hr_name: pos.hr_name || '',
+        pos_id,
+        pos_name: pos.position || '',
+        candidate: c.candidate || '',
+        emails,
+        mob: c.mob || '',
+        photo_url: c.photo_url || c.photo || '',
+        cv_data: c.cv_data || c.cv_url || '',
+        curr_loc: c.curr_loc || '',
+        pref_loc: c.pref_loc || '',
+        total_exp: c.total_exp || '',
+        rel_exp: c.rel_exp || '',
+        current_ctc: c.current_ctc || '',
+        exp_ctc: c.exp_ctc || '',
+        notice_period: c.notice_period || '',
+        curr_emp: c.curr_emp || '',
+        highest_education: c.highest_education || '',
+        skill_type: c.skill_type || '',
+        tech_category: c.skillCategory || c.tech_category || '',
+        tech_skill: Array.isArray(c.skills) ? c.skills : [],
+        tech_exp: [],
+        nontech_skill: [],
+        nontech_exp: [],
+        statusa: 'Submitted',
+        fromResumeBank: true,
+        bankSourceId: id,
+        rh_id: '',
+      });
+      submitted.push({ id, newId: created.id, candidate: c.candidate || emails });
+    }
+
+    if (submitted.length) {
+      try { require('../utils/resumeBankMatch').invalidateCache(); } catch { /* non-fatal */ }
+    }
+    res.json({ success: true, submitted, skipped });
+  } catch (err) {
+    console.error('submit-from-bank error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 module.exports=router;

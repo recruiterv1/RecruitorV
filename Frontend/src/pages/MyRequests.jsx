@@ -406,7 +406,7 @@ const MyRequests = () => {
         )}
 
         {/* Main Content Area */}
-        <div className="transition-all duration-300 lg:pl-10">
+        <div className="transition-all duration-300 lg:pl-64">
           
           {/* Header */}
           <header className="sticky top-0 z-30 bg-white shadow-sm">

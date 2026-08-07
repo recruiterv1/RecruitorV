@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getClientSpocStats, getClientSpocDetailedStats } = require('../model_fire/clientspocStatsF');
-const brevo = require('@getbrevo/brevo');
+const { sendEmail } = require('../utils/email');
 
 /**
  * GET /clientspocstats/all
@@ -90,23 +90,7 @@ router.post('/send-email', async (req, res) => {
       });
     }
 
-    // Send email using Brevo
-    const client = new brevo.TransactionalEmailsApi();
-    client.setApiKey(
-      brevo.TransactionalEmailsApiApiKeys.apiKey,
-      process.env.BREVO_API_KEY
-    );
-
-    const emailData = new brevo.SendSmtpEmail();
-    emailData.sender = {
-      name: "RecruiterV Admin",
-      email: "admin@recruiterv.com",
-    };
-    emailData.to = [{ email: to }];
-    emailData.subject = subject;
-    emailData.htmlContent = body.replace(/\n/g, '<br>');
-
-    await client.sendTransacEmail(emailData);
+    await sendEmail(to, subject, body.replace(/\n/g, '<br>'), 'admin@recruiterv.com', 'RecruiterV Admin');
 
     return res.status(200).json({
       success: true,
