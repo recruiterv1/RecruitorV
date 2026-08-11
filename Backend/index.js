@@ -414,3 +414,21 @@ exports.suspendInactiveRecruiters = onSchedule(
     console.log('🕑 Inactivity sweep complete:', JSON.stringify({ recruiters: rec, coachesExperts: ce }));
   }
 );
+
+// ---- Scheduled: daily 7 AM IST direct-applicant digest ----
+exports.dailyDirectApplicantDigest = onSchedule(
+  {
+    schedule: 'every day 07:00',
+    timeZone: 'Asia/Kolkata',
+    region: 'us-central1',
+    memory: '512MiB',
+    timeoutSeconds: 540,
+    secrets: SECRETS.map(s => s.secret), // Brevo key for sending
+  },
+  async () => {
+    loadSecretsIntoProcessEnv();
+    const { sendDailyDirectApplicantDigest } = require('./utils/directApplicantDigest');
+    const result = await sendDailyDirectApplicantDigest(24);
+    console.log('📬 Direct-applicant digest sent:', JSON.stringify(result));
+  }
+);

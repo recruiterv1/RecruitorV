@@ -887,17 +887,20 @@ const Dash_Form = ({ pos_id, clientspoc, pos_name, client, hr_name, prefill = nu
           emails: candi.emails.trim().toLowerCase(),
           mob: String(candi.mob).trim(),
           pan_number: String(candi.pan_number || '').trim(),
+          pos_id,   // needed so the backend can tell if they're already ACTIVE on THIS position
         },
         { withCredentials: true }
       );
 
-      if (check.data.exists) {
-        const which = [];
-        if (check.data.emailExists) { setEmailError("Email already exists!"); which.push('email'); }
-        if (check.data.phoneExists) { setPhoneError("Phone number already exists!"); which.push('phone'); }
-        if (check.data.panExists) which.push('PAN');
-        setDupError(`Candidate already exists in system (matched ${which.join(', ')}).`);
-        alert(`Candidate already exists in system (matched ${which.join(', ')}).`);
+      // A candidate already in the system is fine to REUSE for this position —
+      // existence elsewhere (or a rejected/inactive record) must not block the
+      // submission. Only an ACTIVE record on THIS position blocks, and that is
+      // enforced server-side (alreadySubmittedToPosition), which returns a clear
+      // 409 handled below. So we no longer hard-stop on global existence here.
+      if (check.data.duplicateOnPosition) {
+        const info = check.data.duplicateInfo || {};
+        setDupError(`This candidate is already active on this position (status: ${info.status || 'Submitted'}).`);
+        alert(`This candidate is already on this position${info.status ? ` (status: ${info.status})` : ''} and can't be submitted again.`);
         setSubmitting(false);
         return;
       }

@@ -294,6 +294,33 @@ router.post('/impersonate', adminAuthMiddleware, async (req, res) => {
   }
 });
 
+// GET/POST /admin/zapier-config — read / set the Zapier LinkedIn webhook.
+router.get('/zapier-config', adminAuthMiddleware, async (req, res) => {
+  try {
+    const { db } = require('./firebase_ad');
+    const doc = await db.collection('app_config').doc('zapier').get();
+    const c = doc.exists ? doc.data() : {};
+    // Never echo the full URL back to the UI — just whether it's set.
+    return res.json({ success: true, enabled: c.enabled !== false && !!c.webhookUrl, hasUrl: !!c.webhookUrl });
+  } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+router.post('/zapier-config', adminAuthMiddleware, async (req, res) => {
+  try {
+    const { webhookUrl, enabled } = req.body || {};
+    // Accept Make (hook*.make.com / integromat.com), Zapier (hooks.zapier.com),
+    // or any other HTTPS automation webhook.
+    if (webhookUrl && !/^https:\/\/[^\s]+/i.test(String(webhookUrl))) {
+      return res.status(400).json({ success: false, message: 'The webhook must be a valid https:// URL (e.g. your Make custom-webhook URL).' });
+    }
+    const { db } = require('./firebase_ad');
+    const patch = { updatedAt: new Date(), updatedBy: req.user?.email || '' };
+    if (webhookUrl !== undefined) patch.webhookUrl = String(webhookUrl || '');
+    if (enabled !== undefined) patch.enabled = !!enabled;
+    await db.collection('app_config').doc('zapier').set(patch, { merge: true });
+    return res.json({ success: true });
+  } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+});
+
 // POST /admin/suspend-inactive-recruiters — run the inactivity sweep on demand.
 router.post('/suspend-inactive-recruiters', adminAuthMiddleware, async (req, res) => {
   try {

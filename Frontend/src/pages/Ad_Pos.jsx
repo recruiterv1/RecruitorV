@@ -5,6 +5,7 @@ import { UserStateContext } from '../context/AuthPro';
 import { useLocation } from 'react-router-dom';
 import { Autocomplete, Chip, TextField } from '@mui/material';
 import RichTextEditor, { isHtmlEmpty } from '../components/RichTextEditor';
+import { TagInput, ListInput, LimitedTextarea, EducationSelect } from '../components/PositionFieldInputs';
 import QuestionsEditor, { QuestionsList, validateQuestions } from '../components/QuestionsEditor';
 
 export const indiaStatesAndCities = {
@@ -1423,13 +1424,18 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                 </div>
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Required education <span className="text-red-500">*</span></label>
-                  <input type="text" name="req_education" value={form.req_education} onChange={handleChange} placeholder="e.g. B.Tech / B.E."
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" />
+                  <EducationSelect
+                    value={form.req_education}
+                    onChange={(v) => setForm(p => ({ ...p, req_education: v, ...(p.pref_education && p.pref_education.toLowerCase() === (v || '').toLowerCase() ? { pref_education: '' } : {}) }))}
+                    placeholder="Select or add required education" />
                 </div>
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Preferred education</label>
-                  <input type="text" name="pref_education" value={form.pref_education} onChange={handleChange} placeholder="e.g. M.Tech (optional)"
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" />
+                  <EducationSelect
+                    value={form.pref_education}
+                    exclude={[form.req_education]}
+                    onChange={(v) => setForm(p => ({ ...p, pref_education: v }))}
+                    placeholder="Select or add preferred education" />
                 </div>
                 <div className="flex flex-col sm:col-span-1">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Mandatory certifications</label>
@@ -1544,28 +1550,28 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     Key Responsibilities <span className="text-red-500">*</span>
                   </label>
-                  <RichTextEditor value={form.key_res} onChange={(html) => setForm(p => ({ ...p, key_res: html }))} placeholder="List key responsibilities…" />
+                  <LimitedTextarea value={form.key_res} onChange={(v) => setForm(p => ({ ...p, key_res: v }))} maxLen={500} rows={5} placeholder="List key responsibilities (max 500 characters)…" />
                 </div>
 
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     Must Have Skills <span className="text-red-500">*</span>
                   </label>
-                  <RichTextEditor value={form.m_have} onChange={(html) => setForm(p => ({ ...p, m_have: html }))} placeholder="Required skills…" />
+                  <TagInput value={form.m_have} onChange={(v) => setForm(p => ({ ...p, m_have: v }))} maxTags={5} maxLen={25} placeholder="Add a must-have skill…" />
                 </div>
 
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     Good to Have Skills <span className="text-red-500">*</span>
                   </label>
-                  <RichTextEditor value={form.g_have} onChange={(html) => setForm(p => ({ ...p, g_have: html }))} placeholder="Additional skills…" />
+                  <TagInput value={form.g_have} onChange={(v) => setForm(p => ({ ...p, g_have: v }))} maxTags={5} maxLen={25} placeholder="Add a good-to-have skill…" />
                 </div>
 
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     Competencies <span className="text-red-500">*</span>
                   </label>
-                  <RichTextEditor value={form.compet} onChange={(html) => setForm(p => ({ ...p, compet: html }))} placeholder="Required competencies…" />
+                  <ListInput value={form.compet} onChange={(v) => setForm(p => ({ ...p, compet: v }))} maxItems={5} placeholder="Add a competency…" />
                 </div>
 
               </div>
@@ -1600,7 +1606,7 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     Job Summary <span className="text-red-500">*</span>
                   </label>
-                  <RichTextEditor value={form.job_desc} onChange={(html) => setForm(p => ({ ...p, job_desc: html }))} placeholder="Detailed job description…" minHeight={160} />
+                  <LimitedTextarea value={form.job_desc} onChange={(v) => setForm(p => ({ ...p, job_desc: v }))} maxLen={500} rows={6} placeholder="Job summary (max 500 characters)…" />
                 </div>
 
               </div>

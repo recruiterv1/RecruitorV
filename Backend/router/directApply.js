@@ -671,58 +671,9 @@ router.post('/submit', async (req, res) => {
       id: '',
     });
 
-    // Send beautiful notification email — recruiter if shared via their link, else clientspoc
-    try {
-      const { sendEmailFull, templates, renderEmail } = require('../utils/email');
-      const frontUrl = process.env.FRONTURL || 'https://www.recruiterv.com';
-      const posTitle = posData.position || pos_id;
-
-      const candidateInfo = {
-        name:         candidate,
-        email:        emails,
-        phone:        mob,
-        currentCTC:   current_ctc || '',
-        experience:   total_exp   || '',
-        noticePeriod: notice_period || '',
-        location:     curr_loc    || '',
-      };
-      const baseVars = {
-        candidateName: candidate, candidateEmail: emails, candidatePhone: mob,
-        positionTitle: posTitle, client: posData.client || '',
-      };
-
-      if (rec && recRole !== 'Candidate') {
-        // ── Recruiter / Coach / Expert shared link → notify the sharer ─────────
-        const isCoachExpert = recRole === 'Coach' || recRole === 'Expert';
-        const dashboardUrl = `${frontUrl}/${isCoachExpert ? 'coach-expert-direct-applicants' : 'recruiter-direct-applicants'}`;
-        const _r = await renderEmail('directApplicantNotification',
-          { ...baseVars, recipientName: recName, recipientType: 'recruiter', dashboardUrl },
-          { subject: `🎯 New Direct Application — ${posTitle} | ${candidate}`,
-            htmlContent: templates.directApplicantNotification(recName, 'recruiter', candidateInfo, posTitle, posData.client || '', dashboardUrl) });
-        await sendEmailFull({ to: recEmail, toName: recName, subject: _r.subject, htmlContent: _r.htmlContent });
-      } else {
-        // ── Anonymous / ClientSPOC link → notify clientspoc ───────────────────
-        const spocEmail = posData.clientspoc;
-        if (spocEmail) {
-          const dashboardUrl = `${frontUrl}/clientspoc-direct-applications`;
-          // Try to get SPOC name
-          let spocName = 'Hiring Manager';
-          try {
-            const { db } = require('./firebase_ad');
-            const spocSnap = await db.collection('clientspoc_db').where('email', '==', spocEmail).limit(1).get();
-            if (!spocSnap.empty) spocName = spocSnap.docs[0].data().name || spocName;
-          } catch (_) {}
-
-          const _r = await renderEmail('directApplicantNotification',
-            { ...baseVars, recipientName: spocName, recipientType: 'clientspoc', dashboardUrl },
-            { subject: `🎯 New Direct Application — ${posTitle} | ${candidate}`,
-              htmlContent: templates.directApplicantNotification(spocName, 'clientspoc', candidateInfo, posTitle, posData.client || '', dashboardUrl) });
-          await sendEmailFull({ to: spocEmail, toName: spocName, subject: _r.subject, htmlContent: _r.htmlContent });
-        }
-      }
-    } catch (emailErr) {
-      console.error('direct-apply email error:', emailErr.message);
-    }
+    // NOTE: per-submission notification emails were removed. Direct applicants are
+    // now sent as a single daily digest at 7 AM IST by the scheduled function
+    // `dailyDirectApplicantDigest` (see Backend/utils/directApplicantDigest.js).
 
     return res.json({ success: true, message: 'Application submitted successfully!', id: user.id });
   } catch (err) {

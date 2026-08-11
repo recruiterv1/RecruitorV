@@ -304,6 +304,14 @@ const isLoggedIn = async (req, res, next) => {
 // True if a candidate with this email or phone has ALREADY been submitted to
 // this position (any status). Resume-bank template records (source
 // 'clientspoc_bulk') are ignored since they are not position submissions.
+// Statuses that mean the candidate is no longer active on a position, so they
+// may be submitted to it again (e.g. a rejected candidate can be re-submitted).
+const CANDIDATE_REJECTED_STATUSES = new Set([
+  'screen reject', 'l1 reject', 'l2 reject', 'l3 reject', 'hr reject',
+  'background verification reject', 'negotiation reject', 'test reject',
+  'rejected', 'client drop', 'candidate drop', 'duplicate', 'offer declined',
+]);
+
 async function alreadySubmittedToPosition(pos_id, emails, mob) {
   const { db } = require('../router/firebase_ad');
   const email = (emails || '').trim().toLowerCase();
@@ -313,6 +321,8 @@ async function alreadySubmittedToPosition(pos_id, emails, mob) {
   return snap.docs.some(d => {
     const c = d.data();
     if (c.source === 'clientspoc_bulk') return false;
+    // A rejected/inactive record on this position does NOT block re-submission.
+    if (CANDIDATE_REJECTED_STATUSES.has((c.statusa || '').toLowerCase().trim())) return false;
     const e = (c.emails || '').trim().toLowerCase();
     const p = (c.mob || '').toString().replace(/\D/g, '');
     return (email && e === email) || (phone && p && p === phone);
@@ -1222,7 +1232,14 @@ router.post("/data/check", isLoggedIn, async (req, res) => {
         pan ? db.collection('candidate_db').where('pos_id', '==', posId).where('pan_number', '==', pan).get() : null,
       ].filter(Boolean);
       const snaps = await Promise.all(runs);
-      snaps.forEach(s => s.docs.forEach(d => { if (!seen.has(d.id)) { seen.add(d.id); dupDocs.push(d.data()); } }));
+      snaps.forEach(s => s.docs.forEach(d => {
+        if (seen.has(d.id)) return;
+        const c = d.data();
+        // A rejected/inactive record on this position is not an active clash —
+        // the candidate can be re-submitted, so don't count it.
+        if (CANDIDATE_REJECTED_STATUSES.has((c.statusa || '').toLowerCase().trim())) return;
+        seen.add(d.id); dupDocs.push(c);
+      }));
 
       if (dupDocs.length) {
         const d = dupDocs[0];

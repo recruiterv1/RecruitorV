@@ -1017,6 +1017,8 @@ const isCoachOrExpert = isCoach || isExpert;
 
               {/* CTC & Commission */}
               <div className="flex flex-wrap gap-4">
+                {/* CTC Range - hidden on the public share link */}
+                {!isShareView && (
                 <div className="bg-white/20 backdrop-blur-sm rounded-xl px-6 py-3 inline-flex items-center gap-2">
                   <IndianRupee size={20} />
                   <div>
@@ -1024,6 +1026,7 @@ const isCoachOrExpert = isCoach || isExpert;
                     <p className="font-bold text-lg">₹{isEditMode ? editData.ctcStart : job.ctcStart} - ₹{isEditMode ? editData.ctcEnd : job.ctcEnd}</p>
                   </div>
                 </div>
+                )}
 
                 {/* Commission - Hide in share view and SPOC view */}
                 {!isShareView && !isSpocView && (
@@ -1476,8 +1479,8 @@ const isCoachOrExpert = isCoach || isExpert;
                 </div>
               )}
 
-              {/* Compensation */}
-              {(has(job.ctcStart) || has(job.ctcEnd) || has(job.budget_type) || has(job.variable_pay_pct) || has(job.joining_bonus) || has(job.variable_freq)) && (
+              {/* Compensation — hidden on the public share link (CTC range, budget type, etc.) */}
+              {!isShareView && (has(job.ctcStart) || has(job.ctcEnd) || has(job.budget_type) || has(job.variable_pay_pct) || has(job.joining_bonus) || has(job.variable_freq)) && (
                 <div className="bg-white shadow-sm rounded-2xl border-2 border-gray-100 p-6">
                   <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><IndianRupee size={20} className="text-orange-500" /> Compensation</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1511,8 +1514,8 @@ const isCoachOrExpert = isCoach || isExpert;
                 </div>
               )}
 
-              {/* Skills */}
-              {(has(job.skill_sub_category) || has(job.specialization)) && (
+              {/* Skills — hidden on the public share link */}
+              {!isShareView && (has(job.skill_sub_category) || has(job.specialization)) && (
                 <div className="bg-white shadow-sm rounded-2xl border-2 border-gray-100 p-6">
                   <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2"><CheckCircle size={20} className="text-blue-600" /> Skills</h3>
                   {has(job.skill_sub_category) && (
@@ -1550,8 +1553,8 @@ const isCoachOrExpert = isCoach || isExpert;
             </div>
           )}
 
-          {/* ════ Additional details — any other field with a value (never hide entered data) ════ */}
-          {!isEditMode && (() => {
+          {/* ════ Additional details — hidden on the public share link ════ */}
+          {!isEditMode && !isShareView && (() => {
             const extras = Object.entries(job).filter(([k, v]) =>
               has(v) && !SHOWN_FIELDS.has(k) && !INTERNAL_FIELDS.has(k) &&
               (typeof v !== 'object' || Array.isArray(v))   // skip nested objects (e.g. timestamps)
@@ -1572,8 +1575,8 @@ const isCoachOrExpert = isCoach || isExpert;
             );
           })()}
 
-          {/* ════ Client Requirements — company + position questions ════ */}
-          {!isEditMode && (companyQuestions.length > 0 || (Array.isArray(job.client_questions) && job.client_questions.length > 0)) && (
+          {/* ════ Client Requirements — hidden on the public share link ════ */}
+          {!isEditMode && !isShareView && (companyQuestions.length > 0 || (Array.isArray(job.client_questions) && job.client_questions.length > 0)) && (
             <div className="bg-white shadow-sm rounded-2xl border-2 border-gray-100 p-6 mb-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-blue-100 rounded-lg"><HelpCircle size={20} className="text-blue-600" /></div>

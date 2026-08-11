@@ -414,6 +414,11 @@ router.post('/spoc/positions/:id/golive', spocAuth, async (req, res) => {
     }
     await POS.doc(req.params.id).update({ status: 'active', wentLiveAt: new Date(), approvedBy: req.spocEmail });
     try { await adminF.updatePositionVisibility(doc.data().pos_id); } catch (_) {}
+    // 🔗 A Client SPOC just made this position live → push to LinkedIn via Zapier.
+    try {
+      const { postPositionToZapier } = require('../utils/postPositionToZapier');
+      postPositionToZapier({ ...doc.data(), status: 'active' }).catch(() => {});
+    } catch (_) {}
     res.json({ success: true, message: 'Position is now live for recruiters.' });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });

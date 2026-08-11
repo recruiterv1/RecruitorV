@@ -335,6 +335,16 @@ router.post('/pos', authMiddleware, async (req,res)=>{
       postPositionToLinkedIn(usr).catch(() => {});
     } catch (_) { /* ignore */ }
 
+    // 🔗 When a Client SPOC posts a position, also push it to LinkedIn via Zapier
+    // (fire-and-forget; no-op until app_config/zapier is configured).
+    try {
+      const roleLc = (user?.roleCategory || user?.role || '').toString().toLowerCase().replace(/\s/g, '');
+      if (roleLc.includes('clientspoc')) {
+        const { postPositionToZapier } = require('../utils/postPositionToZapier');
+        postPositionToZapier(usr).catch(() => {});
+      }
+    } catch (_) { /* ignore */ }
+
     // 🔔 Send notification about new position
     try {
       // Get the created position details
