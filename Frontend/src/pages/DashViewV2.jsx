@@ -386,6 +386,61 @@ function DashViewV2Inner() {
   const [selSubs, setSelSubs] = useState({});          // { [child]: string[] }
   const [subExp, setSubExp] = useState({});            // { 'child||sub': 'experience' }
 
+  // ── Matching coaches/experts (same skill category, active in last 48h) ────────
+  const { user: teamUser } = useContext(UserStateContext);
+  const [teamCoaches, setTeamCoaches] = useState([]);
+  const [teamReqStatus, setTeamReqStatus] = useState({}); // email(lc) -> status
+  const [teamSending, setTeamSending] = useState({});
+
+  useEffect(() => {
+    if (!teamUser?.email) return;
+    const recCats = (Array.isArray(teamUser.skillCategory) ? teamUser.skillCategory : (teamUser.skillCategory ? [teamUser.skillCategory] : []))
+      .map(c => String(c).toLowerCase().trim());
+    const FORTY_EIGHT = 48 * 60 * 60 * 1000, now = Date.now();
+    axios.get('/api/coach-expert/team/available-coaches?scope=all', { withCredentials: true })
+      .then(r => {
+        const all = r.data?.coaches || [];
+        const list = all.filter(c => {
+          const ms = c.lastActiveDate ? new Date(c.lastActiveDate).getTime() : 0;
+          if (!ms || now - ms > FORTY_EIGHT) return false;            // active in last 48h
+          const cCats = (Array.isArray(c.skillCategory) ? c.skillCategory : (c.skillCategory ? [c.skillCategory] : []))
+            .map(x => String(x).toLowerCase().trim());
+          if (recCats.length && !cCats.some(x => recCats.includes(x))) return false; // same skill category
+          return true;
+        });
+        setTeamCoaches(list);
+        const req = {};
+        all.forEach(c => { if (c.alreadyRequested) req[(c.email || '').toLowerCase()] = 'pending'; });
+        setTeamReqStatus(prev => ({ ...prev, ...req }));
+      })
+      .catch(() => {});
+    axios.get('/api/coach-expert/team/recruiter-my-requests', { withCredentials: true })
+      .then(r => {
+        const m = {};
+        (r.data?.requests || []).forEach(q => { if (q.coachEmail) m[q.coachEmail.toLowerCase()] = q.status; });
+        setTeamReqStatus(prev => ({ ...prev, ...m }));
+      })
+      .catch(() => {});
+  }, [teamUser?.email, teamUser?.skillCategory]);
+
+  const sendTeamRequest = async (coach) => {
+    const key = (coach.email || '').toLowerCase();
+    if (teamSending[key]) return;
+    setTeamSending(s => ({ ...s, [key]: true }));
+    try {
+      await axios.post('/api/coach-expert/team/recruiter-join-request',
+        { coachEmail: coach.email, coachRole: coach.role }, { withCredentials: true });
+      setTeamReqStatus(prev => ({ ...prev, [key]: 'pending' }));
+      setToast('Join request sent!');
+      setTimeout(() => setToast(''), 3000);
+    } catch (err) {
+      setToast(err.response?.data?.message || 'Failed to send request');
+      setTimeout(() => setToast(''), 3000);
+    } finally {
+      setTeamSending(s => ({ ...s, [key]: false }));
+    }
+  };
+
   useEffect(() => {
     axios.get('/candidate/skill-categories-hierarchical')
       .then(r => { if (r.data?.success) setSkillHierarchy(r.data.categories || []); })
@@ -999,11 +1054,48 @@ function DashViewV2Inner() {
 
               <div className="card">
                 <h2>Coach / Expert</h2>
-                <div className="side-block">
-                  {(job?.coach_ids || job?.expert_ids)
-                    ? <>Coach: {job.coach_ids || '—'} · Expert: {job.expert_ids || '—'}</>
-                    : 'No coach assigned. No experts assigned. Flag in team chat if you need help reading this JD.'}
-                </div>
+                <p className="card-sub">Coaches & Experts in your skill category, active in the last 48 hours. Send a request to join their team.</p>
+                {teamCoaches.length === 0 ? (
+                  <div className="side-block">No matching coach/expert is active right now. Check back later, or find one from the Join Team page.</div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6, scrollSnapType: 'x mandatory' }}>
+                    {teamCoaches.map((c) => {
+                      const key = (c.email || '').toLowerCase();
+                      const status = teamReqStatus[key];
+                      const busy = !!teamSending[key];
+                      return (
+                        <div key={c.id || key} style={{ minWidth: 230, maxWidth: 230, flex: '0 0 auto', scrollSnapAlign: 'start', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                            <div style={{ width: 34, height: 34, borderRadius: '50%', background: c.role === 'Expert' ? '#ede9fe' : '#ffedd5', color: c.role === 'Expert' ? '#6d28d9' : '#c2410c', display: 'grid', placeItems: 'center', fontWeight: 700, flexShrink: 0 }}>
+                              {(c.name || '?')[0].toUpperCase()}
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name || '—'}</div>
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: c.role === 'Expert' ? '#ede9fe' : '#ffedd5', color: c.role === 'Expert' ? '#6d28d9' : '#c2410c' }}>{c.role}</span>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.7 }}>
+                            <div>💼 {c.yearsOfExperience ? `${c.yearsOfExperience} yrs exp` : 'Experience —'}</div>
+                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>✉️ {c.email || '—'}</div>
+                            <div>📞 {c.phone || '—'}</div>
+                          </div>
+                          <div style={{ marginTop: 10 }}>
+                            {status === 'approved' ? (
+                              <button disabled style={{ width: '100%', padding: '7px 0', borderRadius: 8, border: 'none', background: '#dcfce7', color: '#166534', fontWeight: 700, fontSize: 12 }}>✓ In your team</button>
+                            ) : status === 'pending' ? (
+                              <button disabled style={{ width: '100%', padding: '7px 0', borderRadius: 8, border: 'none', background: '#fef9c3', color: '#854d0e', fontWeight: 700, fontSize: 12 }}>⏳ Requested</button>
+                            ) : (
+                              <button onClick={() => sendTeamRequest(c)} disabled={busy}
+                                style={{ width: '100%', padding: '7px 0', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>
+                                {busy ? 'Sending…' : 'Join Team'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="card">
