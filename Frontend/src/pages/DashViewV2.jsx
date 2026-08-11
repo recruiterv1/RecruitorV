@@ -183,6 +183,15 @@ const splitItems = (v) => {
   return text.split(/\n|,|;|•|•/).map(s => s.trim()).filter(s => s.length > 1).slice(0, 24);
 };
 
+// JD prose fields (Job Summary / Company Overview / Candidate Instructions) may be
+// old rich-text HTML or new plain text — render as readable plain text either way.
+const jdText = (v) => String(v || '')
+  .replace(/<li[^>]*>/gi, '• ')
+  .replace(/<\/(li|p|div|br)\s*\/?>/gi, '\n')
+  .replace(/<[^>]+>/g, '')
+  .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/\n{3,}/g, '\n\n').trim();
+
 // Searchable dropdown (combobox) styled to the v2 design. Type to filter,
 // click to select. Module-level so the input keeps focus across re-renders.
 const SearchSelect = ({ value, onChange, options, placeholder, disabled, allowAdd = false, onAdd }) => {
@@ -560,6 +569,10 @@ function DashViewV2Inner() {
       mustSkills: splitItems(j.m_have),
       goodSkills: splitItems(j.g_have),
       responsibilities: splitItems(j.key_res),
+      competencies: splitItems(j.compet),
+      jobSummary: j.job_desc || '',
+      companyOverview: j.comp_view || '',
+      candidateInstructions: j.candidate_instructions || '',
       employment: [j.employment_type, j.work_mode].filter(Boolean).join(', ') || '—',
       budget: [j.budget_type, j.variable_freq].filter(Boolean).join(', ') || '—',
       joiningBonus: j.joining_bonus || 'No',
@@ -923,6 +936,40 @@ function DashViewV2Inner() {
                   {jd.responsibilities.length ? jd.responsibilities.map((r, i) => <li key={i}>{r}</li>) : <li>Not specified</li>}
                 </ul>
               </div>
+
+              {/* Competencies — shown only when provided */}
+              {jd.competencies.length > 0 && (
+                <div className="card">
+                  <h2>Competencies</h2>
+                  <ul className="resp-list">
+                    {jd.competencies.map((c, i) => <li key={i}>{c}</li>)}
+                  </ul>
+                </div>
+              )}
+
+              {/* Job Summary — shown only when provided */}
+              {jdText(jd.jobSummary) && (
+                <div className="card">
+                  <h2>Job Summary</h2>
+                  <p className="card-sub" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{jdText(jd.jobSummary)}</p>
+                </div>
+              )}
+
+              {/* Company Overview — shown only when provided */}
+              {jdText(jd.companyOverview) && (
+                <div className="card">
+                  <h2>Company Overview</h2>
+                  <p className="card-sub" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{jdText(jd.companyOverview)}</p>
+                </div>
+              )}
+
+              {/* Candidate Instructions — shown only when provided */}
+              {jdText(jd.candidateInstructions) && (
+                <div className="card">
+                  <h2>Candidate Instructions</h2>
+                  <p className="card-sub" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{jdText(jd.candidateInstructions)}</p>
+                </div>
+              )}
             </div>
 
             <div>
