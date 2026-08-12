@@ -22,7 +22,7 @@ const CSS = `
 .jdv2-root *{box-sizing:border-box;}
 .jdv2-root h1,.jdv2-root h2,.jdv2-root h3,.jdv2-root h4{font-family:'Sora','Inter',sans-serif;}
 .jdv2-root .mono{font-family:'JetBrains Mono',monospace;}
-.jdv2-root .topbar{position:sticky;top:64px;z-index:20;background:var(--navy);color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;box-shadow:0 2px 12px rgba(0,0,0,0.15);}
+.jdv2-root .topbar{position:sticky;top:90px;z-index:20;background:var(--navy);color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;box-shadow:0 2px 12px rgba(0,0,0,0.15);}
 .jdv2-root .brand{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;letter-spacing:0.2px;}
 .jdv2-root .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--orange);}
 .jdv2-root .tabs{display:flex;gap:4px;background:rgba(255,255,255,0.08);padding:4px;border-radius:10px;}
@@ -620,7 +620,7 @@ function DashViewV2Inner() {
       commission: j.commison ? formatCommission(j.commison, j.commission_type) : '—',
       openings: j.no_of_positions || 1,
       experience: exp || '—',
-      minExp: j.min_exp, maxExp: j.max_exp,
+      minExp: j.min_exp, maxExp: j.max_exp, minRelExp: j.min_rel_exp,
       reqEducation: j.req_education || 'Graduate mandatory',
       mustSkills: splitItems(j.m_have),
       goodSkills: splitItems(j.g_have),
@@ -640,13 +640,14 @@ function DashViewV2Inner() {
   // ── live match logic ──
   const expState = useMemo(() => {
     const rel = relYrs === '' ? -1 : parseInt(relYrs, 10);
-    const min = parseInt(jd.minExp, 10) || 7;
+    // Validate relevant years against the JD's minimum RELEVANT experience.
+    const min = parseInt(jd.minRelExp ?? jd.minExp, 10) || 7;
     const max = (parseInt(jd.maxExp, 10) || 10) * 1.2;
     if (rel < 0) return ['pending', 'Pending'];
     if (rel < min) return ['bad', 'Below Min'];
     if (rel > max) return ['warn', 'Above Range'];
     return ['ok', 'Within Range'];
-  }, [relYrs, jd.minExp, jd.maxExp]);
+  }, [relYrs, jd.minRelExp, jd.minExp, jd.maxExp]);
 
   const hikePct = useMemo(() => {
     const c = parseFloat(currentCTC), e = parseFloat(expectedCTC);
@@ -959,10 +960,10 @@ function DashViewV2Inner() {
               <div className="card filter-card">
                 <h2>Must Match — auto-checked at submission</h2>
                 <p className="card-sub">These are hard filters. The submission form validates against them live.</p>
-                <div className="filter-row"><div className="filter-name"><span className="filter-icon">Y</span>Min. relevant experience</div><div className="filter-val">{jd.minExp ? `${jd.minExp} yrs` : '—'}</div></div>
+                <div className="filter-row"><div className="filter-name"><span className="filter-icon">Y</span>Min. relevant experience</div><div className="filter-val">{jd.minRelExp ? `${jd.minRelExp} yrs` : '—'}</div></div>
+                <div className="filter-row"><div className="filter-name"><span className="filter-icon">Y</span>Min. experience accepted</div><div className="filter-val">{jd.minExp ? `${jd.minExp} yrs` : '—'}</div></div>
                 <div className="filter-row"><div className="filter-name"><span className="filter-icon">Y</span>Max. experience accepted</div><div className="filter-val">{jd.maxExp ? `~${Math.round(jd.maxExp * 1.2)} yrs (${jd.maxExp} + 20%)` : '—'}</div></div>
                 <div className="filter-row"><div className="filter-name"><span className="filter-icon">N</span>Notice period accepted</div><div className="filter-val">Immediate – 25 days</div></div>
-                <div className="filter-row"><div className="filter-name"><span className="filter-icon">L</span>Location accepted</div><div className="filter-val">{jd.location}</div></div>
                 <div className="filter-row"><div className="filter-name"><span className="filter-icon">₹</span>Max acceptable hike</div><div className="filter-val">35% (unless offer in hand)</div></div>
                 <div className="filter-row"><div className="filter-name"><span className="filter-icon">E</span>Education</div><div className="filter-val">{jd.reqEducation}</div></div>
               </div>
@@ -1194,7 +1195,7 @@ function DashViewV2Inner() {
               {/* Step 2 - Experience */}
               <div className={`fieldset${step === 1 ? ' active' : ''}`}>
                 <div className="card">
-                  <h2>Experience</h2><p className="card-sub">Section 2 of 7 · JD requires {jd.minExp || 7} yrs relevant experience minimum</p>
+                  <h2>Experience</h2><p className="card-sub">Section 2 of 7 · JD requires {jd.minRelExp || jd.minExp || 7} yrs relevant experience minimum</p>
                   <div className="field-grid">
                     <div className="field"><label>Total Experience <span className="req">*</span></label>
                       <div className="duo"><select value={form.totalYrs} onChange={e => upd('totalYrs', e.target.value)}><option value="">Yrs</option>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}</select><select value={form.totalMos} onChange={e => upd('totalMos', e.target.value)}><option value="">Mos</option>{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
@@ -1204,7 +1205,7 @@ function DashViewV2Inner() {
                     </div>
                   </div>
                   <div className="check-row"><input type="checkbox" checked={form.internshipExcluded} onChange={e => upd('internshipExcluded', e.target.checked)} /><span>Confirm: internship period excluded from experience above</span></div>
-                  <div className={`warn-banner amber${expState[0] === 'bad' ? ' show' : ''}`}>⚠ Below client's minimum of {jd.minExp || 7} yrs relevant experience — high rejection risk. You can continue, but flag this to your coach.</div>
+                  <div className={`warn-banner amber${expState[0] === 'bad' ? ' show' : ''}`}>⚠ Below client's minimum of {jd.minRelExp || jd.minExp || 7} yrs relevant experience — high rejection risk. You can continue, but flag this to your coach.</div>
                   <div className={`warn-banner amber${expState[0] === 'warn' ? ' show' : ''}`}>⚠ Exceeds client's accepted range — client may still consider, but note it in your pitch.</div>
                   <div className="field full"><label>Skill Evidence <span className="req">*</span></label>
                     <OptionGrid value={skillEvidence} onChange={setSkillEvidence} options={[
