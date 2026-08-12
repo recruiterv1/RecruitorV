@@ -391,6 +391,7 @@ function DashViewV2Inner() {
   const [teamCoaches, setTeamCoaches] = useState([]);
   const [teamReqStatus, setTeamReqStatus] = useState({}); // email(lc) -> status
   const [teamSending, setTeamSending] = useState({});
+  const [teamIdx, setTeamIdx] = useState(0);              // carousel window start (2 at a time)
 
   useEffect(() => {
     if (!teamUser?.email) return;
@@ -1058,13 +1059,19 @@ function DashViewV2Inner() {
                 {teamCoaches.length === 0 ? (
                   <div className="side-block">No matching coach/expert is active right now. Check back later, or find one from the Join Team page.</div>
                 ) : (
-                  <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6, scrollSnapType: 'x mandatory' }}>
-                    {teamCoaches.map((c) => {
+                  <div style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
+                    {teamCoaches.length > 2 && (
+                      <button onClick={() => setTeamIdx(i => Math.max(0, i - 2))} disabled={teamIdx === 0}
+                        aria-label="Previous"
+                        style={{ flex: '0 0 auto', width: 28, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: teamIdx === 0 ? 'default' : 'pointer', opacity: teamIdx === 0 ? 0.4 : 1, fontWeight: 700, color: '#334155' }}>‹</button>
+                    )}
+                    <div style={{ flex: 1, display: 'flex', gap: 12, minWidth: 0 }}>
+                    {teamCoaches.slice(teamIdx, teamIdx + 2).map((c) => {
                       const key = (c.email || '').toLowerCase();
                       const status = teamReqStatus[key];
                       const busy = !!teamSending[key];
                       return (
-                        <div key={c.id || key} style={{ minWidth: 230, maxWidth: 230, flex: '0 0 auto', scrollSnapAlign: 'start', border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' }}>
+                        <div key={c.id || key} style={{ flex: 1, minWidth: 0, border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                             <div style={{ width: 34, height: 34, borderRadius: '50%', background: c.role === 'Expert' ? '#ede9fe' : '#ffedd5', color: c.role === 'Expert' ? '#6d28d9' : '#c2410c', display: 'grid', placeItems: 'center', fontWeight: 700, flexShrink: 0 }}>
                               {(c.name || '?')[0].toUpperCase()}
@@ -1094,6 +1101,17 @@ function DashViewV2Inner() {
                         </div>
                       );
                     })}
+                    </div>
+                    {teamCoaches.length > 2 && (
+                      <button onClick={() => setTeamIdx(i => Math.min(Math.max(0, teamCoaches.length - 2), i + 2))} disabled={teamIdx + 2 >= teamCoaches.length}
+                        aria-label="Next"
+                        style={{ flex: '0 0 auto', width: 28, borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: teamIdx + 2 >= teamCoaches.length ? 'default' : 'pointer', opacity: teamIdx + 2 >= teamCoaches.length ? 0.4 : 1, fontWeight: 700, color: '#334155' }}>›</button>
+                    )}
+                  </div>
+                )}
+                {teamCoaches.length > 2 && (
+                  <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
+                    Showing {teamIdx + 1}–{Math.min(teamIdx + 2, teamCoaches.length)} of {teamCoaches.length}
                   </div>
                 )}
               </div>
