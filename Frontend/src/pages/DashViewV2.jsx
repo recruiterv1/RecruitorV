@@ -521,6 +521,42 @@ function DashViewV2Inner() {
   });
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const [submitting, setSubmitting] = useState(false);
+
+  // Duplicate-check system (same as the live dash_view form): when the email/phone
+  // is entered, look the candidate up. If they already exist we autofill their
+  // known details for reuse; if they're already ACTIVE on THIS position we warn.
+  const runDupCheck = async () => {
+    const email = (form.emails || '').trim().toLowerCase();
+    const mob = (form.mob || '').trim();
+    if (!/^\S+@\S+\.\S+$/.test(email) && mob.replace(/\D/g, '').length < 6) return;
+    try {
+      const chk = await axios.post('/addit/data/check', {
+        emails: email, mob, pan_number: (form.pan_number || '').trim().toUpperCase(), pos_id,
+      }, { withCredentials: true });
+      setDupChecked(true); // system performed the check → satisfy the manual gate
+      if (chk.data?.duplicateOnPosition) {
+        const info = chk.data.duplicateInfo || {};
+        setToast(`⚠ This candidate is already active on this position${info.status ? ` (${info.status})` : ''}.`);
+        setTimeout(() => setToast(''), 5000);
+        return;
+      }
+      if (chk.data?.match) {
+        const m = chk.data.match;
+        setForm(prev => ({
+          ...prev,
+          candidate: prev.candidate || m.candidate || '',
+          mob: prev.mob || m.mob || '',
+          dob: prev.dob || m.dob || '',
+          pan_number: prev.pan_number || m.pan_number || '',
+          curr_emp: prev.curr_emp || m.curr_emp || '',
+          highest_education: prev.highest_education || m.highest_education || '',
+          curr_state: prev.curr_state || m.curr_state || '',
+        }));
+        setToast('Candidate found in the system — details autofilled. You can still submit for this position.');
+        setTimeout(() => setToast(''), 5000);
+      }
+    } catch (_) { /* silent — submit-time check + backend still enforce */ }
+  };
   // Cities added by the user (per state) when not found in the built-in list.
   const [customCities, setCustomCities] = useState({});
   // Education qualifications added by the user when not found in the built-in list.
@@ -789,19 +825,19 @@ function DashViewV2Inner() {
     if (submitting) return;
     setSubmitting(true);
     try {
-      // 1) Duplicate check (email / phone / PAN) — same as the live form.
+      // 1) Position-aware duplicate check — same as the live form. A candidate
+      //    already in the system is fine to REUSE; only an ACTIVE record on THIS
+      //    position blocks (a rejected/other-position record does not).
       try {
         const chk = await axios.post('/addit/data/check', {
           emails: form.emails.trim().toLowerCase(),
           mob: form.mob.trim(),
           pan_number: form.pan_number.trim().toUpperCase(),
+          pos_id,
         }, { withCredentials: true });
-        if (chk.data?.exists) {
-          const which = [];
-          if (chk.data.emailExists) which.push('email');
-          if (chk.data.phoneExists) which.push('phone');
-          if (chk.data.panExists) which.push('PAN');
-          flagInvalid(`Candidate already exists in the system (matched ${which.join(', ') || 'details'})`);
+        if (chk.data?.duplicateOnPosition) {
+          const info = chk.data.duplicateInfo || {};
+          flagInvalid(`This candidate is already active on this position${info.status ? ` (status: ${info.status})` : ''} and can't be submitted again.`);
           setSubmitting(false);
           return;
         }
@@ -1158,8 +1194,8 @@ function DashViewV2Inner() {
                   <h2>Candidate Identity</h2><p className="card-sub">Section 1 of 7</p>
                   <div className="field-grid">
                     <div className="field"><label>Candidate Name <span className="req">*</span></label><input type="text" placeholder="Full name as per ID" value={form.candidate} onChange={e => upd('candidate', e.target.value)} /></div>
-                    <div className="field"><label>Contact Number <span className="req">*</span></label><input type="tel" placeholder="10-digit mobile" maxLength={10} value={form.mob} onChange={e => upd('mob', e.target.value.replace(/[^\d]/g, ''))} /></div>
-                    <div className="field"><label>Email <span className="req">*</span></label><input type="email" placeholder="name@email.com" value={form.emails} onChange={e => upd('emails', e.target.value)} /></div>
+                    <div className="field"><label>Contact Number <span className="req">*</span></label><input type="tel" placeholder="10-digit mobile" maxLength={10} value={form.mob} onChange={e => upd('mob', e.target.value.replace(/[^\d]/g, ''))} onBlur={runDupCheck} /></div>
+                    <div className="field"><label>Email <span className="req">*</span></label><input type="email" placeholder="name@email.com" value={form.emails} onChange={e => upd('emails', e.target.value)} onBlur={runDupCheck} /></div>
                     <div className="field"><label>Date of Birth <span className="req">*</span></label><input type="date" value={form.dob} onChange={e => upd('dob', e.target.value)} /></div>
                     <div className="field"><label>PAN Number <span className="req">*</span></label><input type="text" placeholder="ABCDE1234F" maxLength={10} style={{ textTransform: 'uppercase' }} value={form.pan_number} onChange={e => upd('pan_number', e.target.value)} /></div>
                     <div className="field"><label>Current Employer</label><input type="text" placeholder="Company name" value={form.curr_emp} onChange={e => upd('curr_emp', e.target.value)} /></div>
