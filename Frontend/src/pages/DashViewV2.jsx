@@ -22,7 +22,7 @@ const CSS = `
 .jdv2-root *{box-sizing:border-box;}
 .jdv2-root h1,.jdv2-root h2,.jdv2-root h3,.jdv2-root h4{font-family:'Sora','Inter',sans-serif;}
 .jdv2-root .mono{font-family:'JetBrains Mono',monospace;}
-.jdv2-root .topbar{background:var(--navy);color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;box-shadow:0 2px 12px rgba(0,0,0,0.15);}
+.jdv2-root .topbar{position:sticky;top:64px;z-index:20;background:var(--navy);color:#fff;padding:14px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;box-shadow:0 2px 12px rgba(0,0,0,0.15);}
 .jdv2-root .brand{display:flex;align-items:center;gap:10px;font-family:'Sora',sans-serif;font-weight:700;font-size:16px;letter-spacing:0.2px;}
 .jdv2-root .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--orange);}
 .jdv2-root .tabs{display:flex;gap:4px;background:rgba(255,255,255,0.08);padding:4px;border-radius:10px;}
@@ -41,7 +41,7 @@ const CSS = `
 .jdv2-root .jd-meta div{display:flex;flex-direction:column;gap:3px;}
 .jdv2-root .jd-meta span.label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.5);font-weight:600;}
 .jdv2-root .jd-meta span.val{font-size:15px;font-weight:700;font-family:'Sora',sans-serif;}
-.jdv2-root .grid{display:grid;grid-template-columns:1.55fr 1fr;gap:20px;align-items:start;}
+.jdv2-root .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
 @media (max-width:880px){.jdv2-root .grid{grid-template-columns:1fr;}}
 .jdv2-root .card{background:var(--card);border-radius:var(--radius);padding:24px 26px;box-shadow:var(--shadow);border:1px solid var(--line);margin-bottom:20px;}
 .jdv2-root .card h2{font-size:15px;margin:0 0 4px;color:var(--navy);}
@@ -1003,29 +1003,6 @@ function DashViewV2Inner() {
                 </div>
               )}
 
-              {/* Job Summary — shown only when provided */}
-              {jdText(jd.jobSummary) && (
-                <div className="card">
-                  <h2>Job Summary</h2>
-                  <p className="card-sub" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{jdText(jd.jobSummary)}</p>
-                </div>
-              )}
-
-              {/* Company Overview — shown only when provided */}
-              {jdText(jd.companyOverview) && (
-                <div className="card">
-                  <h2>Company Overview</h2>
-                  <p className="card-sub" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{jdText(jd.companyOverview)}</p>
-                </div>
-              )}
-
-              {/* Candidate Instructions — shown only when provided */}
-              {jdText(jd.candidateInstructions) && (
-                <div className="card">
-                  <h2>Candidate Instructions</h2>
-                  <p className="card-sub" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{jdText(jd.candidateInstructions)}</p>
-                </div>
-              )}
             </div>
 
             <div>
@@ -1124,6 +1101,30 @@ function DashViewV2Inner() {
                 <div className="side-row"><span>Team handling</span><span>{jd.teamHandling}</span></div>
                 <div className="side-row"><span>Interview mode</span><span>{jd.interviewMode}</span></div>
               </div>
+
+              {/* Job Summary — shown only when provided */}
+              {jdText(jd.jobSummary) && (
+                <div className="card">
+                  <h2>Job Summary</h2>
+                  <p className="card-sub" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{jdText(jd.jobSummary)}</p>
+                </div>
+              )}
+
+              {/* Company Overview — shown only when provided */}
+              {jdText(jd.companyOverview) && (
+                <div className="card">
+                  <h2>Company Overview</h2>
+                  <p className="card-sub" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{jdText(jd.companyOverview)}</p>
+                </div>
+              )}
+
+              {/* Candidate Instructions — shown only when provided */}
+              {jdText(jd.candidateInstructions) && (
+                <div className="card">
+                  <h2>Candidate Instructions</h2>
+                  <p className="card-sub" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{jdText(jd.candidateInstructions)}</p>
+                </div>
+              )}
 
               <button className="cta-big" onClick={handleSubmitEntry}
                 style={isPendingAccess ? { opacity: 0.6, cursor: 'default' } : undefined}>
