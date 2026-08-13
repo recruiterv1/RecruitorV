@@ -393,6 +393,23 @@ function DashViewV2Inner() {
   const [teamReqStatus, setTeamReqStatus] = useState({}); // email(lc) -> status
   const [teamSending, setTeamSending] = useState({});
   const [teamIdx, setTeamIdx] = useState(0);              // carousel window start (2 at a time)
+  const [teamProfile, setTeamProfile] = useState(null);   // full coach/expert profile for the modal
+  const [teamProfileLoading, setTeamProfileLoading] = useState(false);
+
+  // Fetch and open the full profile (incl. resume) when a coach/expert name is clicked.
+  const openTeamProfile = async (c) => {
+    if (!c?.id) return;
+    const isExpert = (c.role || '').toLowerCase() === 'expert';
+    setTeamProfileLoading(true);
+    setTeamProfile({ __loading: true, name: c.name, role: c.role });
+    try {
+      const r = await axios.get(`/api/coach-expert/${isExpert ? 'expert' : 'coach'}/${c.id}`, { withCredentials: true });
+      const data = r.data?.data || {};
+      setTeamProfile({ ...data, role: c.role, email: data.email || c.email, phone: data.phone || c.phone });
+    } catch (_) {
+      setTeamProfile({ ...c, __error: true });
+    } finally { setTeamProfileLoading(false); }
+  };
 
   useEffect(() => {
     if (!teamUser?.email) return;
@@ -1122,7 +1139,8 @@ function DashViewV2Inner() {
                               {(c.name || '?')[0].toUpperCase()}
                             </div>
                             <div style={{ minWidth: 0 }}>
-                              <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name || '—'}</div>
+                              <div onClick={() => openTeamProfile(c)} title="View full profile"
+                                style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer', color: '#2563eb', textDecoration: 'underline' }}>{c.name || '—'}</div>
                               <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: c.role === 'Expert' ? '#ede9fe' : '#ffedd5', color: c.role === 'Expert' ? '#6d28d9' : '#c2410c' }}>{c.role}</span>
                             </div>
                           </div>
@@ -1533,6 +1551,79 @@ function DashViewV2Inner() {
           </div>
         </div>
       )}
+
+      {/* Coach / Expert full-profile modal (with resume) */}
+      {teamProfile && (() => {
+        const p = teamProfile;
+        const resumeBase64 = p.resume && !p.__loading ? p.resume : null;
+        const resumeUrl = p.resumeUrl || p.cv_data || '';
+        const skills = Array.isArray(p.skillCategory) ? p.skillCategory.join(', ') : (p.skillCategory || p.specialization || '');
+        const Row = ({ label, value }) => value ? (
+          <div style={{ display: 'flex', gap: 10, padding: '7px 0', borderBottom: '1px solid #f1f5f9' }}>
+            <span style={{ width: 130, flexShrink: 0, fontSize: 12, color: '#64748b', fontWeight: 600 }}>{label}</span>
+            <span style={{ fontSize: 13, color: '#0f172a', wordBreak: 'break-word' }}>{value}</span>
+          </div>
+        ) : null;
+        return (
+          <div onClick={() => setTeamProfile(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(15,20,35,0.55)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 60px -12px rgba(0,0,0,0.5)' }}>
+              <div style={{ background: 'linear-gradient(135deg,#2563eb,#f97316)', color: '#fff', padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
+                {p.profilePhoto
+                  ? <img src={p.profilePhoto} alt="" style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,0.5)' }} />
+                  : <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 800 }}>{(p.name || '?')[0].toUpperCase()}</div>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 18, fontWeight: 800 }}>{p.name || '—'}</div>
+                  <div style={{ fontSize: 12, opacity: 0.9 }}>{p.role || 'Coach / Expert'}{skills ? ` · ${skills}` : ''}</div>
+                </div>
+                <button onClick={() => setTeamProfile(null)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', fontSize: 18, fontWeight: 700 }}>×</button>
+              </div>
+              <div style={{ padding: 20 }}>
+                {p.__loading ? (
+                  <div style={{ textAlign: 'center', padding: 30, color: '#64748b' }}>Loading profile…</div>
+                ) : (
+                  <>
+                    <Row label="Email" value={p.email} />
+                    <Row label="Phone" value={p.phone || p.mobile || p.mob} />
+                    <Row label="Experience" value={p.yearsOfExperience ? `${p.yearsOfExperience} yrs` : ''} />
+                    <Row label="Skill category" value={skills} />
+                    <Row label="Current role" value={p.currentRole || p.designation || ''} />
+                    <Row label="Company" value={p.currentCompany || p.company || ''} />
+                    <Row label="Location" value={p.location || p.city || ''} />
+                    <Row label="LinkedIn" value={p.linkedin || p.linkedIn || ''} />
+                    {(p.about || p.bio) && (
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, marginBottom: 4 }}>About</div>
+                        <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, margin: 0 }}>{p.about || p.bio}</p>
+                      </div>
+                    )}
+                    {/* Resume */}
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{ fontSize: 12, color: '#64748b', fontWeight: 700, marginBottom: 6 }}>Resume</div>
+                      {resumeBase64 ? (
+                        <>
+                          <iframe title="Resume" src={`data:application/pdf;base64,${resumeBase64}`} style={{ width: '100%', height: 420, border: '1px solid #e5e7eb', borderRadius: 10 }} />
+                          <a href={`data:application/pdf;base64,${resumeBase64}`} download={p.resumeFileName || 'resume.pdf'}
+                            style={{ display: 'inline-block', marginTop: 8, fontSize: 12, fontWeight: 700, color: '#2563eb' }}>⬇ Download resume</a>
+                        </>
+                      ) : resumeUrl ? (
+                        <>
+                          <iframe title="Resume" src={resumeUrl} style={{ width: '100%', height: 420, border: '1px solid #e5e7eb', borderRadius: 10 }} />
+                          <a href={resumeUrl} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'inline-block', marginTop: 8, fontSize: 12, fontWeight: 700, color: '#2563eb' }}>⬇ Open resume</a>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 13, color: '#94a3b8' }}>No resume uploaded.</div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Toast */}
       {toast && (

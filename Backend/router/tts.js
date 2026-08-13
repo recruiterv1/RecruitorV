@@ -31,6 +31,73 @@ async function googleTranslate(text, target) {
   return data[0].map(seg => (Array.isArray(seg) ? seg[0] : '')).join('');
 }
 
+// Languages Google's free TTS can actually voice clearly (verified). Odia ('or')
+// is intentionally absent — Google TTS returns 400 for it, so there's no free
+// clear voice; the frontend keeps it out of the menu.
+const TTS_LANGS = new Set(['hi', 'bn', 'ta', 'te', 'mr', 'gu', 'kn', 'ml', 'pa', 'ur']);
+
+// Split text into ≤180-char chunks on word boundaries (Google TTS caps ~200/req).
+const chunkText = (text) => {
+  const words = text.split(/\s+/);
+  const chunks = [];
+  let buf = '';
+  for (const w of words) {
+    if ((buf + ' ' + w).trim().length > 180) { if (buf) chunks.push(buf.trim()); buf = w; }
+    else buf = (buf + ' ' + w).trim();
+  }
+  if (buf) chunks.push(buf.trim());
+  return chunks.length ? chunks : [text];
+};
+
+const fetchTtsChunk = async (chunk, lang, idx, total) => {
+  const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${encodeURIComponent(lang)}`
+    + `&client=tw-ob&idx=${idx}&total=${total}&textlen=${chunk.length}&q=${encodeURIComponent(chunk)}`;
+  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://translate.google.com/' } });
+  if (!r.ok) throw new Error(`tts ${r.status}`);
+  const ct = r.headers.get('content-type') || '';
+  if (!ct.includes('audio')) throw new Error('tts non-audio response');
+  return Buffer.from(await r.arrayBuffer());
+};
+
+// POST /api/tts/speak  { text, lang }  →  audio/mpeg (MP3)
+// Translates the text into `lang` (unless it's already there) and returns clear
+// synthesized speech. English is handled by the browser, so it's not routed here.
+router.post('/speak', async (req, res) => {
+  try {
+    const raw = String(req.body?.text || '').trim();
+    const lang = String(req.body?.lang || '').toLowerCase();
+    if (!raw) return res.status(400).json({ message: 'text required' });
+    if (!TTS_LANGS.has(lang)) return res.status(415).json({ message: 'language not supported for server audio' });
+
+    // Translate to the target language first (cached), then synthesize.
+    let text = raw;
+    try {
+      const key = `${lang}:${raw}`;
+      const hit = cacheGet(key);
+      if (hit !== undefined) text = hit;
+      else if (raw.length <= 1800) { text = await googleTranslate(raw, lang); cacheSet(key, text); }
+      else {
+        const parts = raw.match(/[^.!?]+[.!?]*/g) || [raw];
+        let buf = '', chunks = [], out = '';
+        for (const p of parts) { if ((buf + p).length > 1800) { chunks.push(buf); buf = p; } else buf += p; }
+        if (buf) chunks.push(buf);
+        for (const c of chunks) out += await googleTranslate(c, lang);
+        text = out; cacheSet(key, text);
+      }
+    } catch (_) { text = raw; }
+
+    const chunks = chunkText(text);
+    const buffers = [];
+    for (let i = 0; i < chunks.length; i++) buffers.push(await fetchTtsChunk(chunks[i], lang, i, chunks.length));
+    const audio = Buffer.concat(buffers);
+    res.set('Content-Type', 'audio/mpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    return res.send(audio);
+  } catch (e) {
+    return res.status(502).json({ message: e.message });
+  }
+});
+
 router.post('/translate', async (req, res) => {
   try {
     const text = String(req.body?.text || '').trim();
