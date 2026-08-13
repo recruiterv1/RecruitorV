@@ -396,6 +396,21 @@ function DashViewV2Inner() {
   const [teamProfile, setTeamProfile] = useState(null);   // full coach/expert profile for the modal
   const [teamProfileLoading, setTeamProfileLoading] = useState(false);
 
+  // Coaches/Experts may see the Client SPOC's contact details; recruiters may not.
+  const isCoachExpert = ['coach', 'expert'].includes(
+    (teamUser?.type || teamUser?.roleCategory || teamUser?.role || '').toString().toLowerCase().replace(/\s/g, '')
+  );
+  const [spocDetails, setSpocDetails] = useState(null);   // { name, email, mobile } — coach/expert only
+  useEffect(() => {
+    const spocEmail = job?.clientspoc;
+    if (!isCoachExpert || !spocEmail) { setSpocDetails(null); return; }
+    let live = true;
+    axios.get('/clientspoc/by-email', { params: { email: spocEmail.toLowerCase() }, withCredentials: true })
+      .then(r => { if (live && r.data?.success) setSpocDetails(r.data.data); })
+      .catch(() => { if (live) setSpocDetails(null); });
+    return () => { live = false; };
+  }, [job?.clientspoc, isCoachExpert]);
+
   // Fetch and open the full profile (incl. resume) when a coach/expert name is clicked.
   const openTeamProfile = async (c) => {
     if (!c?.id) return;
@@ -1026,10 +1041,20 @@ function DashViewV2Inner() {
           <div className="jd-header">
             <span className="badge">● {loading ? 'Loading…' : 'Requirement'}</span>
             <h1 className="jd-title">{jd.title}</h1>
-            <p className="jd-sub" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span>{jd.sub || (loading ? 'Loading position…' : '')}</span>
+            <p className="jd-sub" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 600 }}>{job?.client || (loading ? 'Loading position…' : '')}</span>
               {companyAudioText && <SpeakButton text={companyAudioText} title={`About ${job?.client || 'this company'}`} compact />}
+              {(() => {
+                const rest = [job?.clientspoc_name ? `Client SPOC: ${job.clientspoc_name}` : '', job?.datePosted ? `Posted ${fmtDate(job.datePosted)}` : ''].filter(Boolean).join(' · ');
+                return rest ? <span style={{ color: '#64748b' }}>· {rest}</span> : null;
+              })()}
             </p>
+            {isCoachExpert && spocDetails && (spocDetails.mobile || spocDetails.email) && (
+              <p className="jd-sub" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', fontSize: 13 }}>
+                {spocDetails.mobile && <span>📞 <a href={`tel:${spocDetails.mobile}`} style={{ color: '#2563eb' }}>{spocDetails.mobile}</a></span>}
+                {(spocDetails.email || job?.clientspoc) && <span>✉️ <a href={`mailto:${spocDetails.email || job?.clientspoc}`} style={{ color: '#2563eb' }}>{spocDetails.email || job?.clientspoc}</a></span>}
+              </p>
+            )}
             <div className="jd-meta">
               <div><span className="label">Location</span><span className="val">{jd.location}</span></div>
               <div><span className="label">CTC Range</span><span className="val">{jd.ctc}</span></div>
