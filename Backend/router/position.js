@@ -2164,6 +2164,25 @@ router.post('/pos/copy/:id', authMiddleware, async (req, res) => {
     // Add the new position
     const newPosRef = await ad_Pos.add(positionData);
     const newPosDoc = await newPosRef.get();
+    const newPos = { id: newPosDoc.id, ...newPosDoc.data() };
+
+    // 🔗 Auto-post the copied position to the RecruiterV LinkedIn company page
+    // (fire-and-forget; no-op until LinkedIn is configured in app_config/linkedin).
+    try {
+      const { postPositionToLinkedIn } = require('../utils/linkedinPost');
+      postPositionToLinkedIn(newPos).catch(() => {});
+    } catch (_) { /* ignore */ }
+
+    // 🔗 A copied position keeps the original's Client SPOC, so it's a Client SPOC
+    // position — push it to LinkedIn via Make/Zapier the same as a fresh SPOC post.
+    // (fire-and-forget; no-op until app_config/zapier is configured.) This was
+    // previously missing, so copied positions never reached LinkedIn.
+    try {
+      if (newPos.clientspoc) {
+        const { postPositionToZapier } = require('../utils/postPositionToZapier');
+        postPositionToZapier(newPos).catch(() => {});
+      }
+    } catch (_) { /* ignore */ }
 
     res.status(201).json({
       success: true,
