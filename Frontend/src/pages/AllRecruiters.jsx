@@ -641,6 +641,7 @@ const AllRecruiters = ({ embedded = false }) => {
             setResumeModalOpen={setResumeModalOpen}
             onAccessChange={handleAccountStatus}
             accessSaving={updatingId === selectedRecruiter?.id}
+            onImpersonate={impersonate}
           />
         )}
       </div>
@@ -862,7 +863,7 @@ const InfoItem = ({ icon, label, value }) => (
   </div>
 );
 
-const RecruiterProfileModal = ({ open, onClose, profile, loading, activeTab, setActiveTab, basicInfo, resumeModalOpen, setResumeModalOpen, onAccessChange, accessSaving }) => {
+const RecruiterProfileModal = ({ open, onClose, profile, loading, activeTab, setActiveTab, basicInfo, resumeModalOpen, setResumeModalOpen, onAccessChange, accessSaving, onImpersonate }) => {
   const getCompletionColor = (percentage) => {
     if (percentage >= 80) return 'bg-green-500';
     if (percentage >= 50) return 'bg-blue-500';
@@ -948,9 +949,19 @@ const RecruiterProfileModal = ({ open, onClose, profile, loading, activeTab, set
               <p className="text-blue-100 text-sm">Click on recruiter row to view details</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-white hover:bg-white/20 rounded-full p-1 transition-colors">
-            <X size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            {(basicInfo?.email) && onImpersonate && (
+              <button
+                onClick={() => onImpersonate(basicInfo)}
+                className="px-3 py-2 rounded-lg text-xs font-bold bg-white text-indigo-700 hover:bg-indigo-50 transition-colors whitespace-nowrap"
+              >
+                Login as
+              </button>
+            )}
+            <button onClick={onClose} className="text-white hover:bg-white/20 rounded-full p-1 transition-colors">
+              <X size={24} />
+            </button>
+          </div>
         </DialogTitle>
         <DialogContent className="p-0 bg-gray-50">
           {loading ? (
