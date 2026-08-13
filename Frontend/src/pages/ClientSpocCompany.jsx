@@ -20,6 +20,8 @@ const ClientSpocCompany=()=> {
   const [questions, setQuestions] = useState([]);
   // Candidate instructions (rich text) — shown to candidates before company overview.
   const [candidateInstructions, setCandidateInstructions] = useState("");
+  // Audio description — spoken aloud from the 🔊 speaker next to the company name.
+  const [audioText, setAudioText] = useState("");
 
   // Tier-based commission: each tier row has its own Fixed/Percentage type.
   const [tiers, setTiers] = useState([{ type: "", tier: "", value: "" }]);
@@ -102,6 +104,7 @@ const ClientSpocCompany=()=> {
           name:form.name.trim(),
           overview:form.overview.trim(),
           candidateInstructions,
+          audioText,
           photoRequired: form.photoRequired
     };
 
@@ -114,6 +117,7 @@ const ClientSpocCompany=()=> {
       
       setMessage("Company added successfully!");
       setForm({ commisson:"", lower:"", name:"", overview:"", photoRequired: false });
+      setAudioText("");
       setTiers([{ type: "", tier: "", value: "" }]);
       setQuestions([]);
       setCandidateInstructions("");
@@ -311,6 +315,23 @@ const ClientSpocCompany=()=> {
                 onChange={setCandidateInstructions}
                 placeholder="e.g. Keep your updated resume and ID ready; be reachable between 10am–6pm…"
                 minHeight={140}
+              />
+            </div>
+
+            {/* Audio Description (spoken) */}
+            <div className="relative">
+              <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <BookOpen size={16} className="text-blue-600" />
+                Audio Description (spoken)
+              </label>
+              <p className="text-xs text-gray-500 mb-2">Played aloud when a recruiter taps the 🔊 speaker next to the company name on the position pages. Recruiters can choose Hindi or other Indian languages to hear it.</p>
+              <textarea
+                name="audioText"
+                rows={4}
+                value={audioText}
+                onChange={(e) => setAudioText(e.target.value)}
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all resize-vertical"
+                placeholder="e.g. About the company, the role, what makes a strong candidate, and any key tips for recruiters…"
               />
             </div>
 

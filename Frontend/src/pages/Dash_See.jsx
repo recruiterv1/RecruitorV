@@ -4,6 +4,7 @@ import axios from "axios";
 import RichTextEditor, { RichTextView } from "../components/RichTextEditor";
 import { QuestionsList } from "../components/QuestionsEditor";
 import { formatCommission } from "../lib/commission";
+import SpeakButton from "../components/SpeakButton";
 
 // Split a comma-separated string (or array) into a clean array of values
 const csvList = (v) => Array.isArray(v) ? v.filter(Boolean) : (v ? String(v).split(',').map(s => s.trim()).filter(Boolean) : []);
@@ -99,14 +100,16 @@ const Dash_See = () => {
   // position's own client_questions in the "Client Requirements" section).
   const [companyQuestions, setCompanyQuestions] = useState([]);
   const [companyCandidateInstructions, setCompanyCandidateInstructions] = useState('');
+  const [companyAudioText, setCompanyAudioText] = useState('');   // SuperAdmin-authored spoken blurb
   useEffect(() => {
     const client = job?.client;
-    if (!client) { setCompanyQuestions([]); setCompanyCandidateInstructions(''); return; }
+    if (!client) { setCompanyQuestions([]); setCompanyCandidateInstructions(''); setCompanyAudioText(''); return; }
     let live = true;
     axios.get(`/addit/overview/${encodeURIComponent(client)}`)
       .then(res => { if (live && res.data?.found) {
         setCompanyQuestions(Array.isArray(res.data.data.questions) ? res.data.data.questions : []);
         setCompanyCandidateInstructions(res.data.data.candidateInstructions || '');
+        setCompanyAudioText(res.data.data.audioText || '');
       } })
       .catch(() => {});
     return () => { live = false; };
@@ -961,7 +964,10 @@ const isCoachOrExpert = isCoach || isExpert;
                   <Building size={20} className="text-blue-200" />
                   <div>
                     <p className="text-xs text-blue-200">Client</p>
-                    <p className="font-semibold">{job.client || 'Confidential'}</p>
+                    <p className="font-semibold flex items-center gap-2">
+                      <span>{job.client || 'Confidential'}</span>
+                      {companyAudioText && !isShareView && <SpeakButton text={companyAudioText} title={`About ${job.client || 'this company'}`} compact />}
+                    </p>
                   </div>
                 </div>
 

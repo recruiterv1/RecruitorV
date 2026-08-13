@@ -105,7 +105,7 @@ function sanitizeQuestions(questions) {
 
 router.post('/companyAdd',async (req,res)=>{
 
-    let { commisson,lower,name,overview,photoRequired,commissionType,commissionTiers,questions,candidateInstructions}=req.body;
+    let { commisson,lower,name,overview,photoRequired,commissionType,commissionTiers,questions,candidateInstructions,audioText}=req.body;
 
     try{
 
@@ -131,6 +131,7 @@ router.post('/companyAdd',async (req,res)=>{
                 ...(tiers.length ? { commissionTiers: tiers } : {}),
                 ...(qs !== undefined ? { questions: qs } : {}),
                 ...(candidateInstructions !== undefined ? { candidateInstructions: String(candidateInstructions) } : {}),
+                ...(audioText !== undefined ? { audioText: String(audioText) } : {}),
 
         })
 
@@ -171,7 +172,7 @@ router.put('/company/:id', async (req, res) => {
   try {
     const { updateCompany } = require('../model_fire/companyF');
     const { id } = req.params;
-    const { commisson, lower, name, overview, photoRequired, commissionType, commissionTiers, questions, candidateInstructions } = req.body;
+    const { commisson, lower, name, overview, photoRequired, commissionType, commissionTiers, questions, candidateInstructions, audioText } = req.body;
     if (!id) return res.status(400).json({ message: 'Company ID required' });
     // Sanitize tier rows when provided (same shape as companyAdd).
     const tiers = Array.isArray(commissionTiers)
@@ -189,6 +190,7 @@ router.put('/company/:id', async (req, res) => {
       ...(tiers !== undefined && { commissionTiers: tiers }),
       ...(qs !== undefined && { questions: qs }),
       ...(candidateInstructions !== undefined && { candidateInstructions: String(candidateInstructions) }),
+      ...(audioText !== undefined && { audioText: String(audioText) }),
       photoRequired: photoRequired === true || photoRequired === 'true',
     });
     return res.json({ success: true, company: updated });

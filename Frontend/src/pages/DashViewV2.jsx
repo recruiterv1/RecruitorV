@@ -9,6 +9,7 @@ import Dash_Header from './Dash_Header';
 import Footer from './Footer';
 import { indiaStatesAndCities } from './Ad_Pos';
 import { formatCommission } from '../lib/commission';
+import SpeakButton from '../components/SpeakButton';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EXPERIMENTAL layout for the position / JD-submission page. Isolated on its own
@@ -492,13 +493,14 @@ function DashViewV2Inner() {
   // Client-requirement questions from the company profile (+ position's own).
   // Answered by the recruiter in the "Client Req" step of the submit form.
   const [companyQuestions, setCompanyQuestions] = useState([]);
+  const [companyAudioText, setCompanyAudioText] = useState('');   // SuperAdmin-authored spoken blurb
   const [clientAnswers, setClientAnswers] = useState({});   // { [qIndex]: string | string[] }
   useEffect(() => {
     const client = job?.client;
-    if (!client) { setCompanyQuestions([]); return; }
+    if (!client) { setCompanyQuestions([]); setCompanyAudioText(''); return; }
     let live = true;
     axios.get(`/addit/overview/${encodeURIComponent(client)}`)
-      .then(r => { if (live && r.data?.found) setCompanyQuestions(Array.isArray(r.data.data.questions) ? r.data.data.questions : []); })
+      .then(r => { if (live && r.data?.found) { setCompanyQuestions(Array.isArray(r.data.data.questions) ? r.data.data.questions : []); setCompanyAudioText(r.data.data.audioText || ''); } })
       .catch(() => {});
     return () => { live = false; };
   }, [job?.client]);
@@ -672,6 +674,25 @@ function DashViewV2Inner() {
       interviewMode: j.interview_mode || '—',
     };
   }, [job]);
+
+  // Plain-text position description used by the "Describe position" speaker button.
+  const positionSpeech = useMemo(() => {
+    const strip = (s) => String(s || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+    const j = job || {};
+    const parts = [];
+    parts.push(`${jd.title}${j.client ? ` at ${j.client}` : ''}.`);
+    if (jd.location && jd.location !== '—') parts.push(`Location: ${jd.location}.`);
+    if (jd.experience && jd.experience !== '—') parts.push(`Experience required: ${jd.experience}.`);
+    if (jd.ctc && jd.ctc !== '—') parts.push(`CTC range: ${jd.ctc}.`);
+    if (jd.openings) parts.push(`Number of openings: ${jd.openings}.`);
+    if (jd.employment && jd.employment !== '—') parts.push(`Employment: ${jd.employment}.`);
+    if (jd.mustSkills?.length) parts.push(`Must-have skills: ${jd.mustSkills.join(', ')}.`);
+    if (jd.goodSkills?.length) parts.push(`Good to have: ${jd.goodSkills.join(', ')}.`);
+    if (jd.responsibilities?.length) parts.push(`Key responsibilities: ${jd.responsibilities.join(', ')}.`);
+    const summary = strip(jd.jobSummary);
+    if (summary) parts.push(`Job summary: ${summary}`);
+    return parts.join(' ');
+  }, [job, jd]);
 
   // ── live match logic ──
   const expState = useMemo(() => {
@@ -965,11 +986,18 @@ function DashViewV2Inner() {
             {loading ? 'Loading…' : (jd.title || 'Position')}
           </span>
         </div>
-        <div className="tabs">
-          <button className={`tab-btn${view === 'jd' ? ' active' : ''}`} onClick={() => { setView('jd'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>JD Detail</button>
-          <button className={`tab-btn${view === 'form' ? ' active' : ''}`}
-            style={isPendingAccess ? { opacity: 0.6, cursor: 'default' } : undefined}
-            onClick={handleSubmitEntry}>{submitLabel}</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {!loading && positionSpeech && (
+            <div style={{ background: '#fff', borderRadius: 999, padding: '2px 4px' }}>
+              <SpeakButton text={positionSpeech} title="Describe this position" compact />
+            </div>
+          )}
+          <div className="tabs">
+            <button className={`tab-btn${view === 'jd' ? ' active' : ''}`} onClick={() => { setView('jd'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>JD Detail</button>
+            <button className={`tab-btn${view === 'form' ? ' active' : ''}`}
+              style={isPendingAccess ? { opacity: 0.6, cursor: 'default' } : undefined}
+              onClick={handleSubmitEntry}>{submitLabel}</button>
+          </div>
         </div>
       </div>
 
@@ -981,7 +1009,10 @@ function DashViewV2Inner() {
           <div className="jd-header">
             <span className="badge">● {loading ? 'Loading…' : 'Requirement'}</span>
             <h1 className="jd-title">{jd.title}</h1>
-            <p className="jd-sub">{jd.sub || (loading ? 'Loading position…' : '')}</p>
+            <p className="jd-sub" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span>{jd.sub || (loading ? 'Loading position…' : '')}</span>
+              {companyAudioText && <SpeakButton text={companyAudioText} title={`About ${job?.client || 'this company'}`} compact />}
+            </p>
             <div className="jd-meta">
               <div><span className="label">Location</span><span className="val">{jd.location}</span></div>
               <div><span className="label">CTC Range</span><span className="val">{jd.ctc}</span></div>

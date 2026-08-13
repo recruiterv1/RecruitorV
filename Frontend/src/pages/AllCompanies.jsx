@@ -12,6 +12,7 @@ const EditModal = ({ company, onClose, onSaved }) => {
     commisson:    company.commisson    || '',
     overview:     company.overview     || '',
     candidateInstructions: company.candidateInstructions || '',
+    audioText:    company.audioText    || '',
     photoRequired: company.photoRequired === true,
   });
   // Tier-based commission (same as Add New Company) — each row has its own type
@@ -179,6 +180,14 @@ const EditModal = ({ company, onClose, onSaved }) => {
               placeholder="e.g. Keep your updated resume and ID ready; be reachable between 10am–6pm…"
               minHeight={140}
             />
+          </div>
+
+          <div>
+            <label className="text-sm font-semibold text-gray-700 block mb-1">Audio Description (spoken)</label>
+            <p className="text-xs text-gray-500 mb-1.5">Played aloud when a recruiter taps the 🔊 speaker next to the company name on the position pages. Recruiters can choose Hindi or other Indian languages to hear it.</p>
+            <textarea name="audioText" value={form.audioText} onChange={handleChange} rows={4}
+              placeholder="e.g. About the company, the role, what makes a strong candidate, and any key tips for recruiters…"
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all resize-vertical" />
           </div>
 
           {/* Photo required toggle */}
