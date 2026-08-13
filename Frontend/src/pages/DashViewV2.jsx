@@ -373,6 +373,8 @@ function DashViewV2Inner() {
   const [toast, setToast] = useState('');
   const [cvFile, setCvFile] = useState(null);
   const [photoFile, setPhotoFile] = useState(null);
+  const [existingCv, setExistingCv] = useState('');       // resume URL from a matched candidate
+  const [existingPhoto, setExistingPhoto] = useState(''); // photo URL from a matched candidate
   const [photoRequired, setPhotoRequired] = useState(false);
   const [access, setAccess] = useState(null);       // null = checking; { hasAccess, status }
   const [requesting, setRequesting] = useState(false);
@@ -654,7 +656,10 @@ function DashViewV2Inner() {
           highest_education: prev.highest_education || m.highest_education || '',
           curr_state: prev.curr_state || m.curr_state || '',
         }));
-        setToast('Candidate found in the system — details autofilled. You can still submit for this position.');
+        // Reuse the candidate's existing resume + photo so the recruiter needn't re-upload.
+        if (m.cv_data) setExistingCv(m.cv_data);
+        if (m.photo_url) setExistingPhoto(m.photo_url);
+        setToast('Candidate found — details, resume & photo loaded. You can still submit for this position.');
         setTimeout(() => setToast(''), 5000);
       }
     } catch (_) { /* silent — submit-time check + backend still enforce */ }
@@ -860,8 +865,8 @@ function DashViewV2Inner() {
       if (!form.dob) return 'Date of Birth is required';
       if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(form.pan_number.trim())) return 'A valid PAN Number is required (e.g. ABCDE1234F)';
       if (!form.highest_education.trim()) return 'Highest Education is required';
-      if (!cvFile) return 'Please upload the candidate CV';
-      if (photoRequired && !photoFile) return 'This client requires a candidate photo';
+      if (!cvFile && !existingCv) return 'Please upload the candidate CV';
+      if (photoRequired && !photoFile && !existingPhoto) return 'This client requires a candidate photo';
       return null;
     }
     if (i === 1) {
@@ -980,8 +985,9 @@ function DashViewV2Inner() {
         if (!res.data?.success || !res.data.url) throw new Error(res.data?.message || 'Upload failed');
         return res.data.url;
       };
-      const cv_url = await uploadFile(cvFile, '');
-      let photo_url = '';
+      // Upload a newly-chosen file, else reuse the matched candidate's existing URL.
+      const cv_url = cvFile ? await uploadFile(cvFile, '') : existingCv;
+      let photo_url = existingPhoto || '';
       if (photoFile) photo_url = await uploadFile(photoFile, 'photo_');
 
       // 3) Build the payload with the SAME field names as the live form so every
@@ -1052,7 +1058,7 @@ function DashViewV2Inner() {
         avgTenure: '', empGaps: '', employerTier: '', industryMatch: '', internshipExcluded: false });
       setRelYrs(''); setCurrentCTC(''); setExpectedCTC(''); setOffer(''); setRelocation('');
       setCurrentCity(''); setNotice(''); setSkillEvidence(''); setSelfRating(''); setNoticeProof('');
-      setDupChecked(false); setCvFile(null); setPhotoFile(null); setStep(0);
+      setDupChecked(false); setCvFile(null); setPhotoFile(null); setExistingCv(''); setExistingPhoto(''); setStep(0);
       setSelChildren([]); setSelSubs({}); setSubExp({}); setClientAnswers({});
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Submission failed. Please try again.';
@@ -1470,19 +1476,30 @@ function DashViewV2Inner() {
                     <div className="field"><label>Upload CV <span className="req">*</span></label>
                       <label className="file-drop">
                         <span className="file-btn">Choose File</span>
-                        <span className={`file-name${cvFile ? ' ok' : ''}`}>{cvFile ? cvFile.name : 'PDF / DOC / DOCX'}</span>
+                        <span className={`file-name${cvFile ? ' ok' : ''}`}>{cvFile ? cvFile.name : (existingCv ? 'Existing resume on file' : 'PDF / DOC / DOCX')}</span>
                         <input type="file" accept=".pdf,.doc,.docx" style={{ display: 'none' }}
                           onChange={e => setCvFile(e.target.files[0] || null)} />
                       </label>
+                      {existingCv && !cvFile && (
+                        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--teal)' }}>
+                          ✓ Resume loaded from existing candidate — <a href={existingCv} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', fontWeight: 600 }}>view</a>. Choose a file only to replace it.
+                        </div>
+                      )}
                     </div>
                     {photoRequired && (
                       <div className="field"><label>Candidate Photo <span className="req">*</span> <span style={{ fontWeight: 500, color: 'var(--ink-faint)' }}>(required by this client)</span></label>
                         <label className="file-drop" style={{ borderColor: photoFile ? 'rgba(42,181,165,0.6)' : 'rgba(244,123,32,0.55)', background: photoFile ? 'var(--teal-light)' : 'var(--orange-light)' }}>
                           <span className="file-btn" style={{ background: 'var(--orange)', color: '#1a1300' }}>Upload Photo</span>
-                          <span className={`file-name${photoFile ? ' ok' : ''}`}>{photoFile ? photoFile.name : 'JPG / PNG — passport style'}</span>
+                          <span className={`file-name${photoFile ? ' ok' : ''}`}>{photoFile ? photoFile.name : (existingPhoto ? 'Existing photo on file' : 'JPG / PNG — passport style')}</span>
                           <input type="file" accept="image/*" style={{ display: 'none' }}
                             onChange={e => setPhotoFile(e.target.files[0] || null)} />
                         </label>
+                        {existingPhoto && !photoFile && (
+                          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--teal)' }}>
+                            <img src={existingPhoto} alt="candidate" style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', border: '1px solid #e5e7eb' }} />
+                            ✓ Photo loaded from existing candidate. Upload only to replace it.
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
