@@ -435,6 +435,16 @@ function DashViewV2Inner() {
     return () => { live = false; };
   }, [isCoachExpert, pos_id]);
 
+  // Copy a shareable public link for this position (same format as dash_view).
+  const sharePosition = () => {
+    const rec = teamUser?.email ? `&rec=${encodeURIComponent(teamUser.email)}` : '';
+    const shareUrl = `${window.location.origin}/position/${pos_id}?view=share${rec}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setToast('✓ Share link copied to clipboard!');
+      setTimeout(() => setToast(''), 3000);
+    }).catch(() => { setToast('Failed to copy link'); setTimeout(() => setToast(''), 3000); });
+  };
+
   // ── Matching Candidates: rejected candidates in the system matching this JD ≥70 ──
   const [matchCands, setMatchCands] = useState(null);   // null = not loaded yet
   const [matchLoading, setMatchLoading] = useState(false);
@@ -1091,8 +1101,10 @@ function DashViewV2Inner() {
               <button className={`tab-btn${view === 'assign' ? ' active' : ''}`}
                 onClick={() => { setView('assign'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Assign Recruiter</button>
             )}
-            <button className={`tab-btn${view === 'match' ? ' active' : ''}`}
-              onClick={() => { setView('match'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Matching Candidates</button>
+            {hasAccess && (
+              <button className={`tab-btn${view === 'match' ? ' active' : ''}`}
+                onClick={() => { setView('match'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Matching Candidates</button>
+            )}
           </div>
         </div>
       </div>
@@ -1103,6 +1115,12 @@ function DashViewV2Inner() {
         {/* ===================== JD VIEW ===================== */}
         <div className={`view${view === 'jd' ? ' active' : ''}`}>
           <div className="jd-header">
+            <button onClick={sharePosition} title="Copy shareable link"
+              style={{ position: 'absolute', top: 16, right: 16, zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)',
+                borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              🔗 Share
+            </button>
             <span className="badge">● {loading ? 'Loading…' : 'Requirement'}</span>
             <h1 className="jd-title">{jd.title}</h1>
             <p className="jd-sub" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
