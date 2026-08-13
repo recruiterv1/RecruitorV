@@ -225,8 +225,56 @@ async function getMatchingCandidates(db, position, threshold = 75) {
   return out;
 }
 
+// Candidates whose latest status is a rejection/drop. Used by the "Matching
+// Candidates" tab, which surfaces already-rejected people who still match a new JD.
+const REJECTED_STATUSES = new Set([
+  'screen reject', 'l1 reject', 'l2 reject', 'l3 reject', 'hr reject',
+  'background verification reject', 'negotiation reject', 'test reject',
+  'rejected', 'client drop', 'candidate drop', 'duplicate', 'offer declined',
+]);
+
+// Rejected candidates (any position) that match this JD >= threshold. Deduped by
+// email/phone, keeping the highest-scoring record. Returns cards incl. statusa.
+async function getMatchingRejectedCandidates(db, position, threshold = 70) {
+  const jd = buildJd(position);
+  if (jd.totalW < 6) return [];
+
+  const snap = await db.collection('candidate_db')
+    .select('skillsText', 'skillCategory', 'candidate', 'skills', 'statusa',
+            'pos_id', 'pos_name', 'cv_data', 'cv_url', 'emails', 'mob', 'curr_loc', 'total_exp', 'rel_exp', 'source', 'matchTokens')
+    .get();
+
+  const best = new Map();   // dedupe key -> card
+  snap.docs.forEach(d => {
+    const c = d.data();
+    if (c.source === 'clientspoc_bulk') return;
+    if (!(c.cv_data || c.cv_url)) return;
+    if (!REJECTED_STATUSES.has(lc(c.statusa))) return;
+    const { score: s, matched, missing } = scoreWithReason(jd, prepCandidate(c));
+    if (s < threshold) return;
+    const key = lc(c.emails) || (c.mob || '').toString().replace(/\D/g, '') || d.id;
+    const prev = best.get(key);
+    if (prev && prev.matchPercent >= s) return;
+    best.set(key, {
+      id: d.id,
+      candidate: c.candidate || '',
+      emails: c.emails || '',
+      mob: c.mob || '',
+      curr_loc: c.curr_loc || '',
+      total_exp: c.total_exp || '',
+      statusa: c.statusa || '',
+      lastPosition: c.pos_name || '',
+      cv_data: c.cv_data || c.cv_url || '',
+      matchPercent: s,
+      matched: matched.slice(0, 12),
+      missing: missing.slice(0, 12),
+    });
+  });
+  return [...best.values()].sort((a, b) => b.matchPercent - a.matchPercent);
+}
+
 module.exports = {
   buildJd, prepCandidate, score, scoreWithReason, computeMatchTokens,
-  getAvailablePool, getActivePosIds, getMatchingCandidates, resumeBankMatchCounts,
-  invalidateCache, TERMINAL_STATUSES, isActivePos,
+  getAvailablePool, getActivePosIds, getMatchingCandidates, getMatchingRejectedCandidates,
+  resumeBankMatchCounts, invalidateCache, TERMINAL_STATUSES, isActivePos,
 };

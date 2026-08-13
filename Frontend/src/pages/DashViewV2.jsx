@@ -411,6 +411,64 @@ function DashViewV2Inner() {
     return () => { live = false; };
   }, [job?.clientspoc, isCoachExpert]);
 
+  // ── Assign Recruiter (coach/expert only): their approved team members ─────────
+  const [teamRecruiters, setTeamRecruiters] = useState([]);
+  const [assignSel, setAssignSel] = useState([]);         // selected recruiter ids (max 2)
+  const [assignedIds, setAssignedIds] = useState([]);     // already assigned to THIS position
+  const [assignBusy, setAssignBusy] = useState(false);
+  const [assignMsg, setAssignMsg] = useState('');
+  useEffect(() => {
+    if (!isCoachExpert) { setTeamRecruiters([]); return; }
+    let live = true;
+    axios.get('/api/coach-expert/team/my-team-members', { withCredentials: true })
+      .then(r => { if (live) setTeamRecruiters(r.data?.recruiters || []); })
+      .catch(() => { if (live) setTeamRecruiters([]); });
+    // Which of my team are already assigned to this position (so we can mark them).
+    axios.get('/api/coach-expert/my-recruiter-assignments', { withCredentials: true })
+      .then(r => { if (live) {
+        const ids = (r.data?.assignments || r.data?.data || [])
+          .filter(a => String(a.positionId) === String(pos_id))
+          .map(a => a.recruiterId).filter(Boolean);
+        setAssignedIds([...new Set(ids)]);
+      } })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [isCoachExpert, pos_id]);
+
+  // ── Matching Candidates: rejected candidates in the system matching this JD ≥70 ──
+  const [matchCands, setMatchCands] = useState(null);   // null = not loaded yet
+  const [matchLoading, setMatchLoading] = useState(false);
+  useEffect(() => {
+    if (view !== 'match' || matchCands !== null || !pos_id) return;
+    let live = true;
+    setMatchLoading(true);
+    axios.get(`/candidate/pos/${pos_id}/matching-rejected`, { withCredentials: true })
+      .then(r => { if (live) setMatchCands(r.data?.candidates || []); })
+      .catch(() => { if (live) setMatchCands([]); })
+      .finally(() => { if (live) setMatchLoading(false); });
+    return () => { live = false; };
+  }, [view, pos_id, matchCands]);
+
+  const toggleAssignSel = (id) => setAssignSel(s =>
+    s.includes(id) ? s.filter(x => x !== id) : (s.length >= 2 ? s : [...s, id]));
+
+  const assignSelected = async () => {
+    if (!assignSel.length) return;
+    setAssignBusy(true); setAssignMsg('');
+    let ok = 0; const fails = [];
+    for (const rid of assignSel) {
+      try {
+        await axios.post('/api/coach-expert/recruiter-assignment', { recruiterId: rid, positionId: pos_id }, { withCredentials: true });
+        ok++; setAssignedIds(a => [...new Set([...a, rid])]);
+      } catch (e) { fails.push(e.response?.data?.message || 'failed'); }
+    }
+    setAssignSel([]);
+    setAssignMsg(ok
+      ? `✓ Assigned ${ok} recruiter${ok > 1 ? 's' : ''}${fails.length ? ` · ${fails.length} skipped (${fails.join('; ')})` : ''}. They've been notified by email.`
+      : `Could not assign: ${fails.join('; ')}`);
+    setAssignBusy(false);
+  };
+
   // Fetch and open the full profile (incl. resume) when a coach/expert name is clicked.
   const openTeamProfile = async (c) => {
     if (!c?.id) return;
@@ -1029,6 +1087,12 @@ function DashViewV2Inner() {
             <button className={`tab-btn${view === 'form' ? ' active' : ''}`}
               style={isPendingAccess ? { opacity: 0.6, cursor: 'default' } : undefined}
               onClick={handleSubmitEntry}>{submitLabel}</button>
+            {isCoachExpert && (
+              <button className={`tab-btn${view === 'assign' ? ' active' : ''}`}
+                onClick={() => { setView('assign'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Assign Recruiter</button>
+            )}
+            <button className={`tab-btn${view === 'match' ? ' active' : ''}`}
+              onClick={() => { setView('match'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Matching Candidates</button>
           </div>
         </div>
       </div>
@@ -1247,6 +1311,111 @@ function DashViewV2Inner() {
                   : 'Get this position assigned to you to submit candidates'}
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* ===================== ASSIGN RECRUITER VIEW (coach/expert) ===================== */}
+        {isCoachExpert && (
+          <div className={`view${view === 'assign' ? ' active' : ''}`}>
+            <div className="card">
+              <h2>Assign this position to your team</h2>
+              <p className="card-sub">Only recruiters in your team are shown. Select up to <b>2</b> and assign — they'll be notified by email.</p>
+              {assignMsg && (
+                <div style={{ margin: '10px 0', padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                  background: assignMsg.startsWith('✓') ? '#dcfce7' : '#fee2e2', color: assignMsg.startsWith('✓') ? '#166534' : '#991b1b' }}>
+                  {assignMsg}
+                </div>
+              )}
+              {teamRecruiters.length === 0 ? (
+                <div className="side-block">No recruiters in your team yet. Build your team from the Join Team page, then assign positions here.</div>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))', gap: 12, marginTop: 12 }}>
+                    {teamRecruiters.map(r => {
+                      const already = assignedIds.includes(r.id);
+                      const sel = assignSel.includes(r.id);
+                      const disabled = already || (!sel && assignSel.length >= 2);
+                      return (
+                        <div key={r.id} onClick={() => !disabled && toggleAssignSel(r.id)}
+                          style={{ border: `2px solid ${already ? '#bbf7d0' : sel ? '#2563eb' : '#e5e7eb'}`, borderRadius: 12, padding: 14,
+                            background: already ? '#f0fdf4' : sel ? '#eff6ff' : '#fff', cursor: disabled ? 'default' : 'pointer',
+                            opacity: disabled && !already ? 0.55 : 1, transition: 'all .15s' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                            <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#e0e7ff', color: '#4338ca', display: 'grid', placeItems: 'center', fontWeight: 700, flexShrink: 0 }}>
+                              {(r.name || '?')[0].toUpperCase()}
+                            </div>
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name || '—'}</div>
+                              {(Array.isArray(r.skillCategory) ? r.skillCategory.join(', ') : (r.skillCategory || r.specialization)) && (
+                                <div style={{ fontSize: 11, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {Array.isArray(r.skillCategory) ? r.skillCategory.join(', ') : (r.skillCategory || r.specialization)}
+                                </div>
+                              )}
+                            </div>
+                            {already ? <span style={{ fontSize: 10, fontWeight: 700, color: '#166534' }}>✓ Assigned</span>
+                              : sel ? <span style={{ fontSize: 16, color: '#2563eb' }}>✓</span> : null}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.7 }}>
+                            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>✉️ {r.email || '—'}</div>
+                            {r.phone && <div>📞 {r.phone}</div>}
+                            {r.location && <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>📍 {r.location}</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, gap: 12, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 13, color: '#64748b' }}>{assignSel.length}/2 selected</span>
+                    <button className="btn btn-submit" disabled={!assignSel.length || assignBusy} onClick={assignSelected}>
+                      {assignBusy ? 'Assigning…' : `Assign ${assignSel.length || ''} recruiter${assignSel.length === 1 ? '' : 's'}`}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ===================== MATCHING CANDIDATES VIEW ===================== */}
+        <div className={`view${view === 'match' ? ' active' : ''}`}>
+          <div className="card">
+            <h2>Matching Candidates</h2>
+            <p className="card-sub">Candidates already in the system who were <b>rejected</b> earlier but whose profile still matches this JD by <b>70%+</b>. Worth a fresh look for this role.</p>
+            {matchLoading ? (
+              <div className="side-block">Finding matching candidates…</div>
+            ) : !matchCands || matchCands.length === 0 ? (
+              <div className="side-block">No rejected candidates match this position at 70%+ yet.</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 12, marginTop: 12 }}>
+                {matchCands.map(c => (
+                  <div key={c.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.candidate || 'Unnamed'}</div>
+                      <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: '#ede9fe', color: '#6d28d9' }}>{c.matchPercent}%</span>
+                    </div>
+                    <div style={{ marginTop: 4 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 999, background: '#fee2e2', color: '#991b1b' }}>{c.statusa || 'Rejected'}</span>
+                      {c.lastPosition && <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>on {c.lastPosition}</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.7, marginTop: 6 }}>
+                      {c.total_exp && <div>💼 {c.total_exp} yrs exp</div>}
+                      {c.emails && <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>✉️ {c.emails}</div>}
+                      {c.mob && <div>📞 {c.mob}</div>}
+                      {c.curr_loc && <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>📍 {c.curr_loc}</div>}
+                    </div>
+                    {c.matched?.length > 0 && (
+                      <div style={{ marginTop: 8, fontSize: 11, color: '#334155' }}>
+                        <span style={{ fontWeight: 700, color: '#166534' }}>Matched:</span> {c.matched.join(', ')}
+                      </div>
+                    )}
+                    {c.cv_data && (
+                      <a href={c.cv_data} target="_blank" rel="noopener noreferrer"
+                        style={{ display: 'inline-block', marginTop: 10, fontSize: 12, fontWeight: 700, color: '#2563eb' }}>View CV →</a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

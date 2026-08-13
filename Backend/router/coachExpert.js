@@ -1898,10 +1898,15 @@ router.post('/recruiter-assignment', authMiddleware, async (req, res) => {
     }
     const { FieldValue } = require('firebase-admin/firestore');
 
-    // Get coach info
+    // Get coach/expert info (the assigner may be either).
+    let coachDoc = null;
     const coachSnap = await db.collection('coach_db').where('email', '==', coachEmail).limit(1).get();
-    if (coachSnap.empty) return res.status(404).json({ success: false, message: 'Coach not found' });
-    const coachDoc = coachSnap.docs[0];
+    if (!coachSnap.empty) coachDoc = coachSnap.docs[0];
+    if (!coachDoc) {
+      const expSnap = await db.collection('expert_db').where('email', '==', coachEmail).limit(1).get();
+      if (!expSnap.empty) coachDoc = expSnap.docs[0];
+    }
+    if (!coachDoc) return res.status(404).json({ success: false, message: 'Coach/Expert not found' });
     const coachData = coachDoc.data();
 
     // Get recruiter info

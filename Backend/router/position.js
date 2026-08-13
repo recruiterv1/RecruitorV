@@ -16,7 +16,7 @@ const ACTIVE_EXCLUDE_STATUSES = [
   'On Hold', 'Hold', 'Client Hold', 'Candidate Hold', 'on hold', 'hold',
 ];
 const { db } = require('./firebase_ad');
-const { resumeBankMatchCounts, getMatchingCandidates } = require('../utils/resumeBankMatch');
+const { resumeBankMatchCounts, getMatchingCandidates, getMatchingRejectedCandidates } = require('../utils/resumeBankMatch');
 const notificationModel = require('../model_fire/notificationF');
 const positionAccess = require('../model_fire/positionAccessF');
 const { sendEmail } = require('../utils/email');
@@ -1313,6 +1313,27 @@ router.get('/pos/:pos_id/matching-bank', authMiddleware, async (req, res) => {
     res.json({ success: true, candidates, threshold });
   } catch (err) {
     console.error('matching-bank error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * GET /candidate/pos/:pos_id/matching-rejected
+ * Candidates already in the system whose status is a rejection/drop but whose
+ * profile still matches this position's JD >= 70% (configurable). Powers the
+ * "Matching Candidates" tab on dash_view_v2.
+ */
+router.get('/pos/:pos_id/matching-rejected', authMiddleware, async (req, res) => {
+  try {
+    const { pos_id } = req.params;
+    const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', pos_id).limit(1).get();
+    if (posSnap.empty) return res.status(404).json({ success: false, message: 'Position not found' });
+    const position = posSnap.docs[0].data();
+    const threshold = Math.min(100, Math.max(0, Number(req.query.threshold) || 70));
+    const candidates = await getMatchingRejectedCandidates(db, position, threshold);
+    res.json({ success: true, candidates, threshold });
+  } catch (err) {
+    console.error('matching-rejected error:', err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 });
