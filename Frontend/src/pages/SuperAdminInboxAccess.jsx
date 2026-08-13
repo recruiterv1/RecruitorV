@@ -113,6 +113,21 @@ export default function SuperAdminInboxAccess() {
 
   const goToPage = (p) => { if (p >= 1 && p <= totalPages) fetchUsers(search.trim(), p); };
 
+  // Mark an unverified user verified. isVerified:false makes inbound mail to their
+  // derived @recruiterv.com address get dropped, so a paid Inbox never receives.
+  const verifyUser = async (u) => {
+    setSaving(s => ({ ...s, [u.email]: true }));
+    setError('');
+    try {
+      await axios.post('/api/inbox-access/verify-user', { email: u.email }, { withCredentials: true });
+      await fetchUsers(search.trim(), page);
+    } catch (e) {
+      setError(e.response?.data?.message || 'Failed to verify user.');
+    } finally {
+      setSaving(s => { const n = { ...s }; delete n[u.email]; return n; });
+    }
+  };
+
   // Grant free access for a duration, or revoke. Re-fetches current page.
   const setAccess = async (u, enabled, duration) => {
     setSaving(s => ({ ...s, [u.email]: true }));
@@ -250,6 +265,23 @@ export default function SuperAdminInboxAccess() {
                   <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${roleBadge[u.role] || 'bg-gray-100 text-gray-600'}`}>
                     {u.role}
                   </span>
+
+                  {/* Unverified users have inbound mail to their @recruiterv.com
+                      address dropped — surface + one-click fix. */}
+                  {u.verified === false && (
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700 whitespace-nowrap"
+                        title="isVerified is false — incoming email to this user is being dropped. Verify to enable inbox delivery.">
+                        Unverified
+                      </span>
+                      <button
+                        onClick={() => verifyUser(u)}
+                        disabled={!!saving[u.email]}
+                        className="text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg px-2.5 py-1 transition disabled:opacity-60">
+                        {saving[u.email] ? '…' : 'Verify'}
+                      </button>
+                    </div>
+                  )}
 
                   {u.enabled ? (
                     <div className="flex items-center gap-3 flex-shrink-0">

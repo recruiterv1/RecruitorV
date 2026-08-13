@@ -216,7 +216,8 @@ const SubmitCandidateTabs = ({ pos_id, client, clientspoc, pos_name, hr_name, pr
       </div>
 
       {tab === 'own' ? (
-        <Dash_Form pos_id={pos_id} client={client} clientspoc={clientspoc} pos_name={pos_name} hr_name={hr_name} prefill={prefill} onSubmitted={onSubmitted} />
+        <Dash_Form pos_id={pos_id} client={client} clientspoc={clientspoc} pos_name={pos_name} hr_name={hr_name} prefill={prefill}
+          onSubmitted={() => { onSubmitted && onSubmitted(); onClose && onClose(); }} />
       ) : (
         <div>
           <p className="text-xs text-gray-500 mb-3">

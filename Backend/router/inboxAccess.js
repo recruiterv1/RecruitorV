@@ -63,7 +63,7 @@ const invalidateUsersCache = () => { _usersCache.ts = 0; };
 const buildUserList = async () => {
   // .select() fetches only the fields we need → far less data than full docs.
   const F = ['email', 'name', 'firstName', 'role', 'roleCategory',
-             'phone', 'mobile', 'mob',
+             'phone', 'mobile', 'mob', 'isVerified',
              'createdAt', 'date', 'datePosted', 'timestamp', 'created_at'];
   const [recSnap, coachSnap, expertSnap, adminSnap, accessSnap] = await Promise.all([
     db.collection('recruiter_db').select(...F).get(),
@@ -103,6 +103,10 @@ const buildUserList = async () => {
       months: a?.months || null,
       autopay: a?.autopay || false,
       clickedPlan: clickedNoPurchase ? (a.plan || null) : null,   // '6month' | '1year' | null
+      // isVerified === false makes the inbound-mail handler DROP mail to this user's
+      // derived @recruiterv.com address (recruiterEmail.js matchDerived). Surface it
+      // so a SuperAdmin can fix a paid user who "can't receive email".
+      verified: data.isVerified !== false,
     });
   };
   recSnap.docs.forEach(d => push(d.data(), 'recruiter'));
@@ -191,6 +195,29 @@ router.post('/toggle', managerAuth, async (req, res) => {
     }, { merge: true });
     invalidateUsersCache();   // so the change shows on the next /users load
     res.json({ success: true, email, enabled, duration });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// POST /verify-user  { email } — set isVerified:true on the user's role record.
+// A user with isVerified === false has inbound mail to their derived
+// @recruiterv.com address silently dropped, so a paid Inbox is never delivered.
+// This lets a SuperAdmin flip that flag. Searches the three derived-address
+// collections (recruiter/coach/expert); ClientSPOCs/Vendors use their real login
+// email and aren't affected by the derived-address verification gate.
+router.post('/verify-user', managerAuth, async (req, res) => {
+  try {
+    const email = lc(req.body?.email);
+    if (!email) return res.status(400).json({ success: false, message: 'email is required' });
+    let updated = null;
+    for (const col of ['recruiter_db', 'coach_db', 'expert_db']) {
+      const snap = await db.collection(col).where('email', '==', email).limit(1).get();
+      if (!snap.empty) { await snap.docs[0].ref.update({ isVerified: true }); updated = col; break; }
+    }
+    if (!updated) return res.status(404).json({ success: false, message: 'No recruiter/coach/expert record found for that email.' });
+    invalidateUsersCache();   // so the verified badge clears on the next /users load
+    res.json({ success: true, email, collection: updated });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
