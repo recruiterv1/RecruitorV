@@ -33,7 +33,10 @@ const TERMINAL_STATUSES = new Set([
 
 const tokenize = (str) => {
   const seen = new Set();
-  return (str || '').toLowerCase()
+  return (str || '').toString()
+    .replace(/<[^>]*>/g, ' ')            // strip HTML tags (rich-text m_have/g_have) so
+    .replace(/&[a-z]+;|&#\d+;/gi, ' ')   // tag/attribute names don't pollute the tokens
+    .toLowerCase()
     .replace(/[^a-z0-9\s.#+]/g, ' ')
     .split(/\s+/)
     .filter(w => w.length > 2 && !STOP.has(w))
@@ -225,13 +228,14 @@ async function getMatchingCandidates(db, position, threshold = 75) {
   return out;
 }
 
-// Candidates whose latest status is a rejection/drop. Used by the "Matching
-// Candidates" tab, which surfaces already-rejected people who still match a new JD.
-const REJECTED_STATUSES = new Set([
-  'screen reject', 'l1 reject', 'l2 reject', 'l3 reject', 'hr reject',
-  'background verification reject', 'negotiation reject', 'test reject',
-  'rejected', 'client drop', 'candidate drop', 'duplicate', 'offer declined',
-]);
+// Non-"reject" statuses that still mean the candidate was dropped/declined.
+const REJECTED_EXTRA = new Set(['client drop', 'candidate drop', 'duplicate', 'offer declined']);
+// True for ANY status that contains "reject" (screen reject, l1 reject, hr reject,
+// rejected, or any custom "… reject") plus the drop/declined statuses above.
+const isRejectedStatus = (statusa) => {
+  const s = lc(statusa);
+  return s.includes('reject') || REJECTED_EXTRA.has(s);
+};
 
 // Rejected candidates (any position) that match this JD >= threshold. Deduped by
 // email/phone, keeping the highest-scoring record. Returns cards incl. statusa.
@@ -249,7 +253,7 @@ async function getMatchingRejectedCandidates(db, position, threshold = 70) {
     const c = d.data();
     if (c.source === 'clientspoc_bulk') return;
     if (!(c.cv_data || c.cv_url)) return;
-    if (!REJECTED_STATUSES.has(lc(c.statusa))) return;
+    if (!isRejectedStatus(c.statusa)) return;
     const { score: s, matched, missing } = scoreWithReason(jd, prepCandidate(c));
     if (s < threshold) return;
     const key = lc(c.emails) || (c.mob || '').toString().replace(/\D/g, '') || d.id;
