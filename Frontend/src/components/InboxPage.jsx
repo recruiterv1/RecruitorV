@@ -358,7 +358,7 @@ const EmailViewer = ({ email, folder, onDelete, onBack, onReply, onForward }) =>
         </button>
       </div>
       <div className="flex-1 overflow-y-auto px-6 py-4">
-        {email.body && email.body.trim().startsWith('<') ? (
+        {email.body && /<(?:br|p|div|a|img|table|tbody|tr|td|span|strong|em|\/?b|\/?i|u|ul|ol|li|h[1-6]|hr|blockquote|font)\b[^>]*>|<\/(?:p|div|a|span|table|ul|ol|li|h[1-6]|blockquote|strong|em)>/i.test(email.body) ? (
           <div className="prose prose-sm max-w-none text-gray-700"
                dangerouslySetInnerHTML={{ __html: email.body }} />
         ) : (
