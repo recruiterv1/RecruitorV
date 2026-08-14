@@ -803,12 +803,12 @@ function DashViewV2Inner() {
 
   // ── Position Briefing: coach/expert authors 6 answers; assigned recruiters hear it ──
   const BRIEFING_QS = [
-    { key: 'exactPosition', label: 'What is the exact position' },
-    { key: 'sourcingTips', label: 'Sourcing Tips in this position' },
-    { key: 'challenges', label: 'Challenges in this Hiring' },
-    { key: 'headhuntingTarget', label: 'Head hunting Target' },
-    { key: 'assessmentQuestions', label: 'Assessment call Questions' },
-    { key: 'engagementPostSubmission', label: 'Engagement post submission' },
+    { key: 'exactPosition', label: 'Understanding the Position', desc: 'What exactly are we hiring for?' },
+    { key: 'sourcingTips', label: 'Sourcing Strategy', desc: 'What are the best sourcing tips for this position?' },
+    { key: 'challenges', label: 'Hiring Challenges', desc: 'What challenges should recruiters expect?' },
+    { key: 'headhuntingTarget', label: 'Head-hunting Strategy', desc: 'Who should we target and where?' },
+    { key: 'assessmentQuestions', label: 'Assessment Call', desc: 'What questions should we ask candidates?' },
+    { key: 'engagementPostSubmission', label: 'Post-Submission Engagement', desc: 'How do we keep candidates engaged after submission?' },
   ];
   const EMPTY_BRIEFING = { exactPosition: '', sourcingTips: '', challenges: '', headhuntingTarget: '', assessmentQuestions: '', engagementPostSubmission: '' };
   const [briefing, setBriefing] = useState(EMPTY_BRIEFING);
@@ -2009,11 +2009,12 @@ function DashViewV2Inner() {
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
               {BRIEFING_QS.map((q, i) => (
                 <div key={q.key}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>{i + 1}. {q.label}</label>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 1 }}>{i + 1}. {q.label}</label>
+                  {q.desc && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 5 }}>{q.desc}</div>}
                   <textarea rows={3} value={briefing[q.key]}
                     onChange={e => setBriefing(b => ({ ...b, [q.key]: e.target.value }))}
                     style={{ width: '100%', border: '2px solid #e5e7eb', borderRadius: 10, padding: '8px 12px', fontSize: 13, resize: 'vertical', outline: 'none' }}
-                    placeholder={`Enter ${q.label.toLowerCase()}…`} />
+                    placeholder={q.desc || `Enter ${q.label.toLowerCase()}…`} />
                 </div>
               ))}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>

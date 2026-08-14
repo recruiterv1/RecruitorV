@@ -11,12 +11,12 @@ const STATUS_CFG = {
 
 // The 6 coach position-briefing questions (order + labels match dash_view_v2).
 const BRIEFING_QS = [
-  { key: 'exactPosition', label: 'What is the exact position' },
-  { key: 'sourcingTips', label: 'Sourcing Tips in this position' },
-  { key: 'challenges', label: 'Challenges in this Hiring' },
-  { key: 'headhuntingTarget', label: 'Head hunting Target' },
-  { key: 'assessmentQuestions', label: 'Assessment call Questions' },
-  { key: 'engagementPostSubmission', label: 'Engagement post submission' },
+  { key: 'exactPosition', label: 'Understanding the Position', desc: 'What exactly are we hiring for?' },
+  { key: 'sourcingTips', label: 'Sourcing Strategy', desc: 'What are the best sourcing tips for this position?' },
+  { key: 'challenges', label: 'Hiring Challenges', desc: 'What challenges should recruiters expect?' },
+  { key: 'headhuntingTarget', label: 'Head-hunting Strategy', desc: 'Who should we target and where?' },
+  { key: 'assessmentQuestions', label: 'Assessment Call', desc: 'What questions should we ask candidates?' },
+  { key: 'engagementPostSubmission', label: 'Post-Submission Engagement', desc: 'How do we keep candidates engaged after submission?' },
 ];
 
 // Per-question red/green lights + a speaker to play the coach's answers.
