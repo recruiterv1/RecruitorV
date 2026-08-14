@@ -689,16 +689,24 @@ function DashViewV2Inner() {
     return () => { live = false; };
   }, [pos_id]);
 
-  // Is this position assigned to the logged-in recruiter? Same access flow as
-  // the live dash_view (/api/position-access). Drives Assign Me vs Submit.
+  // Is this position assigned to the logged-in user? Same access flow as the live
+  // dash_view. Coaches/experts use their own endpoint (access via SPOC-approved
+  // request OR self-assignment); recruiters use /api/position-access. Drives
+  // Assign Me vs Submit.
   useEffect(() => {
     if (!pos_id) return;
     let live = true;
-    axios.get(`/api/position-access/check/${pos_id}`, { withCredentials: true })
-      .then(r => { if (live) setAccess(r.data?.data || { hasAccess: false }); })
-      .catch(() => { if (live) setAccess({ hasAccess: false }); });
+    if (isCoachExpert) {
+      axios.get(`/api/coach-expert/position-access/${pos_id}`, { withCredentials: true })
+        .then(r => { if (live) setAccess({ hasAccess: r.data?.hasAccess === true, status: r.data?.status }); })
+        .catch(() => { if (live) setAccess({ hasAccess: false }); });
+    } else {
+      axios.get(`/api/position-access/check/${pos_id}`, { withCredentials: true })
+        .then(r => { if (live) setAccess(r.data?.data || { hasAccess: false }); })
+        .catch(() => { if (live) setAccess({ hasAccess: false }); });
+    }
     return () => { live = false; };
-  }, [pos_id]);
+  }, [pos_id, isCoachExpert]);
 
   const hasAccess = access?.hasAccess === true;
   const isPendingAccess = !hasAccess && access?.status === 'pending';
@@ -723,13 +731,22 @@ function DashViewV2Inner() {
   };
 
   // Label + click behaviour for the Submit tab / CTA, based on assignment state.
+  // Coaches/experts never self-request via the recruiter flow — access comes from a
+  // SPOC-approved request or self-assignment elsewhere, so they see Submit (if
+  // approved) or "Not approved", never "Assign Me".
   const submitLabel = access === null ? 'Submit Candidate'
     : hasAccess ? 'Submit Candidate'
+    : isCoachExpert ? 'Not approved'
     : requesting ? 'Requesting…'
     : isPendingAccess ? 'Request Pending' : 'Assign Me';
   const handleSubmitEntry = () => {
     if (access === null) return;                 // still checking
     if (hasAccess) { setView('form'); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    if (isCoachExpert) {                          // coach/expert can't self-request here
+      setToast('⚠ You are not approved for this position yet.');
+      setTimeout(() => setToast(''), 3500);
+      return;
+    }
     if (!isPendingAccess) requestAssign();       // pending → nothing to do
   };
 
