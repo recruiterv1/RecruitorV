@@ -627,9 +627,6 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
               </div>
             </div>
             <InfoItem icon={Building} label="Client"            value={candidate.client}                             color="#6b7280" />
-            {!hideRecruiterInfo && <InfoItem icon={User}     label="Recruiter"         value={candidate.recName}   color="#2563eb" />}
-            {!hideRecruiterInfo && <InfoItem icon={Mail}     label="Recruiter Email"   value={candidate.recEmail} color="#6b7280" />}
-            {!hideRecruiterInfo && <InfoItem icon={Phone}    label="Recruiter Phone"   value={candidate.recPhone} color="#0891b2" />}
             <InfoItem icon={Clock}    label="Relevant Exp"      value={candidate.rel_exp ? `${candidate.rel_exp} yrs` : null} color="#7c3aed" />
             <InfoItem icon={TrendingUp} label="Total Exp"       value={candidate.total_exp ? `${candidate.total_exp} yrs` : null} color="#7c3aed" />
             <InfoItem icon={DollarSign} label="Current CTC"     value={candidate.current_ctc ? `₹${candidate.current_ctc} LPA` : null} color="#059669" />
@@ -645,6 +642,10 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
             <InfoItem icon={Hash}     label="JR Number"         value={candidate.jr_number}                         color="#6b7280" />
             <InfoItem icon={Award}    label="Offer in Hand"     value={candidate.offer_hand}                        color="#d97706" />
             <InfoItem icon={Calendar} label="Offer & DOJ"       value={candidate.offer_amt}                         color="#d97706" />
+            {/* Recruiter details — shown last */}
+            {!hideRecruiterInfo && <InfoItem icon={User}     label="Recruiter"         value={candidate.recName}  color="#2563eb" />}
+            {!hideRecruiterInfo && <InfoItem icon={Mail}     label="Recruiter Email"   value={candidate.recEmail} color="#6b7280" />}
+            {!hideRecruiterInfo && <InfoItem icon={Phone}    label="Recruiter Phone"   value={candidate.recPhone} color="#0891b2" />}
           </div>
 
           {/* ── Skills ── */}
