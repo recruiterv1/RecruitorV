@@ -52,6 +52,7 @@ const MainRestart = React.lazy(() => import('./pages/MainRestart'));
 const MainCoach = React.lazy(() => import('./pages/MainCoach'));
 const MainExpert = React.lazy(() => import('./pages/MainExpert'));
 const CoachDashboard = React.lazy(() => import('./pages/CoachDashboard'));
+const CoachFollowups = React.lazy(() => import('./pages/CoachFollowups'));
 const ExpertDashboard = React.lazy(() => import('./pages/ExpertDashboard'));
 const CoachRequests = React.lazy(() => import('./pages/CoachRequests'));
 const ExpertRequests = React.lazy(() => import('./pages/ExpertRequests'));
@@ -422,6 +423,7 @@ const App = () => {
             <Route path='/coach' element={<MainCoach/>} />
             <Route path='/expert' element={<MainExpert/>} />
             <Route path='/coach-dashboard' element={<CoachDashboard/>} />
+            <Route path='/coach-followups' element={<CoachFollowups/>} />
             <Route path='/expert-dashboard' element={<ExpertDashboard/>} />
             <Route path='/coach-requests' element={<CoachRequests/>} />
             <Route path='/expert-requests' element={<ExpertRequests/>} />

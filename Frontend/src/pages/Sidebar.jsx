@@ -97,6 +97,7 @@ const coachMenuItems = [
     children: [
       { icon: UserPlus,  label: 'Assign Recruiter', path: '/coach-assign-recruiter' },
       { icon: BarChart3, label: 'Recruiter Stats',  path: '/coach-recruiter-stats' },
+      { icon: ClipboardList, label: 'Follow-ups',   path: '/coach-followups' },
     ],
   },
   { icon: BarChart3,   label: 'My Position Stats', path: '/coach-expert-position-stats' },

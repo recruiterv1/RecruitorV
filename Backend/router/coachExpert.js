@@ -3186,4 +3186,143 @@ router.get('/position-briefing/:posId', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── Coach → Recruiter daily Follow-ups ───────────────────────────────────────
+// A coach logs a daily follow-up (5-parameter rating + remarks) against a
+// recruiter they assigned a position to. Allowed only for TODAY, and only while
+// the pair is "open": position not paused, the recruiter hasn't yet submitted a
+// candidate for it, and no candidate has joined on it. Stored in `coach_followups`.
+const FOLLOWUP_PARAMS = [
+  { key: 'sourcing',       label: 'Sourcing Effort' },
+  { key: 'quality',        label: 'Candidate Quality' },
+  { key: 'communication',  label: 'Communication' },
+  { key: 'responsiveness', label: 'Responsiveness' },
+  { key: 'adherence',      label: 'Process Adherence' },
+];
+const JOIN_STATUSES = new Set(['joined', 'offer accepted', 'onboarded']);
+// Today's date in IST as YYYY-MM-DD.
+const todayIST = () => {
+  const d = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return d.toISOString().slice(0, 10);
+};
+
+// Compute, for a coach's assignment pairs, which are still open for follow-up.
+// Returns { openKeys:Set('posId|recEmail'), pausedPos:Set, joinedPos:Set, submittedPairs:Set }.
+async function computeFollowupOpenState(coachEmail) {
+  const aSnap = await db.collection('coach_recruiter_assignments').where('coachEmail', '==', coachEmail).get();
+  const pairs = [];
+  const seen = new Set();
+  aSnap.docs.forEach(d => {
+    const a = d.data();
+    const pid = String(a.positionId || ''); const re = (a.recruiterEmail || '').toLowerCase();
+    if (!pid || !re) return;
+    const k = `${pid}|${re}`;
+    if (seen.has(k)) return; seen.add(k);
+    pairs.push({ key: k, positionId: pid, recruiterEmail: re, positionTitle: a.positionTitle || '', client: a.client || '', recruiterName: a.recruiterName || '' });
+  });
+  const posIds = [...new Set(pairs.map(p => p.positionId))];
+
+  // Position status (paused/closed) + all candidates on these positions.
+  const statusByPos = {}; const joinedPos = new Set(); const submittedPairs = new Set();
+  for (let i = 0; i < posIds.length; i += 10) {
+    const batch = posIds.slice(i, i + 10);
+    if (!batch.length) continue;
+    const [pSnap, cSnap] = await Promise.all([
+      db.collection('admin_AddPos').where('pos_id', 'in', batch).get(),
+      db.collection('candidate_db').where('pos_id', 'in', batch).get(),
+    ]);
+    pSnap.docs.forEach(d => { const p = d.data(); statusByPos[String(p.pos_id)] = (p.status || 'active').toLowerCase(); });
+    cSnap.docs.forEach(d => {
+      const c = d.data(); const pid = String(c.pos_id || ''); const st = (c.statusa || '').toLowerCase();
+      if (JOIN_STATUSES.has(st)) joinedPos.add(pid);
+      // any candidate the recruiter has submitted (not a rejection/drop) closes follow-up
+      const re = (c.recEmail || '').toLowerCase();
+      if (re && pid && !isRejectedStatus(c.statusa)) submittedPairs.add(`${pid}|${re}`);
+    });
+  }
+
+  const openKeys = new Set();
+  const open = [];
+  pairs.forEach(p => {
+    const status = statusByPos[p.positionId] || 'active';
+    const paused = status === 'paused' || status === 'closed' || status === 'inactive';
+    if (paused) return;
+    if (joinedPos.has(p.positionId)) return;
+    if (submittedPairs.has(p.key)) return;
+    openKeys.add(p.key);
+    open.push(p);
+  });
+  return { open, openKeys };
+}
+
+// Reuse the rejection-status test from the matcher util.
+const { isRejectedStatus } = (() => {
+  // Local mirror — the util doesn't export it; keep in sync with resumeBankMatch.
+  const REJECTED_EXTRA = new Set(['client drop', 'candidate drop', 'duplicate', 'offer declined']);
+  return { isRejectedStatus: (s) => { const x = (s || '').toString().toLowerCase().trim(); return x.includes('reject') || REJECTED_EXTRA.has(x); } };
+})();
+
+// GET /api/coach-expert/followups — the coach's follow-ups + today's eligible pairs.
+router.get('/followups', authMiddleware, async (req, res) => {
+  try {
+    const emailLower = (req.user.email || '').toLowerCase();
+    const [fSnap, state] = await Promise.all([
+      db.collection('coach_followups').where('coachEmail', '==', emailLower).get(),
+      computeFollowupOpenState(emailLower),
+    ]);
+    const followups = fSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?._seconds || 0) - (a.createdAt?._seconds || 0));
+    return res.json({ success: true, parameters: FOLLOWUP_PARAMS, today: todayIST(), eligible: state.open, followups });
+  } catch (err) {
+    console.error('followups get error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/coach-expert/followups  { positionId, recruiterEmail, ratings{}, remarks }
+router.post('/followups', authMiddleware, async (req, res) => {
+  try {
+    const emailLower = (req.user.email || '').toLowerCase();
+    const positionId = String(req.body?.positionId || '');
+    const recruiterEmail = (req.body?.recruiterEmail || '').toLowerCase();
+    if (!positionId || !recruiterEmail) return res.status(400).json({ success: false, message: 'positionId and recruiterEmail are required' });
+
+    // Must be an open pair the coach actually assigned.
+    const state = await computeFollowupOpenState(emailLower);
+    const pair = state.open.find(p => p.key === `${positionId}|${recruiterEmail}`);
+    if (!pair) return res.status(400).json({ success: false, message: 'Follow-ups are closed for this position/recruiter (candidate submitted, joined, position paused, or not assigned by you).' });
+
+    // Validate ratings (1–5 each; 0 = not rated).
+    const ratings = {};
+    FOLLOWUP_PARAMS.forEach(p => { const v = parseInt(req.body?.ratings?.[p.key], 10); ratings[p.key] = (v >= 1 && v <= 5) ? v : 0; });
+    const remarks = String(req.body?.remarks || '').slice(0, 2000);
+    const date = todayIST();
+
+    // Coach info + upsert one follow-up per pair per day.
+    let coachName = '';
+    const cSnap = await db.collection('coach_db').where('email', '==', emailLower).limit(1).get();
+    if (!cSnap.empty) coachName = cSnap.docs[0].data().name || '';
+    else { const eSnap = await db.collection('expert_db').where('email', '==', emailLower).limit(1).get(); if (!eSnap.empty) coachName = eSnap.docs[0].data().name || ''; }
+
+    const { FieldValue } = require('firebase-admin/firestore');
+    const dupSnap = await db.collection('coach_followups')
+      .where('coachEmail', '==', emailLower).where('positionId', '==', positionId)
+      .where('recruiterEmail', '==', recruiterEmail).where('date', '==', date).limit(1).get();
+    const payload = {
+      coachEmail: emailLower, coachName,
+      recruiterEmail, recruiterName: pair.recruiterName,
+      positionId, positionTitle: pair.positionTitle, client: pair.client,
+      date, ratings, remarks, updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (!dupSnap.empty) {
+      await dupSnap.docs[0].ref.set(payload, { merge: true });
+    } else {
+      await db.collection('coach_followups').add({ ...payload, createdAt: FieldValue.serverTimestamp() });
+    }
+    return res.json({ success: true, message: 'Follow-up saved' });
+  } catch (err) {
+    console.error('followups save error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;
