@@ -851,6 +851,20 @@ async function findBulkDuplicate(db, addedBy, emails, mob, excludeId) {
   }) || null;
 }
 
+// Derive a candidate name from a resume filename when text extraction fails.
+// e.g. "Naukri_BanuGangaG[5y_7m].pdf" → "Banu Ganga G". Returns '' if nothing usable.
+function nameFromFilename(fn) {
+  let s = (fn || '').replace(/\.[a-z0-9]+$/i, '');          // drop extension
+  s = s.replace(/\[[^\]]*\]/g, ' ');                         // drop "[5y_7m]" style tags
+  s = s.replace(/[_\-.]+/g, ' ').replace(/\d+/g, ' ');       // separators + digits first
+  s = s.replace(/([a-z])([A-Z])/g, '$1 $2');                // then split camelCase
+  s = s.replace(/\b(naukri|resume|cv|profile|updated|final|new|copy|monster|shine|indeed)\b/gi, ' '); // then portal/junk words
+  s = s.replace(/\s+/g, ' ').trim();
+  if (!s || s.length < 2) return '';
+  return s.split(' ').filter(Boolean).slice(0, 4)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+}
+
 // Body: { filename, contentType, base64 }
 router.post('/bulk-resume/parse', authMiddleware, async (req, res) => {
   try {
@@ -875,9 +889,11 @@ router.post('/bulk-resume/parse', authMiddleware, async (req, res) => {
     const needsAI = aiEnabled && (!regexInfo.candidate || (!regexInfo.emails && !regexInfo.mob));
     const ai = needsAI ? await extractContactAI(buffer, contentType, filename, text) : null;
 
-    // Prefer the deterministic values; use AI only to fill blanks.
+    // Prefer the deterministic values; use AI only to fill blanks; finally fall back
+    // to the filename (Naukri exports are named "Naukri_<Name>[<exp>].pdf", so the
+    // name is right there even when the resume text has no clear name line).
     const info = {
-      candidate: regexInfo.candidate || (ai && ai.candidate) || '',
+      candidate: regexInfo.candidate || (ai && ai.candidate) || nameFromFilename(filename) || '',
       emails:    regexInfo.emails    || (ai && ai.emails)    || '',
       mob:       regexInfo.mob       || (ai && ai.mob)       || '',
     };
