@@ -856,6 +856,36 @@ router.get('/show/recruiter/candi', async (req, res) => {
 })
 
 // Candidates for the logged-in ClientSpoc — only those whose clientspoc field matches
+// Lightweight positions cache (pos_id + clientspoc only) — the ClientSPOC candidate
+// list scans all positions to find the SPOC's own; cache it briefly so repeat loads
+// don't re-scan the whole collection.
+let _spocPosLite = { t: 0, docs: null };
+const SPOC_POS_TTL = 60 * 1000;
+async function getPositionsLite(db) {
+  if (_spocPosLite.docs && Date.now() - _spocPosLite.t < SPOC_POS_TTL) return _spocPosLite.docs;
+  const snap = await db.collection('admin_AddPos').select('pos_id', 'clientspoc').get();
+  const docs = snap.docs.map(d => d.data());
+  _spocPosLite = { t: Date.now(), docs };
+  return docs;
+}
+
+// Cached email→phone directory across recruiter/coach/expert (for back-filling
+// recPhone on older candidate records). Three parallel .select() scans, cached.
+let _submitterPhoneDir = { t: 0, map: null };
+const PHONE_DIR_TTL = 5 * 60 * 1000;
+async function getSubmitterPhoneDir(db) {
+  if (_submitterPhoneDir.map && Date.now() - _submitterPhoneDir.t < PHONE_DIR_TTL) return _submitterPhoneDir.map;
+  const snaps = await Promise.all(['recruiter_db', 'coach_db', 'expert_db'].map(c =>
+    db.collection(c).select('email', 'phone', 'mobile', 'mob', 'contact').get().catch(() => ({ docs: [] }))));
+  const map = {};
+  snaps.forEach(snap => snap.docs.forEach(d => {
+    const r = d.data(); const e = (r.email || '').toLowerCase().trim();
+    if (e && !map[e]) { const ph = r.phone || r.mobile || r.mob || r.contact || ''; if (ph) map[e] = ph; }
+  }));
+  _submitterPhoneDir = { t: Date.now(), map };
+  return map;
+}
+
 router.get('/show/clientspoc/candi', async (req, res) => {
   try {
     const token = req.cookies?.__session;
@@ -877,42 +907,35 @@ router.get('/show/clientspoc/candi', async (req, res) => {
     const accepted = new Set([email, lc(recEmail)]);
     const byId = {};
 
-    // 1) Candidates whose clientspoc field matches (same logic the My Positions count uses)
+    // Fetch the SPOC-matched candidates and the (cached) positions list in parallel.
     const variants = [...new Set([recEmail, decoded.email, email].filter(Boolean))].slice(0, 10);
-    if (variants.length) {
-      const snap = await db.collection('candidate_db').where('clientspoc', 'in', variants).get().catch(() => ({ docs: [] }));
-      snap.docs.forEach(doc => { byId[doc.id] = { ...doc.data(), id: doc.id }; });
-    }
+    const [spocSnap, posDocs] = await Promise.all([
+      variants.length
+        ? db.collection('candidate_db').where('clientspoc', 'in', variants).get().catch(() => ({ docs: [] }))
+        : Promise.resolve({ docs: [] }),
+      getPositionsLite(db),
+    ]);
+    spocSnap.docs.forEach(doc => { byId[doc.id] = { ...doc.data(), id: doc.id }; });
 
-    // 2) Plus all candidates on positions owned by this ClientSPOC (case-insensitive)
-    const posSnap = await db.collection('admin_AddPos').get();
+    // 2) Plus all candidates on positions owned by this ClientSPOC (case-insensitive).
     const myPosIds = [...new Set(
-      posSnap.docs.map(d => d.data()).filter(p => accepted.has(lc(p.clientspoc))).map(p => p.pos_id).filter(Boolean)
+      posDocs.filter(p => accepted.has(lc(p.clientspoc))).map(p => p.pos_id).filter(Boolean)
     )];
+    const batchQueries = [];
     for (let i = 0; i < myPosIds.length; i += 10) {
       const batch = myPosIds.slice(i, i + 10);
-      if (!batch.length) continue;
-      const snap = await db.collection('candidate_db').where('pos_id', 'in', batch).get();
-      snap.docs.forEach(doc => { byId[doc.id] = byId[doc.id] || { ...doc.data(), id: doc.id }; });
+      if (batch.length) batchQueries.push(db.collection('candidate_db').where('pos_id', 'in', batch).get());
     }
+    const batchSnaps = await Promise.all(batchQueries);
+    batchSnaps.forEach(snap => snap.docs.forEach(doc => { byId[doc.id] = byId[doc.id] || { ...doc.data(), id: doc.id }; }));
 
     const list = Object.values(byId);
 
-    // Enrich submitter phone for older records that predate storing recPhone, so the
-    // ClientSPOC modal can show it. The submitter may be a recruiter, coach or expert,
-    // so look across all three collections (batched by email).
-    const needPhone = [...new Set(list.filter(c => !c.recPhone && c.recEmail).map(c => lc(c.recEmail)))];
-    if (needPhone.length) {
-      const phoneByEmail = {};
-      for (const col of ['recruiter_db', 'coach_db', 'expert_db']) {
-        for (let i = 0; i < needPhone.length; i += 10) {
-          const batch = needPhone.slice(i, i + 10).filter(e => !phoneByEmail[e]);
-          if (!batch.length) continue;
-          const rs = await db.collection(col).where('email', 'in', batch).get().catch(() => ({ docs: [] }));
-          rs.docs.forEach(d => { const r = d.data(); const ph = r.phone || r.mobile || r.mob || r.contact || ''; if (ph) phoneByEmail[lc(r.email)] = ph; });
-        }
-      }
-      list.forEach(c => { if (!c.recPhone && c.recEmail) c.recPhone = phoneByEmail[lc(c.recEmail)] || ''; });
+    // Back-fill submitter phone for older records (missing recPhone) from the cached
+    // recruiter/coach/expert directory — no per-request collection queries.
+    if (list.some(c => !c.recPhone && c.recEmail)) {
+      const phoneDir = await getSubmitterPhoneDir(db);
+      list.forEach(c => { if (!c.recPhone && c.recEmail) c.recPhone = phoneDir[lc(c.recEmail)] || ''; });
     }
 
     return res.status(200).json(list);
