@@ -755,6 +755,57 @@ function DashViewV2Inner() {
     if (view === 'form' && access !== null && !hasAccess) setView('jd');
   }, [view, access, hasAccess]);
 
+  // ── Position Briefing: coach/expert authors 6 answers; assigned recruiters hear it ──
+  const BRIEFING_QS = [
+    { key: 'exactPosition', label: 'What is the exact position' },
+    { key: 'sourcingTips', label: 'Sourcing Tips in this position' },
+    { key: 'challenges', label: 'Challenges in this Hiring' },
+    { key: 'headhuntingTarget', label: 'Head hunting Target' },
+    { key: 'assessmentQuestions', label: 'Assessment call Questions' },
+    { key: 'engagementPostSubmission', label: 'Engagement post submission' },
+  ];
+  const EMPTY_BRIEFING = { exactPosition: '', sourcingTips: '', challenges: '', headhuntingTarget: '', assessmentQuestions: '', engagementPostSubmission: '' };
+  const [briefing, setBriefing] = useState(EMPTY_BRIEFING);
+  const [briefingFound, setBriefingFound] = useState(false);
+  const [briefingModalOpen, setBriefingModalOpen] = useState(false);
+  const [briefingSaving, setBriefingSaving] = useState(false);
+
+  useEffect(() => {
+    if (!pos_id || !hasAccess) { setBriefingFound(false); setBriefing(EMPTY_BRIEFING); return; }
+    let live = true;
+    axios.get(`/api/coach-expert/position-briefing/${pos_id}`, { withCredentials: true })
+      .then(r => {
+        if (!live) return;
+        if (r.data?.found && r.data.briefing) {
+          const b = r.data.briefing;
+          setBriefing(Object.fromEntries(BRIEFING_QS.map(q => [q.key, b[q.key] || ''])));
+          setBriefingFound(true);
+        } else { setBriefing(EMPTY_BRIEFING); setBriefingFound(false); }
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [pos_id, hasAccess]);
+
+  const saveBriefing = async () => {
+    setBriefingSaving(true);
+    try {
+      await axios.post('/api/coach-expert/position-briefing', { positionId: pos_id, ...briefing }, { withCredentials: true });
+      setBriefingFound(true);
+      setBriefingModalOpen(false);
+      setToast('✓ Position briefing saved');
+      setTimeout(() => setToast(''), 3000);
+    } catch (e) {
+      setToast('⚠ ' + (e.response?.data?.message || 'Could not save briefing'));
+      setTimeout(() => setToast(''), 4000);
+    } finally { setBriefingSaving(false); }
+  };
+
+  // Spoken script the recruiter hears (only non-empty answers).
+  const briefingScript = BRIEFING_QS
+    .filter(q => (briefing[q.key] || '').trim())
+    .map(q => `${q.label}. ${briefing[q.key].trim()}.`)
+    .join(' ');
+
   // Does this position's company require a candidate photo? (same rule as the
   // live "Use your own" form — driven by Company_Overview.photoRequired)
   useEffect(() => {
@@ -1138,12 +1189,30 @@ function DashViewV2Inner() {
         {/* ===================== JD VIEW ===================== */}
         <div className={`view${view === 'jd' ? ' active' : ''}`}>
           <div className="jd-header">
-            <button onClick={sharePosition} title="Copy shareable link"
-              style={{ position: 'absolute', top: 16, right: 16, zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)',
-                borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              🔗 Share
-            </button>
+            <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* Coach/expert: author the position briefing */}
+              {isCoachExpert && hasAccess && (
+                <button onClick={() => setBriefingModalOpen(true)} title="Add/edit the position briefing for your team"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)', color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.35)', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  📝 {briefingFound ? 'Edit Briefing' : 'Add Briefing'}
+                </button>
+              )}
+              {/* Recruiter (position assigned by their coach): listen to the briefing */}
+              {!isCoachExpert && hasAccess && briefingFound && briefingScript && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)',
+                  border: '1px solid rgba(255,255,255,0.35)', borderRadius: 999, padding: '4px 6px 4px 12px' }}>
+                  <span style={{ color: '#fff', fontSize: 12, fontWeight: 700 }}>Coach Briefing</span>
+                  <SpeakButton text={briefingScript} title="Play the coach's position briefing" compact />
+                </span>
+              )}
+              <button onClick={sharePosition} title="Copy shareable link"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+                  background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)',
+                  borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                🔗 Share
+              </button>
+            </div>
             <span className="badge">● {loading ? 'Loading…' : 'Requirement'}</span>
             <h1 className="jd-title">{jd.title}</h1>
             <p className="jd-sub" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -1870,6 +1939,43 @@ function DashViewV2Inner() {
           </div>
         );
       })()}
+
+      {/* Position Briefing modal (coach/expert authors) */}
+      {briefingModalOpen && (
+        <div onClick={() => !briefingSaving && setBriefingModalOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,20,35,0.55)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 620, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 60px -12px rgba(0,0,0,0.5)' }}>
+            <div style={{ background: 'linear-gradient(135deg,#2563eb,#f97316)', color: '#fff', padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>Position Briefing</div>
+                <div style={{ fontSize: 12, opacity: 0.9 }}>Your team's recruiters can play this as audio for this position.</div>
+              </div>
+              <button onClick={() => !briefingSaving && setBriefingModalOpen(false)}
+                style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', fontSize: 18, fontWeight: 700 }}>×</button>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {BRIEFING_QS.map((q, i) => (
+                <div key={q.key}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>{i + 1}. {q.label}</label>
+                  <textarea rows={3} value={briefing[q.key]}
+                    onChange={e => setBriefing(b => ({ ...b, [q.key]: e.target.value }))}
+                    style={{ width: '100%', border: '2px solid #e5e7eb', borderRadius: 10, padding: '8px 12px', fontSize: 13, resize: 'vertical', outline: 'none' }}
+                    placeholder={`Enter ${q.label.toLowerCase()}…`} />
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
+                <button onClick={() => setBriefingModalOpen(false)} disabled={briefingSaving}
+                  style={{ padding: '9px 18px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                <button onClick={saveBriefing} disabled={briefingSaving}
+                  style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: briefingSaving ? 0.6 : 1 }}>
+                  {briefingSaving ? 'Saving…' : 'Save briefing'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (

@@ -3108,4 +3108,82 @@ router.get('/position-access/:posId', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── Position Briefing (coach/expert authored, recruiter listens as audio) ─────
+// A coach/expert who has a position fills a 6-part briefing; recruiters they
+// assigned that position to can read/play it. Stored in `position_coach_briefing`,
+// doc id `${positionId}__${coachEmailLower}`.
+const BRIEFING_FIELDS = ['exactPosition', 'sourcingTips', 'challenges', 'headhuntingTarget', 'assessmentQuestions', 'engagementPostSubmission'];
+
+// Does this coach/expert have access to the position (approved direct request or
+// self-assignment)? Same rule as /position-access.
+async function coachHasPositionAccess(emailLower, posId) {
+  const [directSnap, assignSnap] = await Promise.all([
+    db.collection('coach_expert_direct_requests').where('coachExpertEmail', '==', emailLower).where('positionId', '==', posId).get(),
+    coachExpertRequestsDb.where('coachExpertEmail', '==', emailLower).where('positionId', '==', posId).get(),
+  ]);
+  return directSnap.docs.some(d => d.data().status === 'approved')
+    || assignSnap.docs.some(d => ['accepted', 'approved'].includes(d.data().status));
+}
+
+// POST /api/coach-expert/position-briefing  { positionId, ...answers }
+router.post('/position-briefing', authMiddleware, async (req, res) => {
+  try {
+    const emailLower = (req.user.email || '').toLowerCase();
+    const positionId = String(req.body?.positionId || '');
+    if (!positionId) return res.status(400).json({ success: false, message: 'positionId is required' });
+
+    // Must be a coach/expert with access to this position.
+    let coachName = '';
+    const cSnap = await db.collection('coach_db').where('email', '==', emailLower).limit(1).get();
+    if (!cSnap.empty) coachName = cSnap.docs[0].data().name || '';
+    else {
+      const eSnap = await db.collection('expert_db').where('email', '==', emailLower).limit(1).get();
+      if (!eSnap.empty) coachName = eSnap.docs[0].data().name || '';
+      else return res.status(403).json({ success: false, message: 'Only a coach/expert can save a briefing.' });
+    }
+    if (!(await coachHasPositionAccess(emailLower, positionId))) {
+      return res.status(403).json({ success: false, message: 'You are not assigned to this position.' });
+    }
+
+    const { FieldValue } = require('firebase-admin/firestore');
+    const patch = { positionId, coachEmail: emailLower, coachName, updatedAt: FieldValue.serverTimestamp() };
+    BRIEFING_FIELDS.forEach(f => { patch[f] = String(req.body?.[f] || ''); });
+    const docId = `${positionId}__${emailLower}`;
+    await db.collection('position_coach_briefing').doc(docId).set(patch, { merge: true });
+    return res.json({ success: true, message: 'Briefing saved' });
+  } catch (err) {
+    console.error('position-briefing save error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/coach-expert/position-briefing/:posId
+// Coach/expert → their own briefing (for editing). Recruiter → the briefing from
+// the coach/expert who assigned them this position (audio), else not found.
+router.get('/position-briefing/:posId', authMiddleware, async (req, res) => {
+  try {
+    const emailLower = (req.user.email || '').toLowerCase();
+    const posId = String(req.params.posId);
+
+    // The viewer's own briefing (coach/expert editing their own).
+    const ownDoc = await db.collection('position_coach_briefing').doc(`${posId}__${emailLower}`).get();
+    if (ownDoc.exists) {
+      return res.json({ success: true, found: true, editable: true, briefing: ownDoc.data() });
+    }
+
+    // Recruiter path: only if a coach/expert assigned them THIS position.
+    const asnSnap = await db.collection('coach_recruiter_assignments')
+      .where('recruiterEmail', '==', emailLower).where('positionId', '==', posId).get();
+    const coachEmails = [...new Set(asnSnap.docs.map(d => (d.data().coachEmail || '').toLowerCase()).filter(Boolean))];
+    for (const ce of coachEmails) {
+      const b = await db.collection('position_coach_briefing').doc(`${posId}__${ce}`).get();
+      if (b.exists) return res.json({ success: true, found: true, editable: false, briefing: b.data() });
+    }
+    return res.json({ success: true, found: false, editable: false, briefing: null });
+  } catch (err) {
+    console.error('position-briefing get error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;
