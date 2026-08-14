@@ -1,11 +1,46 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { UserCheck, RefreshCw, Search, X, CheckCircle, XCircle, Clock } from 'lucide-react';
+import SpeakButton from '../components/SpeakButton';
 
 const STATUS_CFG = {
   pending:  { label: 'Pending',  cls: 'bg-yellow-100 text-yellow-700', icon: Clock },
   accepted: { label: 'Accepted', cls: 'bg-green-100  text-green-700',  icon: CheckCircle },
   rejected: { label: 'Rejected', cls: 'bg-red-100    text-red-700',    icon: XCircle },
+};
+
+// The 6 coach position-briefing questions (order + labels match dash_view_v2).
+const BRIEFING_QS = [
+  { key: 'exactPosition', label: 'What is the exact position' },
+  { key: 'sourcingTips', label: 'Sourcing Tips in this position' },
+  { key: 'challenges', label: 'Challenges in this Hiring' },
+  { key: 'headhuntingTarget', label: 'Head hunting Target' },
+  { key: 'assessmentQuestions', label: 'Assessment call Questions' },
+  { key: 'engagementPostSubmission', label: 'Engagement post submission' },
+];
+
+// Per-question red/green lights + a speaker to play the coach's answers.
+const BriefingCell = ({ briefing }) => {
+  const b = briefing || {};
+  const filled = BRIEFING_QS.filter(q => (b[q.key] || '').trim());
+  const script = filled.map(q => `${q.label}. ${b[q.key].trim()}.`).join(' ');
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <div className="flex items-center gap-1">
+        {BRIEFING_QS.map((q, i) => {
+          const on = !!(b[q.key] || '').trim();
+          return (
+            <span key={q.key}
+              title={`${i + 1}. ${q.label}: ${on ? 'answered' : 'not answered'}`}
+              className={`inline-block w-2.5 h-2.5 rounded-full ${on ? 'bg-green-500' : 'bg-red-400'}`} />
+          );
+        })}
+      </div>
+      {script
+        ? <SpeakButton text={script} title="Listen to the coach's briefing" compact />
+        : <span className="text-[10px] text-gray-400">no answers</span>}
+    </div>
+  );
 };
 
 const CoachRecruiterAssignmentsAdmin = () => {
@@ -121,7 +156,7 @@ const CoachRecruiterAssignmentsAdmin = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gradient-to-r from-blue-50 to-blue-100 text-left">
-                  {['#','Coach','Coach Email','Recruiter','Recruiter Email','Position','Client','Status','Note','Assigned On'].map(h => (
+                  {['#','Coach','Coach Email','Recruiter','Recruiter Email','Position','Client','Briefing','Status','Note','Assigned On'].map(h => (
                     <th key={h} className="px-3 py-3 font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -139,6 +174,7 @@ const CoachRecruiterAssignmentsAdmin = () => {
                       <td className="px-3 py-3 text-gray-500 text-xs">{a.recruiterEmail || '—'}</td>
                       <td className="px-3 py-3 font-medium text-gray-700">{a.positionTitle || '—'}</td>
                       <td className="px-3 py-3 text-gray-600">{a.client || '—'}</td>
+                      <td className="px-3 py-3"><BriefingCell briefing={a.briefing} /></td>
                       <td className="px-3 py-3">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${s.cls}`}>
                           <Icon size={10} /> {s.label}

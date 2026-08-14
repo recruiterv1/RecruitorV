@@ -2329,6 +2329,28 @@ router.get('/coach-recruiter-assignments', adminAuthMiddleware, async (req, res)
     const assignments = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.createdAt?._seconds || 0) - (a.createdAt?._seconds || 0));
+
+    // Attach each coach's position briefing (the 6 answers) so the admin table can
+    // show per-question filled lights + play it as audio. Briefing doc id is
+    // `${positionId}__${coachEmailLower}`.
+    const BRIEFING_FIELDS = ['exactPosition', 'sourcingTips', 'challenges', 'headhuntingTarget', 'assessmentQuestions', 'engagementPostSubmission'];
+    const refById = new Map();
+    assignments.forEach(a => {
+      const pid = String(a.positionId || ''); const ce = (a.coachEmail || '').toLowerCase();
+      if (pid && ce) { const id = `${pid}__${ce}`; if (!refById.has(id)) refById.set(id, db.collection('position_coach_briefing').doc(id)); }
+    });
+    const briefMap = {};
+    if (refById.size) {
+      const docs = await db.getAll(...refById.values());
+      docs.forEach(d => { if (d.exists) briefMap[d.id] = d.data(); });
+    }
+    assignments.forEach(a => {
+      const pid = String(a.positionId || ''); const ce = (a.coachEmail || '').toLowerCase();
+      const b = briefMap[`${pid}__${ce}`] || {};
+      a.briefing = {};
+      BRIEFING_FIELDS.forEach(f => { a.briefing[f] = (b[f] || '').toString(); });
+    });
+
     return res.json({ success: true, assignments });
   } catch (err) {
     console.error('coach-recruiter-assignments error:', err.message);
