@@ -461,6 +461,52 @@ function DashViewV2Inner() {
     return () => { live = false; };
   }, [view, pos_id, matchCands]);
 
+  // "Use Candidate" — load a matching candidate's full record into the submit form
+  // (incl. CV + photo), switch to the form, and let the recruiter edit + submit.
+  const useCandidate = async (cand) => {
+    if (!cand?.id) return;
+    setToast('Loading candidate…');
+    try {
+      const r = await axios.get(`/addit/bank-candidate/${cand.id}`, { withCredentials: true });
+      const c = r.data?.candidate || {};
+      const parseYM = (s) => {
+        const m = String(s || '').match(/(\d+)\s*Y[^0-9]*(\d+)?\s*M?/i);
+        if (m) return { y: m[1] || '', mo: m[2] || '0' };
+        const n = String(s || '').match(/[\d.]+/); return { y: n ? n[0] : '', mo: '0' };
+      };
+      const num = (s) => { const m = String(s || '').match(/[\d.]+/); return m ? m[0] : ''; };
+      const noticeVal = (() => {
+        const s = String(c.notice_period || '').toLowerCase();
+        if (s.includes('immediate')) return '0';
+        if (s.includes('serv')) return 'serving';
+        const m = s.match(/(\d+)/); return m ? m[1] : '';
+      })();
+      const te = parseYM(c.total_exp), re = parseYM(c.rel_exp);
+      setForm(f => ({
+        ...f,
+        candidate: c.candidate || '', mob: c.mob || '', emails: c.emails || '', dob: c.dob || '',
+        pan_number: c.pan_number || '', curr_emp: c.curr_emp || '', highest_education: c.highest_education || '',
+        totalYrs: te.y, totalMos: te.mo, relMos: re.mo, curr_state: c.curr_state || '', joinDate: c.last_day || '',
+      }));
+      setRelYrs(re.y);
+      setCurrentCTC(num(c.current_ctc)); setExpectedCTC(num(c.exp_ctc || c.expected_ctc));
+      setCurrentCity(c.curr_loc || ''); setNotice(noticeVal);
+      setOffer(c.offer_hand === 'Yes' ? 'yes' : (c.offer_hand === 'No' ? 'no' : ''));
+      setSelfRating(c.self_rate ? String(c.self_rate) : '');
+      setExistingCv(c.cv_data || c.cv_url || '');
+      setExistingPhoto(c.photo_url || c.photo || '');
+      setCvFile(null); setPhotoFile(null);
+      setDupChecked(true);
+      setStep(0); setView('form');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setToast('✓ Candidate loaded — review the details and submit.');
+      setTimeout(() => setToast(''), 4000);
+    } catch (_) {
+      setToast('⚠ Could not load this candidate.');
+      setTimeout(() => setToast(''), 3500);
+    }
+  };
+
   const toggleAssignSel = (id) => setAssignSel(s =>
     s.includes(id) ? s.filter(x => x !== id) : (s.length >= 2 ? s : [...s, id]));
 
@@ -1518,10 +1564,16 @@ function DashViewV2Inner() {
                         <span style={{ fontWeight: 700, color: '#166534' }}>Matched:</span> {c.matched.join(', ')}
                       </div>
                     )}
-                    {c.cv_data && (
-                      <a href={c.cv_data} target="_blank" rel="noopener noreferrer"
-                        style={{ display: 'inline-block', marginTop: 10, fontSize: 12, fontWeight: 700, color: '#2563eb' }}>View CV →</a>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
+                      {c.cv_data ? (
+                        <a href={c.cv_data} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize: 12, fontWeight: 700, color: '#2563eb' }}>View CV →</a>
+                      ) : <span />}
+                      <button onClick={() => useCandidate(c)}
+                        style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                        Use Candidate
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
