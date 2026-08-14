@@ -67,7 +67,7 @@ const ClientSpocBulkResumes = () => {
       .finally(() => setListLoading(false));
   };
 
-  useEffect(() => { if (tab === 'list') fetchMyResumes(); }, [tab]);
+  useEffect(() => { if (tab === 'list' || tab === 'daily') fetchMyResumes(); }, [tab]);
 
   const handleDeleteResume = async (r) => {
     if (!window.confirm(`Delete ${r.candidate || 'this candidate'}'s resume? This cannot be undone.`)) return;
@@ -269,6 +269,10 @@ const ClientSpocBulkResumes = () => {
               className={`px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'list' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               My Uploaded Resumes
             </button>
+            <button onClick={() => setTab('daily')}
+              className={`px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${tab === 'daily' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+              Daily Uploads
+            </button>
           </div>
         </div>
 
@@ -298,7 +302,16 @@ const ClientSpocBulkResumes = () => {
                 <div className="text-sm text-gray-500 flex items-center gap-2 py-10 justify-center"><Loader2 size={18} className="animate-spin" /> Loading…</div>
               ) : (() => {
                 const q = listSearch.toLowerCase().trim();
-                const filtered = myResumes.filter(r => !q || [r.candidate, r.emails, r.mob, r.skillCategory, (r.skills || []).join(' ')].some(v => (v || '').toLowerCase().includes(q)));
+                const filtered = myResumes.filter(r => {
+                  if (!q) return true;
+                  const hay = [
+                    r.candidate, r.name, r.emails, r.email, r.mob, r.phone, r.mobile, r.contact,
+                    r.skillCategory, r.pos_name, r.curr_loc,
+                    ...(Array.isArray(r.skills) ? r.skills : []),
+                  ].filter(Boolean).join(' ').toLowerCase();
+                  // match every whitespace-separated term (so "java mumbai" narrows)
+                  return q.split(/\s+/).every(term => hay.includes(term));
+                });
                 if (!filtered.length) {
                   return <div className="text-center text-gray-400 py-12">{myResumes.length ? 'No resumes match your search.' : 'You haven’t uploaded any resumes yet.'}</div>;
                 }
@@ -353,6 +366,59 @@ const ClientSpocBulkResumes = () => {
                           className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 disabled:opacity-40 hover:bg-gray-50">Next</button>
                       </div>
                     )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {tab === 'daily' && (
+            <div>
+              {listLoading ? (
+                <div className="text-sm text-gray-500 flex items-center gap-2 py-10 justify-center"><Loader2 size={18} className="animate-spin" /> Loading…</div>
+              ) : (() => {
+                // Group uploads by calendar day (handles Firestore timestamp, ms, or string).
+                const toDate = (d) => {
+                  if (!d) return null;
+                  if (typeof d === 'object' && d._seconds != null) return new Date(d._seconds * 1000);
+                  const dt = new Date(d);
+                  return isNaN(dt) ? null : dt;
+                };
+                const byDay = {};
+                myResumes.forEach(r => {
+                  const dt = toDate(r.datePosted);
+                  const key = dt ? dt.toISOString().slice(0, 10) : 'unknown';
+                  if (!byDay[key]) byDay[key] = { count: 0, dt };
+                  byDay[key].count++;
+                });
+                const rows = Object.entries(byDay)
+                  .sort((a, b) => (b[0] === 'unknown' ? -1 : a[0] === 'unknown' ? 1 : b[0].localeCompare(a[0])));
+                if (!rows.length) {
+                  return <div className="text-center text-gray-400 py-12">No uploads yet.</div>;
+                }
+                const total = myResumes.length;
+                return (
+                  <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                    <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <span className="font-bold text-gray-800">Uploads by date</span>
+                      <span className="text-sm text-gray-500">Total: <b className="text-gray-800">{total}</b></span>
+                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gradient-to-r from-green-50 to-green-100 text-left">
+                          <th className="px-5 py-3 font-semibold text-gray-600">Date</th>
+                          <th className="px-5 py-3 font-semibold text-gray-600 text-right">Uploads</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(([key, v]) => (
+                          <tr key={key} className="border-t border-gray-100 hover:bg-green-50/30">
+                            <td className="px-5 py-3 font-medium text-gray-700">{v.dt ? fmtDate(v.dt) : 'Unknown date'}</td>
+                            <td className="px-5 py-3 text-right"><b className="text-green-700">{v.count}</b> upload{v.count === 1 ? '' : 's'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 );
               })()}
