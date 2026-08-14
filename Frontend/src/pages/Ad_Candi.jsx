@@ -629,7 +629,7 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
             <InfoItem icon={Building} label="Client"            value={candidate.client}                             color="#6b7280" />
             {!hideRecruiterInfo && <InfoItem icon={User}     label="Recruiter"         value={candidate.recName}   color="#2563eb" />}
             {!hideRecruiterInfo && <InfoItem icon={Mail}     label="Recruiter Email"   value={candidate.recEmail} color="#6b7280" />}
-            {!hideRecruiterInfo && <InfoItem icon={User}     label="HR Name"           value={candidate.hr_name}  color="#0891b2" />}
+            {!hideRecruiterInfo && <InfoItem icon={Phone}    label="Recruiter Phone"   value={candidate.recPhone} color="#0891b2" />}
             <InfoItem icon={Clock}    label="Relevant Exp"      value={candidate.rel_exp ? `${candidate.rel_exp} yrs` : null} color="#7c3aed" />
             <InfoItem icon={TrendingUp} label="Total Exp"       value={candidate.total_exp ? `${candidate.total_exp} yrs` : null} color="#7c3aed" />
             <InfoItem icon={DollarSign} label="Current CTC"     value={candidate.current_ctc ? `₹${candidate.current_ctc} LPA` : null} color="#059669" />

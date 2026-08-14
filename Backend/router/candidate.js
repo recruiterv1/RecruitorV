@@ -461,6 +461,7 @@ let {
       clientspoc,
       recEmail: (news.email || '').toLowerCase().trim(),
       recName: news.name,
+      recPhone: news.phone || news.mobile || news.mob || news.contact || '',
       recRole: submitterRole,
       source: news.source,
       hr_name,
@@ -895,7 +896,23 @@ router.get('/show/clientspoc/candi', async (req, res) => {
       snap.docs.forEach(doc => { byId[doc.id] = byId[doc.id] || { ...doc.data(), id: doc.id }; });
     }
 
-    return res.status(200).json(Object.values(byId));
+    const list = Object.values(byId);
+
+    // Enrich recruiter phone for older records that predate storing recPhone, so the
+    // ClientSPOC modal can show it. Batched lookup by recruiter email from recruiter_db.
+    const needPhone = [...new Set(list.filter(c => !c.recPhone && c.recEmail).map(c => lc(c.recEmail)))];
+    if (needPhone.length) {
+      const phoneByEmail = {};
+      for (let i = 0; i < needPhone.length; i += 10) {
+        const batch = needPhone.slice(i, i + 10);
+        if (!batch.length) continue;
+        const rs = await db.collection('recruiter_db').where('email', 'in', batch).get().catch(() => ({ docs: [] }));
+        rs.docs.forEach(d => { const r = d.data(); phoneByEmail[lc(r.email)] = r.phone || r.mobile || r.mob || r.contact || ''; });
+      }
+      list.forEach(c => { if (!c.recPhone && c.recEmail) c.recPhone = phoneByEmail[lc(c.recEmail)] || ''; });
+    }
+
+    return res.status(200).json(list);
   } catch (error) {
     console.log('Error fetching clientspoc candidates:', error);
     res.status(500).json({ error: error.message });
@@ -1910,6 +1927,14 @@ router.post('/pos/:pos_id/submit-from-bank', isLoggedIn, async (req, res) => {
       const c = cdoc.data();
       const emails = (c.emails || '').trim().toLowerCase();
 
+      // The bank record must have at least a name — bulk-uploaded resumes often have
+      // only email/phone/CV, and submitting them creates a nameless, detail-less
+      // candidate. Require the recruiter to complete the profile first.
+      if (!(c.candidate || '').trim()) {
+        skipped.push({ id, candidate: emails, reason: 'candidate name/details missing — open View details to complete the profile before submitting' });
+        continue;
+      }
+
       // A candidate already submitted to this position cannot be submitted again.
       if (await alreadySubmittedToPosition(pos_id, emails, c.mob)) {
         skipped.push({ id, candidate: c.candidate || emails, reason: 'already submitted to this position' });
@@ -1940,6 +1965,7 @@ router.post('/pos/:pos_id/submit-from-bank', isLoggedIn, async (req, res) => {
         recId: news.id,
         recEmail: (news.email || '').toLowerCase().trim(),
         recName: news.name,
+        recPhone: news.phone || news.mobile || news.mob || news.contact || '',
         recRole: submitterRole,
         source: news.source,
         clientspoc: pos.clientspoc || '',
