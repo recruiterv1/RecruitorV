@@ -645,17 +645,20 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
             <InfoItem icon={Calendar} label="Offer & DOJ"       value={candidate.offer_amt}                         color="#d97706" />
           </div>
 
-          {/* ── Recruiter section ── */}
-          {!hideRecruiterInfo && (
-            <>
-              <div style={{ fontSize:12, fontWeight:800, color:'#374151', textTransform:'uppercase', letterSpacing:0.6, margin:'18px 0 8px', paddingBottom:6, borderBottom:'2px solid #eef2f7' }}>Recruiter</div>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:'0 28px' }}>
-                <InfoItem icon={User}  label="Recruiter"         value={candidate.recName}  color="#2563eb" />
-                <InfoItem icon={Mail}  label="Recruiter Email"   value={candidate.recEmail} color="#6b7280" />
-                <InfoItem icon={Phone} label="Recruiter Phone"   value={candidate.recPhone} color="#0891b2" />
-              </div>
-            </>
-          )}
+          {/* ── Submitter section — Coach / Expert / Recruiter depending on who submitted ── */}
+          {!hideRecruiterInfo && (() => {
+            const role = ['Coach', 'Expert', 'Recruiter'].includes(candidate.recRole) ? candidate.recRole : 'Recruiter';
+            return (
+              <>
+                <div style={{ fontSize:12, fontWeight:800, color:'#374151', textTransform:'uppercase', letterSpacing:0.6, margin:'18px 0 8px', paddingBottom:6, borderBottom:'2px solid #eef2f7' }}>{role}</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:'0 28px' }}>
+                  <InfoItem icon={User}  label={role}              value={candidate.recName}  color="#2563eb" />
+                  <InfoItem icon={Mail}  label={`${role} Email`}   value={candidate.recEmail} color="#6b7280" />
+                  <InfoItem icon={Phone} label={`${role} Phone`}   value={candidate.recPhone} color="#0891b2" />
+                </div>
+              </>
+            );
+          })()}
 
           {/* ── Skills ── */}
           {(candidate.tech_skill?.length > 0 || candidate.nontech_skill?.length > 0) && (

@@ -898,16 +898,19 @@ router.get('/show/clientspoc/candi', async (req, res) => {
 
     const list = Object.values(byId);
 
-    // Enrich recruiter phone for older records that predate storing recPhone, so the
-    // ClientSPOC modal can show it. Batched lookup by recruiter email from recruiter_db.
+    // Enrich submitter phone for older records that predate storing recPhone, so the
+    // ClientSPOC modal can show it. The submitter may be a recruiter, coach or expert,
+    // so look across all three collections (batched by email).
     const needPhone = [...new Set(list.filter(c => !c.recPhone && c.recEmail).map(c => lc(c.recEmail)))];
     if (needPhone.length) {
       const phoneByEmail = {};
-      for (let i = 0; i < needPhone.length; i += 10) {
-        const batch = needPhone.slice(i, i + 10);
-        if (!batch.length) continue;
-        const rs = await db.collection('recruiter_db').where('email', 'in', batch).get().catch(() => ({ docs: [] }));
-        rs.docs.forEach(d => { const r = d.data(); phoneByEmail[lc(r.email)] = r.phone || r.mobile || r.mob || r.contact || ''; });
+      for (const col of ['recruiter_db', 'coach_db', 'expert_db']) {
+        for (let i = 0; i < needPhone.length; i += 10) {
+          const batch = needPhone.slice(i, i + 10).filter(e => !phoneByEmail[e]);
+          if (!batch.length) continue;
+          const rs = await db.collection(col).where('email', 'in', batch).get().catch(() => ({ docs: [] }));
+          rs.docs.forEach(d => { const r = d.data(); const ph = r.phone || r.mobile || r.mob || r.contact || ''; if (ph) phoneByEmail[lc(r.email)] = ph; });
+        }
       }
       list.forEach(c => { if (!c.recPhone && c.recEmail) c.recPhone = phoneByEmail[lc(c.recEmail)] || ''; });
     }
