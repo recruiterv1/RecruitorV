@@ -47,6 +47,8 @@ const ClientSpocBulkResumes = () => {
   const [myResumes, setMyResumes] = useState([]);
   const [listLoading, setListLoading] = useState(false);
   const [listSearch, setListSearch] = useState('');
+  const [listPage, setListPage] = useState(1);
+  const LIST_PAGE_SIZE = 20;
   const [editTarget, setEditTarget] = useState(null); // resume being edited (modal)
   const [editSaving, setEditSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -284,7 +286,7 @@ const ClientSpocBulkResumes = () => {
               <div className="flex items-center gap-3 mb-4">
                 <div className="relative flex-1 max-w-sm">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input value={listSearch} onChange={(e) => setListSearch(e.target.value)} placeholder="Search name, email, skill, category…"
+                  <input value={listSearch} onChange={(e) => { setListSearch(e.target.value); setListPage(1); }} placeholder="Search name, email, skill, category…"
                     className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:border-green-500" />
                 </div>
                 <button onClick={fetchMyResumes} className="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold border border-gray-200 rounded-lg hover:border-green-300 text-gray-600">
@@ -300,10 +302,16 @@ const ClientSpocBulkResumes = () => {
                 if (!filtered.length) {
                   return <div className="text-center text-gray-400 py-12">{myResumes.length ? 'No resumes match your search.' : 'You haven’t uploaded any resumes yet.'}</div>;
                 }
+                const totalPages = Math.max(1, Math.ceil(filtered.length / LIST_PAGE_SIZE));
+                const page = Math.min(listPage, totalPages);
+                const start = (page - 1) * LIST_PAGE_SIZE;
+                const pageRows = filtered.slice(start, start + LIST_PAGE_SIZE);
                 return (
                   <div className="space-y-3">
-                    <p className="text-xs text-gray-400">{filtered.length} resume(s)</p>
-                    {filtered.map(r => (
+                    <p className="text-xs text-gray-400">
+                      {filtered.length} resume(s) · showing {start + 1}–{Math.min(start + LIST_PAGE_SIZE, filtered.length)}
+                    </p>
+                    {pageRows.map(r => (
                       <div key={r.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
                         <div className="flex items-start justify-between gap-3 flex-wrap">
                           <div className="min-w-0">
@@ -336,6 +344,15 @@ const ClientSpocBulkResumes = () => {
                         </div>
                       </div>
                     ))}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-center gap-2 pt-2 text-sm">
+                        <button onClick={() => setListPage(p => Math.max(1, p - 1))} disabled={page <= 1}
+                          className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 disabled:opacity-40 hover:bg-gray-50">Prev</button>
+                        <span className="px-2 text-gray-600">Page {page} / {totalPages}</span>
+                        <button onClick={() => setListPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+                          className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 disabled:opacity-40 hover:bg-gray-50">Next</button>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
