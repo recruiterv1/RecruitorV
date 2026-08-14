@@ -12,6 +12,14 @@ import { UserStateContext } from '../context/AuthPro';
 
 const API = '/api/recruiter-email';
 
+// Make links in a received email safe + clickable: open in a new tab and strip any
+// inline on* handlers / <script> tags (defensive — bodies come from external senders).
+const enhanceEmailHtml = (html) => (html || '')
+  .replace(/<script[\s\S]*?<\/script>/gi, '')
+  .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+  // add target/rel to every anchor (works for quoted or unquoted href)
+  .replace(/<a\b(?![^>]*\btarget=)/gi, '<a target="_blank" rel="noopener noreferrer" ');
+
 // ── Compose Modal ────────────────────────────────────────────────────────────
 const ComposeModal = ({ onClose, onSent, displayEmail, editDraft, jdHtml = null, sigHtml = '' }) => {
   // Recipients as a list so multiple addresses can be added. A draft's saved
@@ -359,8 +367,11 @@ const EmailViewer = ({ email, folder, onDelete, onBack, onReply, onForward }) =>
       </div>
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {email.body && /<(?:br|p|div|a|img|table|tbody|tr|td|span|strong|em|\/?b|\/?i|u|ul|ol|li|h[1-6]|hr|blockquote|font)\b[^>]*>|<\/(?:p|div|a|span|table|ul|ol|li|h[1-6]|blockquote|strong|em)>/i.test(email.body) ? (
-          <div className="prose prose-sm max-w-none text-gray-700"
-               dangerouslySetInnerHTML={{ __html: email.body }} />
+          <>
+            <style>{`.email-html-body a{color:#2563eb;text-decoration:underline;word-break:break-all;} .email-html-body a:hover{color:#1d4ed8;} .email-html-body img{max-width:100%;height:auto;}`}</style>
+            <div className="prose prose-sm max-w-none text-gray-700 email-html-body"
+                 dangerouslySetInnerHTML={{ __html: enhanceEmailHtml(email.body) }} />
+          </>
         ) : (
           <p className="text-sm text-gray-700 whitespace-pre-wrap">{email.body}</p>
         )}
