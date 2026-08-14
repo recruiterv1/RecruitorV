@@ -117,13 +117,28 @@ function scoreWithReason(jd, prep) {
 // Short-lived in-process caches (per instance) to avoid heavy reads per request.
 let _posCache = { t: 0, set: null };
 let _poolCache = { t: 0, data: null };
+let _preppedCache = { t: 0, preps: null };   // prepCandidate(pool), reused across scoring
+let _countsCache = new Map();                  // posIdsKey -> { t, counts }
 const TTL = 5 * 60 * 1000;
+const COUNTS_TTL = 90 * 1000;
 
 // Force the next read to refetch — call after writes that change the pool
 // (candidate edit, submit-from-bank, bulk resume save) so counts/lists are fresh.
 function invalidateCache() {
   _poolCache = { t: 0, data: null };
   _posCache = { t: 0, set: null };
+  _preppedCache = { t: 0, preps: null };
+  _countsCache.clear();
+}
+
+// Prepared pool (candidates run through prepCandidate) cached alongside the pool so
+// scoring never re-preps thousands of candidates on every request.
+async function getPreppedPool(db) {
+  const pool = await getAvailablePool(db);
+  if (_preppedCache.preps && _preppedCache.t === _poolCache.t) return _preppedCache.preps;
+  const preps = pool.map(prepCandidate);
+  _preppedCache = { t: _poolCache.t, preps };
+  return preps;
 }
 
 async function getActivePosIds(db) {
@@ -163,8 +178,14 @@ async function getAvailablePool(db) {
 
 // Returns { [pos_id]: matchCount } — available candidates with score >= threshold.
 async function resumeBankMatchCounts(db, positions, threshold = 75) {
-  const pool = await getAvailablePool(db);
-  const preps = pool.map(prepCandidate);
+  // Memoize by the exact set of positions + threshold — repeat page loads within
+  // the TTL return instantly without re-scoring the whole pool.
+  const posIds = positions.map(p => p.pos_id).filter(Boolean).sort();
+  const key = `${threshold}|${posIds.join(',')}`;
+  const hit = _countsCache.get(key);
+  if (hit && Date.now() - hit.t < COUNTS_TTL) return hit.counts;
+
+  const preps = await getPreppedPool(db);
   const counts = {};
   for (const pos of positions) {
     const jd = buildJd(pos);
@@ -174,6 +195,8 @@ async function resumeBankMatchCounts(db, positions, threshold = 75) {
     }
     counts[pos.pos_id] = n;
   }
+  if (_countsCache.size > 200) _countsCache.clear();
+  _countsCache.set(key, { t: Date.now(), counts });
   return counts;
 }
 

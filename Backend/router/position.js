@@ -1193,12 +1193,14 @@ router.get('/pos/assigned-positions', authMiddleware, async (req, res) => {
     // (Firestore 'in' rejects an empty array, so guard for the no-positions case.)
     const allPositionIds = allAssignedPositions.map(p => p.pos_id).filter(Boolean);
     let allCandidatesData = [];
+    const candCountQueries = [];
     for (let i = 0; i < allPositionIds.length; i += 10) {
       const batch = allPositionIds.slice(i, i + 10);
-      if (!batch.length) continue;
-      const snap = await getCandidateDb().where('pos_id', 'in', batch).get();
-      allCandidatesData.push(...snap.docs.map(doc => doc.data()));
+      if (batch.length) candCountQueries.push(getCandidateDb().where('pos_id', 'in', batch).get());
     }
+    (await Promise.all(candCountQueries)).forEach(snap => {
+      allCandidatesData.push(...snap.docs.map(doc => doc.data()));
+    });
 
     // Resume-bank match counts — candidates in the bank matching each JD >= 75%.
     let resumeBankCounts = {};
