@@ -45,7 +45,7 @@ const locText = (loc) => Array.isArray(loc)
   : (loc || '—');
 
 // ─── Main content ─────────────────────────────────────────────────────────────
-const AssignedPositionsContent = () => {
+export const AssignedPositionsContent = () => {
   const navigate = useNavigate();
   const { user } = useContext(UserStateContext);
   const [positions, setPositions] = useState([]);
