@@ -438,6 +438,7 @@ function DashViewV2Inner() {
   }, [isCoachExpert, pos_id]);
 
   // Copy a shareable public link for this position (same format as dash_view).
+  const [shareInfoOpen, setShareInfoOpen] = useState(false);
   const sharePosition = () => {
     const rec = teamUser?.email ? `&rec=${encodeURIComponent(teamUser.email)}` : '';
     const shareUrl = `${window.location.origin}/position/${pos_id}?view=share${rec}`;
@@ -1244,20 +1245,22 @@ function DashViewV2Inner() {
                   📝 {briefingFound ? 'Edit Briefing' : 'Add Briefing'}
                 </button>
               )}
-              {/* Recruiter (position assigned by their coach): listen to the briefing */}
-              {!isCoachExpert && hasAccess && briefingFound && briefingScript && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)',
-                  border: '1px solid rgba(255,255,255,0.35)', borderRadius: 999, padding: '4px 6px 4px 12px' }}>
-                  <span style={{ color: '#fff', fontSize: 12, fontWeight: 700 }}>Coach Briefing</span>
-                  <SpeakButton text={briefingScript} title="Play the coach's position briefing" compact />
-                </span>
-              )}
               <button onClick={sharePosition} title="Copy shareable link"
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
                   background: 'rgba(255,255,255,0.15)', color: '#fff', border: '1px solid rgba(255,255,255,0.35)',
                   borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                🔗 Share
+                🔗 Get Direct Applicant
               </button>
+              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                <button onClick={() => setShareInfoOpen(o => !o)} onMouseEnter={() => setShareInfoOpen(true)} onMouseLeave={() => setShareInfoOpen(false)}
+                  title="What is this?" aria-label="What is this?"
+                  style={{ width: 24, height: 24, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 13, fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}>i</button>
+                {shareInfoOpen && (
+                  <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 260, background: '#fff', color: '#0f172a', borderRadius: 10, padding: '10px 12px', fontSize: 12, lineHeight: 1.5, fontWeight: 500, boxShadow: '0 12px 30px -8px rgba(0,0,0,0.45)', zIndex: 10 }}>
+                    Click the button to get a shareable link and share it on any social-media platform to get candidates for your position.
+                  </div>
+                )}
+              </span>
             </div>
             <span className="badge">● {loading ? 'Loading…' : 'Requirement'}</span>
             <h1 className="jd-title">{jd.title}</h1>
@@ -1283,6 +1286,25 @@ function DashViewV2Inner() {
               <div><span className="label">Experience</span><span className="val">{jd.experience}</span></div>
             </div>
           </div>
+
+          {/* Coach Briefing — recruiter hears each question's answer via its own speaker */}
+          {!isCoachExpert && hasAccess && briefingFound && briefingScript && (
+            <div className="card" style={{ marginBottom: 20 }}>
+              <h2>Coach Briefing</h2>
+              <p className="card-sub">Your coach's guidance for this position. Tap a question's speaker to hear that answer (English/Hindi &amp; more).</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
+                {BRIEFING_QS.filter(q => (briefing[q.key] || '').trim()).map((q, i) => (
+                  <div key={q.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{i + 1}. {q.label}</div>
+                      {q.desc && <div style={{ fontSize: 12, color: '#64748b' }}>{q.desc}</div>}
+                    </div>
+                    <SpeakButton text={`${q.label}. ${briefing[q.key].trim()}.`} title={`Play: ${q.label}`} tone="green" compact />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid">
             <div>

@@ -43,7 +43,7 @@ const pickVoice = (voices, tag) => {
  * Props: text (string), title (tooltip/aria label), compact (smaller icon-only),
  *        className (extra classes on the button).
  */
-export default function SpeakButton({ text, title = 'Play audio', compact = false, className = '' }) {
+export default function SpeakButton({ text, title = 'Play audio', compact = false, className = '', tone = 'blue' }) {
   const [lang, setLang] = useState('en');
   const [busy, setBusy] = useState(false);      // translating
   const [speaking, setSpeaking] = useState(false);
@@ -166,7 +166,7 @@ export default function SpeakButton({ text, title = 'Play audio', compact = fals
         onClick={onMainClick}
         title={title}
         aria-label={title}
-        className={`inline-flex items-center justify-center rounded-full transition-colors ${compact ? 'w-7 h-7' : 'w-8 h-8'} ${speaking ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
+        className={`inline-flex items-center justify-center rounded-full transition-colors ${compact ? 'w-7 h-7' : 'w-8 h-8'} ${speaking ? 'bg-red-100 text-red-600 hover:bg-red-200' : tone === 'green' ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}
       >
         {busy ? <Loader2 size={iconSize} className="animate-spin" /> : speaking ? <Square size={iconSize} /> : <Volume2 size={iconSize} />}
       </button>

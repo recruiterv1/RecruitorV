@@ -19,26 +19,29 @@ const BRIEFING_QS = [
   { key: 'engagementPostSubmission', label: 'Post-Submission Engagement', desc: 'How do we keep candidates engaged after submission?' },
 ];
 
-// Per-question red/green lights + a speaker to play the coach's answers.
+// Per-question lights. Each ANSWERED question is its own green speaker — clicking it
+// plays only that answer (with language choice). Unanswered questions stay red dots.
 const BriefingCell = ({ briefing }) => {
   const b = briefing || {};
-  const filled = BRIEFING_QS.filter(q => (b[q.key] || '').trim());
-  const script = filled.map(q => `${q.label}. ${b[q.key].trim()}.`).join(' ');
+  const anyFilled = BRIEFING_QS.some(q => (b[q.key] || '').trim());
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      <div className="flex items-center gap-1">
-        {BRIEFING_QS.map((q, i) => {
-          const on = !!(b[q.key] || '').trim();
+    <div className="flex items-center gap-1.5 flex-wrap justify-center" style={{ maxWidth: 230 }}>
+      {BRIEFING_QS.map((q, i) => {
+        const ans = (b[q.key] || '').trim();
+        if (ans) {
           return (
-            <span key={q.key}
-              title={`${i + 1}. ${q.label}: ${on ? 'answered' : 'not answered'}`}
-              className={`inline-block w-2.5 h-2.5 rounded-full ${on ? 'bg-green-500' : 'bg-red-400'}`} />
+            <span key={q.key} title={`${i + 1}. ${q.label} — click to play`}>
+              <SpeakButton text={`${q.label}. ${ans}.`} title={`Play ${i + 1}. ${q.label}`} tone="green" compact />
+            </span>
           );
-        })}
-      </div>
-      {script
-        ? <SpeakButton text={script} title="Listen to the coach's briefing" compact />
-        : <span className="text-[10px] text-gray-400">no answers</span>}
+        }
+        return (
+          <span key={q.key}
+            title={`${i + 1}. ${q.label}: not answered`}
+            className="inline-block w-2.5 h-2.5 rounded-full bg-red-400" />
+        );
+      })}
+      {!anyFilled && <span className="text-[10px] text-gray-400">no answers</span>}
     </div>
   );
 };
