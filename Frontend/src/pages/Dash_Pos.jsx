@@ -5,6 +5,7 @@ import { Briefcase, MapPin, IndianRupee, BadgePercent, Calendar, TrendingUp, Ale
 import { CircularProgress } from '@mui/material';
 import { UserStateContext } from '../context/AuthPro';
 import { formatCommission } from '../lib/commission';
+import AssignedPositions from './AssignedPositions';
 
 const Dash_Pos= () => {
   const [jobs, setJobs] = useState([]);
@@ -415,13 +416,16 @@ const Dash_Pos= () => {
 
       {/* ── Tabs: All | Matching Positions ── */}
       <div className="flex items-center gap-2 mb-3">
-        {[{ id: 'all', label: 'All' }, { id: 'matching', label: 'Skill Fit' }].map(t => (
+        {[{ id: 'all', label: 'All' }, { id: 'matching', label: 'Skill Fit' }, { id: 'assigned', label: 'Assigned Positions' }].map(t => (
           <button key={t.id} onClick={() => setMainTab(t.id)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all border ${mainTab === t.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
             {t.label}
           </button>
         ))}
       </div>
+
+      {mainTab === 'assigned' && <AssignedPositions />}
+      {mainTab !== 'assigned' && (<>
 
       {/* Matching sub-tabs — one per profile skill category */}
       {mainTab === 'matching' && (
@@ -597,6 +601,7 @@ const Dash_Pos= () => {
           })}
         </div>
       )}
+      </>)}
     </div>
   );
 };
