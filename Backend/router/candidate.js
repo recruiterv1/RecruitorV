@@ -1894,6 +1894,97 @@ router.patch('/bank-candidate/:id', isLoggedIn, async (req, res) => {
   }
 });
 
+// ── Candidate submission DRAFTS ───────────────────────────────────────────────
+// A recruiter can save an in-progress submission (e.g. photo not ready yet) as a
+// draft and finish it later. Drafts live in their OWN collection `candidate_drafts`
+// — deleting or expiring a draft NEVER touches candidate_db, so a candidate reused
+// from the resume/matching bank is unaffected. Drafts auto-expire after 72 hours.
+const DRAFT_TTL_MS = 72 * 60 * 60 * 1000;
+
+// POST /addit/draft/candidate — create or update a draft (pass id to update).
+router.post('/draft/candidate', isLoggedIn, async (req, res) => {
+  try {
+    const { db } = require('../router/firebase_ad');
+    const recEmail = (req.user.email || '').toLowerCase();
+    const b = req.body || {};
+    if (!b.pos_id) return res.status(400).json({ success: false, message: 'pos_id is required' });
+    const now = Date.now();
+    const form = (b.form && typeof b.form === 'object') ? b.form : {};
+    const base = {
+      recEmail,
+      pos_id: String(b.pos_id),
+      pos_name: b.pos_name || '', client: b.client || '', clientspoc: b.clientspoc || '', hr_name: b.hr_name || '',
+      form,
+      cv_url: b.cv_url || '',
+      photo_url: b.photo_url || '',
+      candidate: b.candidate || form.candidate || '',
+      emails: (b.emails || form.emails || '').toLowerCase(),
+      mob: b.mob || form.mob || '',
+      updatedAt: new Date(now),
+      expiresAt: new Date(now + DRAFT_TTL_MS),
+    };
+    let id = b.id;
+    if (id) {
+      const ref = db.collection('candidate_drafts').doc(id);
+      const doc = await ref.get();
+      if (doc.exists && (doc.data().recEmail || '').toLowerCase() !== recEmail) {
+        return res.status(403).json({ success: false, message: 'Not your draft' });
+      }
+      await ref.set(base, { merge: true });
+    } else {
+      const ref = await db.collection('candidate_drafts').add({ ...base, createdAt: new Date(now) });
+      id = ref.id;
+    }
+    return res.json({ success: true, id, expiresAt: base.expiresAt });
+  } catch (e) {
+    console.error('draft save error:', e.message);
+    return res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /addit/draft/candidates?pos_id= — the recruiter's non-expired drafts.
+router.get('/draft/candidates', isLoggedIn, async (req, res) => {
+  try {
+    const { db } = require('../router/firebase_ad');
+    const recEmail = (req.user.email || '').toLowerCase();
+    const snap = await db.collection('candidate_drafts').where('recEmail', '==', recEmail).get();
+    const now = Date.now();
+    const out = [];
+    snap.docs.forEach(d => {
+      const x = d.data();
+      const exp = x.expiresAt?.toMillis ? x.expiresAt.toMillis() : new Date(x.expiresAt).getTime();
+      if (exp && exp < now) { d.ref.delete().catch(() => {}); return; }   // lazy-expire
+      out.push({ id: d.id, ...x, expiresAtMs: exp });
+    });
+    let list = out;
+    if (req.query.pos_id) list = list.filter(x => String(x.pos_id) === String(req.query.pos_id));
+    list.sort((a, b) => (b.updatedAt?.toMillis?.() || 0) - (a.updatedAt?.toMillis?.() || 0));
+    return res.json({ success: true, drafts: list });
+  } catch (e) {
+    console.error('draft list error:', e.message);
+    return res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// DELETE /addit/draft/candidate/:id — delete own draft only. Never touches candidate_db.
+router.delete('/draft/candidate/:id', isLoggedIn, async (req, res) => {
+  try {
+    const { db } = require('../router/firebase_ad');
+    const recEmail = (req.user.email || '').toLowerCase();
+    const ref = db.collection('candidate_drafts').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.json({ success: true });
+    if ((doc.data().recEmail || '').toLowerCase() !== recEmail) {
+      return res.status(403).json({ success: false, message: 'Not your draft' });
+    }
+    await ref.delete();
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('draft delete error:', e.message);
+    return res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // POST /addit/pos/:pos_id/submit-from-bank — submit up to 2 selected matching
 // candidates against the position, attributed to the logged-in recruiter, with
 // their details auto-filled. Mirrors the /data/candi validations.

@@ -373,6 +373,9 @@ function DashViewV2Inner() {
   const [dupChecked, setDupChecked] = useState(false);
   const [showDup, setShowDup] = useState(false);
   const [toast, setToast] = useState('');
+  const [draftId, setDraftId] = useState(null);       // draft currently being edited/resumed
+  const [drafts, setDrafts] = useState([]);           // this recruiter's saved drafts for this position
+  const [draftSaving, setDraftSaving] = useState(false);
   const [cvFile, setCvFile] = useState(null);
   const [photoFile, setPhotoFile] = useState(null);
   const [existingCv, setExistingCv] = useState('');       // resume URL from a matched candidate
@@ -1188,12 +1191,96 @@ function DashViewV2Inner() {
       setCurrentCity(''); setNotice(''); setSkillEvidence(''); setSelfRating(''); setNoticeProof('');
       setDupChecked(false); setCvFile(null); setPhotoFile(null); setExistingCv(''); setExistingPhoto(''); setStep(0);
       setSelChildren([]); setSelSubs({}); setSubExp({}); setClientAnswers({});
+      // A submitted draft is now a real candidate — remove the draft (candidate_db untouched).
+      if (draftId) { axios.delete(`/addit/draft/candidate/${draftId}`, { withCredentials: true }).catch(() => {}); setDraftId(null); loadDrafts(); }
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Submission failed. Please try again.';
       flagInvalid(msg);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // ── Drafts: save an in-progress submission and resume it within 72h ──
+  const uploadOneFile = async (file, prefix) => {
+    const toB64 = (f) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result.split(',')[1]); r.onerror = reject; r.readAsDataURL(f); });
+    const res = await axios.post('/api/direct-apply/upload-cv', { filename: `${prefix}${file.name}`, contentType: file.type || 'application/octet-stream', base64: await toB64(file) });
+    if (!res.data?.success || !res.data.url) throw new Error(res.data?.message || 'Upload failed');
+    return res.data.url;
+  };
+
+  const loadDrafts = async () => {
+    if (!pos_id) return;
+    try {
+      const r = await axios.get(`/addit/draft/candidates?pos_id=${pos_id}`, { withCredentials: true });
+      setDrafts(r.data?.drafts || []);
+    } catch (_) { setDrafts([]); }
+  };
+  useEffect(() => { if (hasAccess) loadDrafts(); /* eslint-disable-next-line */ }, [pos_id, hasAccess]);
+
+  // Snapshot every user-entered field so a resumed draft restores exactly.
+  const collectDraftForm = () => ({
+    ...form,
+    relYrs, currentCTC, expectedCTC, offer, relocation, currentCity, notice,
+    skillEvidence, selfRating, noticeProof,
+    selChildren, selSubs, subExp, clientAnswers, step,
+  });
+
+  const saveDraft = async () => {
+    setDraftSaving(true);
+    try {
+      // Preserve any newly-chosen CV/photo so they aren't lost on resume.
+      let cv_url = existingCv || '';
+      let photo_url = existingPhoto || '';
+      if (cvFile) cv_url = await uploadOneFile(cvFile, '');
+      if (photoFile) photo_url = await uploadOneFile(photoFile, 'photo_');
+      const r = await axios.post('/addit/draft/candidate', {
+        id: draftId || undefined,
+        pos_id: job?.pos_id || pos_id, pos_name: job?.position || '', client: job?.client || '',
+        clientspoc: job?.clientspoc || '', hr_name: job?.hr_name || '',
+        form: collectDraftForm(), cv_url, photo_url,
+        candidate: form.candidate, emails: form.emails, mob: form.mob,
+      }, { withCredentials: true });
+      setDraftId(r.data?.id || draftId);
+      if (cv_url) setExistingCv(cv_url); if (photo_url) setExistingPhoto(photo_url);
+      setCvFile(null); setPhotoFile(null);
+      setToast('✓ Saved as draft — finish it within 72 hours.');
+      setTimeout(() => setToast(''), 4000);
+      loadDrafts();
+    } catch (e) {
+      flagInvalid(e.response?.data?.message || 'Could not save draft');
+    } finally { setDraftSaving(false); }
+  };
+
+  const resumeDraft = (d) => {
+    const f = d.form || {};
+    setForm(prev => ({ ...prev,
+      candidate: f.candidate || '', mob: f.mob || '', emails: f.emails || '', dob: f.dob || '',
+      pan_number: f.pan_number || '', curr_emp: f.curr_emp || '', highest_education: f.highest_education || '',
+      totalYrs: f.totalYrs || '', totalMos: f.totalMos || '0', relMos: f.relMos || '0',
+      curr_state: f.curr_state || '', joinDate: f.joinDate || '', avgTenure: f.avgTenure || '',
+      empGaps: f.empGaps || '', employerTier: f.employerTier || '', industryMatch: f.industryMatch || '',
+      internshipExcluded: !!f.internshipExcluded,
+    }));
+    setRelYrs(f.relYrs || ''); setCurrentCTC(f.currentCTC || ''); setExpectedCTC(f.expectedCTC || '');
+    setOffer(f.offer || ''); setRelocation(f.relocation || ''); setCurrentCity(f.currentCity || '');
+    setNotice(f.notice || ''); setSkillEvidence(f.skillEvidence || ''); setSelfRating(f.selfRating || '');
+    setNoticeProof(f.noticeProof || '');
+    setSelChildren(Array.isArray(f.selChildren) ? f.selChildren : []);
+    setSelSubs(f.selSubs || {}); setSubExp(f.subExp || {}); setClientAnswers(f.clientAnswers || {});
+    setExistingCv(d.cv_url || ''); setExistingPhoto(d.photo_url || '');
+    setCvFile(null); setPhotoFile(null);
+    setDraftId(d.id);
+    setView('form'); setStep(0);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setToast('Draft loaded — complete the remaining fields and submit.');
+    setTimeout(() => setToast(''), 4000);
+  };
+
+  const deleteDraft = async (id) => {
+    try { await axios.delete(`/addit/draft/candidate/${id}`, { withCredentials: true }); } catch (_) {}
+    if (draftId === id) setDraftId(null);
+    loadDrafts();
   };
 
   const OptionGrid = ({ value, onChange, options, cols }) => (
@@ -1238,6 +1325,12 @@ function DashViewV2Inner() {
             {hasAccess && (
               <button className={`tab-btn${view === 'match' ? ' active' : ''}`}
                 onClick={() => { setView('match'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Matching Candidates</button>
+            )}
+            {hasAccess && (
+              <button className={`tab-btn${view === 'drafts' ? ' active' : ''}`}
+                onClick={() => { setView('drafts'); loadDrafts(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
+                Drafts{drafts.length ? ` (${drafts.length})` : ''}
+              </button>
             )}
           </div>
         </div>
@@ -1567,6 +1660,38 @@ function DashViewV2Inner() {
         )}
 
         {/* ===================== MATCHING CANDIDATES VIEW ===================== */}
+        {/* ===================== DRAFTS VIEW ===================== */}
+        <div className={`view${view === 'drafts' ? ' active' : ''}`}>
+          <div className="card">
+            <h2>Saved Drafts</h2>
+            <p className="card-sub">In-progress submissions you saved (e.g. photo not ready yet). Resume and submit within <b>72 hours</b> — after that a draft is deleted automatically. Deleting a draft never removes any candidate already in the system.</p>
+            {drafts.length === 0 ? (
+              <div className="side-block">No saved drafts for this position.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                {drafts.map(d => {
+                  const hrsLeft = d.expiresAtMs ? Math.max(0, Math.round((d.expiresAtMs - Date.now()) / 3600000)) : null;
+                  return (
+                    <div key={d.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{d.candidate || 'Unnamed candidate'}</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>
+                          {[d.emails, d.mob].filter(Boolean).join(' · ') || 'No contact yet'}
+                          {hrsLeft !== null && <span style={{ marginLeft: 8, color: hrsLeft <= 12 ? '#dc2626' : '#94a3b8' }}>· expires in ~{hrsLeft}h</span>}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                        <button className="btn btn-primary" onClick={() => resumeDraft(d)}>Resume</button>
+                        <button className="btn btn-ghost" style={{ color: '#dc2626' }} onClick={() => deleteDraft(d.id)}>Delete</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className={`view${view === 'match' ? ' active' : ''}`}>
           <div className="card">
             <h2>Matching Candidates</h2>
@@ -1910,9 +2035,15 @@ function DashViewV2Inner() {
 
               <div className="step-nav">
                 <button className="btn btn-ghost" style={{ visibility: step === 0 ? 'hidden' : 'visible' }} onClick={() => setStep(s => Math.max(0, s - 1))}>← Back</button>
-                {step < STEP_NAMES.length - 1
-                  ? <button className="btn btn-primary" onClick={() => goToStep(step + 1)}>Next →</button>
-                  : <button className="btn btn-submit" disabled={submitting} onClick={trySubmit}>{submitting ? 'Submitting…' : 'Submit Candidate'}</button>}
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="btn btn-ghost" disabled={draftSaving} onClick={saveDraft}
+                    title="Save your progress and finish within 72 hours">
+                    {draftSaving ? 'Saving…' : (draftId ? '💾 Update Draft' : '💾 Save as Draft')}
+                  </button>
+                  {step < STEP_NAMES.length - 1
+                    ? <button className="btn btn-primary" onClick={() => goToStep(step + 1)}>Next →</button>
+                    : <button className="btn btn-submit" disabled={submitting} onClick={trySubmit}>{submitting ? 'Submitting…' : 'Submit Candidate'}</button>}
+                </div>
               </div>
             </div>
 

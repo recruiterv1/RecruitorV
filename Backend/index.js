@@ -416,6 +416,30 @@ exports.suspendInactiveRecruiters = onSchedule(
   }
 );
 
+// ---- Scheduled: delete candidate submission drafts older than 72h ----
+exports.cleanupCandidateDrafts = onSchedule(
+  {
+    schedule: 'every day 03:00',
+    timeZone: 'Asia/Kolkata',
+    region: 'us-central1',
+    memory: '256MiB',
+    timeoutSeconds: 120,
+  },
+  async () => {
+    const admin = require('firebase-admin');
+    const db = admin.firestore();
+    const snap = await db.collection('candidate_drafts').where('expiresAt', '<', new Date()).get();
+    let n = 0;
+    // Batch deletes (Firestore caps a batch at 500 ops).
+    for (let i = 0; i < snap.docs.length; i += 450) {
+      const batch = db.batch();
+      snap.docs.slice(i, i + 450).forEach(d => { batch.delete(d.ref); n++; });
+      await batch.commit();
+    }
+    console.log('🧹 Expired candidate drafts deleted:', n);
+  }
+);
+
 // ---- Scheduled: daily 7 AM IST direct-applicant digest ----
 exports.dailyDirectApplicantDigest = onSchedule(
   {
