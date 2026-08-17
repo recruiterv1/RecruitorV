@@ -408,11 +408,12 @@ const App = () => {
             <Route path='/ad_panel' element={<Admin/>} />
             <Route path='/cv_repo' element={<CV_repo/>} />
             <Route path='/position/:pos_id' element={<Dash_View />} />
-            <Route path='/dash_view/:pos_id' element={<Dash_View/>} />
+            {/* dash_view is now the v2 layout (live). Old page still at /dash_view_legacy. */}
+            <Route path='/dash_view/:pos_id' element={<DashViewV2/>} />
+            <Route path='/dash_view_legacy/:pos_id' element={<Dash_View/>} />
             <Route path='/dash_view_v2' element={<DashViewV2 />} />
             <Route path='/dash_view_v2/:pos_id' element={<DashViewV2 />} />
             <Route path='/clientspoc-dash-view/:pos_id' element={<ClientSpocDashView/>} />
-<Route path='/dash_view/:pos_id' element={<Dash_View/>} />
             <Route path='/login/con'  element={<Login_Con/>}/>
             <Route path='/reg/con' element={<Reg_Con/>} />
             <Route path='/main/area' element={<MainArea/>} />

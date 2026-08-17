@@ -1230,7 +1230,6 @@ function DashViewV2Inner() {
         </div>
       </div>
 
-      <div className="exp-banner">Experimental layout preview — this is a test page. The live position page is unchanged.</div>
 
       <div className="wrap">
         {/* ===================== JD VIEW ===================== */}
