@@ -245,9 +245,9 @@ const AssignedPositionsContent = () => {
                     {/* Actions */}
                     <div className="border-t border-gray-100 px-4 py-2.5 flex items-center gap-2">
                       {active ? (
-                        <button onClick={(e) => handleSubmitCandidate(e, position)} disabled={busy}
+                        <button onClick={() => navigate(`/dash_view/${position.pos_id}?submit=1`)}
                           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-colors">
-                          {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Submit Candidate
+                          <Send size={15} /> Submit Candidate
                         </button>
                       ) : (
                         <button disabled

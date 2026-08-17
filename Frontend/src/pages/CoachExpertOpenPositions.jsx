@@ -88,6 +88,7 @@ const OpenPositionsContent = () => {
   const [toast, setToast] = useState(null);
   const [selectedPosition, setSelectedPosition] = useState(null);
   const [people, setPeople] = useState({}); // pos_id -> { recruiters:[], coaches:[] }
+  const navigate = useNavigate();
 
   // filter/search state
   const [search,        setSearch]        = useState('');
@@ -412,7 +413,7 @@ const OpenPositionsContent = () => {
             return (
               <div
                 key={job.pos_id}
-                onClick={() => setSelectedPosition(job)}
+                onClick={() => navigate(`/dash_view/${job.pos_id}`)}
                 className={`relative min-w-0 bg-white rounded-2xl border shadow-sm flex flex-col gap-3 p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 hover:border-orange-300 ${isImmediate ? 'ring-2 ring-red-300 border-gray-200' : 'border-gray-200'}`}
               >
                 {/* Immediate Hiring badge */}

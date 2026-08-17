@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import axios from 'axios';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { SidebarProvider, SidebarContext } from '../context/Sidebarcontext';
 import { UserStateContext } from '../context/AuthPro';
 import Sidebar from './Sidebar';
@@ -352,6 +352,8 @@ const STEP_NAMES = ['Identity', 'Experience', 'Compensation', 'Location', 'Notic
 
 function DashViewV2Inner() {
   const { pos_id } = useParams();
+  const [searchParams] = useSearchParams();
+  const wantsSubmit = searchParams.get('submit') === '1';
   const [view, setView] = useState('jd');
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -801,6 +803,17 @@ function DashViewV2Inner() {
   useEffect(() => {
     if (view === 'form' && access !== null && !hasAccess) setView('jd');
   }, [view, access, hasAccess]);
+
+  // Arriving via a "Submit Candidate" action (?submit=1): jump straight to the form
+  // once access is confirmed. Fires once.
+  const submitJumpDone = useRef(false);
+  useEffect(() => {
+    if (wantsSubmit && !submitJumpDone.current && hasAccess) {
+      submitJumpDone.current = true;
+      setView('form');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [wantsSubmit, hasAccess]);
 
   // ── Position Briefing: coach/expert authors 6 answers; assigned recruiters hear it ──
   const BRIEFING_QS = [
