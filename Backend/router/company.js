@@ -260,6 +260,38 @@ router.get('/candidates', companyAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+// GET /pocs — ClientSPOCs engaged on this company's positions, with the positions
+// each one is on. name/phone enriched from the ClientSPOC's own record.
+router.get('/pocs', companyAuth, async (req, res) => {
+  try {
+    const name = lc(req.company.name);
+    const [byCompany, all] = await Promise.all([
+      POS.where('postedByCompany', '==', req.company.id).get(),
+      POS.get(),
+    ]);
+    const map = new Map();
+    const add = (p) => {
+      const email = lc(p.clientspoc);
+      if (!email) return;
+      if (!map.has(email)) map.set(email, { email, name: p.clientspoc_name || '', positions: new Set() });
+      const e = map.get(email);
+      if (!e.name && p.clientspoc_name) e.name = p.clientspoc_name;
+      if (p.position) e.positions.add(p.position);
+    };
+    byCompany.docs.forEach(d => add(d.data()));
+    all.docs.forEach(d => { const x = d.data(); if (lc(x.client) === name || lc(x.companyName) === name) add(x); });
+
+    const pocs = [];
+    for (const p of map.values()) {
+      let phone = '', pname = p.name;
+      try { const s = await clientspocF.findClientSpocByEmail(p.email); if (s) { phone = s.phone || s.mobile || s.mob || s.contact || ''; pname = pname || s.name || ''; } } catch (_) {}
+      pocs.push({ email: p.email, name: pname || p.email.split('@')[0], phone, positions: [...p.positions].sort() });
+    }
+    pocs.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    res.json({ success: true, pocs });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
 // POST /candidates/:id/status — restricted status change with a mandatory reason.
 router.post('/candidates/:id/status', companyAuth, async (req, res) => {
   try {

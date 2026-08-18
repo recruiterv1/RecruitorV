@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2, Briefcase, Users, HelpCircle, LogOut, Plus, Loader2, PauseCircle,
-  Trash2, Save, Menu, X, CheckCircle2, Search, LayoutDashboard, UserCircle, KeyRound, ArrowLeft,
+  Trash2, Save, Menu, X, CheckCircle2, Search, LayoutDashboard, UserCircle, KeyRound, ArrowLeft, Mail, Phone,
 } from 'lucide-react';
 import Ad_Pos from './Ad_Pos';
 import QuestionsEditor, { validateQuestions } from '../components/QuestionsEditor';
@@ -319,9 +319,12 @@ function Candidates() {
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
   const [sf, setSf] = useState('all');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 24;
 
   const load = useCallback(() => api.get('/candidates').then(r => setData(r.data)).catch(() => setData({ candidates: [], allowedStatuses: [] })), []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setPage(1); }, [q, sf]);
 
   const save = async () => {
     if (!statusa || !reason.trim()) return;
@@ -344,12 +347,19 @@ function Candidates() {
     .filter(c => { if (!q.trim()) return true; const t = q.toLowerCase(); return (c.candidate || '').toLowerCase().includes(t) || (c.pos_name || '').toLowerCase().includes(t) || (c.emails || '').toLowerCase().includes(t); })
     .sort((a, b) => candRank(a.statusa) - candRank(b.statusa));
 
+  const totalPages = Math.max(1, Math.ceil(view.length / PAGE_SIZE));
+  const curPage = Math.min(page, totalPages);
+  const start = (curPage - 1) * PAGE_SIZE;
+  const pageRows = view.slice(start, start + PAGE_SIZE);
+
   return (
     <>
       <FilterBar q={q} setQ={setQ} statuses={statusOpts} sf={sf} setSf={setSf} placeholder="Search candidates by name, position, email…" />
-      <div className="text-xs text-gray-400 mb-2">{view.length} of {candidates.length}</div>
+      <div className="text-xs text-gray-400 mb-2">
+        {view.length ? `Showing ${start + 1}–${Math.min(start + PAGE_SIZE, view.length)} of ${view.length}` : `0 of ${candidates.length}`}
+      </div>
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {view.map(c => (
+        {pageRows.map(c => (
           <button key={c.id} onClick={() => { setOpen(c); setEditing(false); setStatusa(''); setReason(''); }}
             className="text-left bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-md hover:border-blue-300 transition">
             <div className="flex items-start justify-between gap-2">
@@ -361,6 +371,16 @@ function Candidates() {
           </button>
         ))}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-4 text-sm">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={curPage <= 1}
+            className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 disabled:opacity-40 hover:bg-gray-50">Prev</button>
+          <span className="px-2 text-gray-600">Page {curPage} / {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={curPage >= totalPages}
+            className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 disabled:opacity-40 hover:bg-gray-50">Next</button>
+        </div>
+      )}
 
       {open && (
         <Modal title={open.candidate} subtitle={`${open.pos_name || ''} · ${open.statusa || 'Submitted'}`} onClose={() => setOpen(null)}
@@ -447,6 +467,48 @@ function Questions() {
       <button onClick={save} disabled={busy} className="mt-4 flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl px-5 py-2.5 disabled:opacity-60">
         {busy ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save questions
       </button>
+    </div>
+  );
+}
+
+// ── POC: ClientSPOCs engaged on this company's positions ─────────────────────
+function POCs() {
+  const [pocs, setPocs] = useState(null);
+  useEffect(() => { api.get('/pocs').then(r => setPocs(r.data.pocs || [])).catch(() => setPocs([])); }, []);
+  if (!pocs) return <div className="py-16 grid place-items-center text-gray-400"><Loader2 size={24} className="animate-spin" /></div>;
+  if (!pocs.length) return <div className="py-16 text-center text-gray-400 text-sm">No ClientSPOC is engaged on your positions yet.</div>;
+  return (
+    <div>
+      <p className="text-sm text-gray-500 mb-4">Your points of contact at RecruiterV — the ClientSPOCs handling your positions.</p>
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        {pocs.map(p => (
+          <div key={p.email} className="bg-white border border-gray-200 rounded-2xl p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-500 to-orange-400 grid place-items-center text-white font-bold flex-shrink-0">
+                {(p.name || '?')[0].toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold text-gray-900 truncate">{p.name}</div>
+                <div className="text-xs text-gray-500 truncate">ClientSPOC</div>
+              </div>
+            </div>
+            <div className="space-y-1 text-sm">
+              <div className="flex items-center gap-2 text-gray-600 truncate"><Mail size={14} className="text-gray-400 flex-shrink-0" /><a href={`mailto:${p.email}`} className="text-blue-600 truncate hover:underline">{p.email}</a></div>
+              <div className="flex items-center gap-2 text-gray-600"><Phone size={14} className="text-gray-400 flex-shrink-0" />{p.phone ? <a href={`tel:${p.phone}`} className="text-blue-600 hover:underline">{p.phone}</a> : <span className="text-gray-400">—</span>}</div>
+            </div>
+            {p.positions?.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Positions ({p.positions.length})</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {p.positions.map((pos, i) => (
+                    <span key={i} className="text-[11px] font-medium bg-blue-50 text-blue-700 rounded-full px-2.5 py-0.5">{pos}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -699,6 +761,7 @@ export default function CompanyDashboard() {
     { id: 'post', label: 'Post Position', icon: Plus },
     { id: 'positions', label: 'My Positions', icon: Briefcase },
     { id: 'candidates', label: 'Candidates', icon: Users },
+    { id: 'poc', label: 'POC', icon: UserCircle },
     { id: 'questions', label: 'Client Questions', icon: HelpCircle },
     { id: 'profile', label: 'Profile', icon: UserCircle },
   ];
@@ -779,6 +842,7 @@ export default function CompanyDashboard() {
           )}
           {tab === 'positions' && <MyPositions key={refreshKey} />}
           {tab === 'candidates' && <Candidates />}
+          {tab === 'poc' && <POCs />}
           {tab === 'questions' && <Questions />}
         </main>
 
