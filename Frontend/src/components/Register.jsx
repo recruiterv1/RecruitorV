@@ -261,8 +261,6 @@ export default function Register() {
     );
   };
   const experienceOptions = [
-    { value: "Freshers & College Pass-outs", icon: "🎓" },
-    { value: "Career Switchers", icon: "🔄" },
     { value: "Corporate Recruiters", icon: "💼" },
     { value: "Career Restart", icon: "🚀" },
     { value: "Full-Time Freelancing", icon: "💻" },
