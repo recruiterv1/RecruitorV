@@ -96,6 +96,26 @@ router.post('/submit', async (req, res) => {
       clientspoc_name: '',
     };
     const created = await adminF.CreatePosition(data);
+
+    // Confirmation email to the employer who posted (fire-and-forget).
+    try {
+      if (data.posterEmail) {
+        const { sendEmailFull } = require('../utils/email');
+        await sendEmailFull({
+          to: data.posterEmail,
+          toName: data.posterName || 'there',
+          subject: 'We received your position — RecruiterV',
+          htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
+            <p>Hi ${data.posterName || 'there'},</p>
+            <p>Thank you for posting <b>${data.position}</b> for <b>${companyName}</b> on RecruiterV.
+            Your application has been <b>received</b> and is pending review by our team.</p>
+            <p>Once it's <b>approved</b>, we'll email you the login details so you can manage this position and its candidates at recruiterv.com/company.</p>
+            <p>Regards,<br/>Team RecruiterV</p>
+          </div>`,
+        });
+      }
+    } catch (mailErr) { console.error('employer confirmation email failed:', mailErr.message); }
+
     res.json({ success: true, message: 'Your job has been submitted for review.', pos_id: created.pos_id });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -103,7 +123,7 @@ router.post('/submit', async (req, res) => {
 // ── Admin: review queue ──────────────────────────────────────────────────────
 router.get('/admin/pending', managerAuth, async (req, res) => {
   try {
-    const snap = await POS.where('status', '==', 'admin-pending').get();
+    const snap = await POS.where('status', 'in', ['admin-pending', 'waitlist']).get();
     const list = snap.docs.map(d => {
       const x = d.data();
       return {
@@ -111,6 +131,7 @@ router.get('/admin/pending', managerAuth, async (req, res) => {
         skill_category: x.skill_category, location: x.location, state: x.state,
         posterName: x.posterName || '', posterEmail: x.posterEmail || '', posterPhone: x.posterPhone || '',
         ctcStart: x.ctcStart, ctcEnd: x.ctcEnd, experience: x.experience,
+        status: x.status, waitlisted: x.status === 'waitlist',
         client_questions: Array.isArray(x.client_questions) ? x.client_questions : [],
         job_desc: x.job_desc || '', datePosted: x.datePosted || null,
       };
@@ -139,7 +160,7 @@ router.post('/admin/approve/:id', managerAuth, async (req, res) => {
     if (!companyEmail || !password) return res.status(400).json({ success: false, message: 'Company login email and password are required.' });
 
     const posDoc = await POS.doc(req.params.id).get();
-    if (!posDoc.exists || posDoc.data().status !== 'admin-pending') {
+    if (!posDoc.exists || !['admin-pending', 'waitlist'].includes(posDoc.data().status)) {
       return res.status(404).json({ success: false, message: 'Job request not found.' });
     }
     const pos = posDoc.data();
@@ -178,7 +199,57 @@ router.post('/admin/approve/:id', managerAuth, async (req, res) => {
       approvedByAdmin: req.managerEmail, approvedByAdminAt: new Date(),
     });
 
+    // Emails: company gets its login + SPOC details; the SPOC gets the assignment.
+    try {
+      const clientspocF = require('../model_fire/clientspocF');
+      const { sendEmailFull } = require('../utils/email');
+      let spocName = clientspocName || '', spocPhone = '';
+      try { const s = await clientspocF.findClientSpocByEmail(clientspocEmail); if (s) { spocName = spocName || s.name || ''; spocPhone = s.phone || s.mobile || s.mob || s.contact || ''; } } catch (_) {}
+
+      await sendEmailFull({
+        to: lc(companyEmail), toName: companyName,
+        subject: 'Your RecruiterV company account is approved',
+        htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
+          <p>Hello ${companyName},</p>
+          <p>Your position on RecruiterV has been <b>approved</b>. You can now log in to manage your positions and candidates.</p>
+          <p><b>Login:</b> https://www.recruiterv.com/company<br/>
+          <b>Email:</b> ${lc(companyEmail)}<br/>
+          <b>Password:</b> ${password}</p>
+          <p><b>Your dedicated Client SPOC</b><br/>
+          Name: ${spocName || '—'}<br/>Email: ${lc(clientspocEmail)}<br/>Phone: ${spocPhone || '—'}</p>
+          <p>Please change your password after your first login.</p>
+          <p>Regards,<br/>Team RecruiterV</p>
+        </div>`,
+      });
+
+      await sendEmailFull({
+        to: lc(clientspocEmail), toName: spocName || 'Client SPOC',
+        subject: `You've been assigned to ${companyName}`,
+        htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
+          <p>Hi ${spocName || 'there'},</p>
+          <p>You've been assigned as the <b>Client SPOC</b> for <b>${companyName}</b>. A position they posted (<b>${pos.position}</b>) is now in your approval queue — review and make it live from your dashboard.</p>
+          <p><b>Company:</b> ${companyName}<br/>
+          <b>Company login email:</b> ${lc(companyEmail)}<br/>
+          <b>Posted by:</b> ${pos.posterName || '—'}${pos.posterPhone ? ' · ' + pos.posterPhone : ''}${pos.posterEmail ? ' · ' + pos.posterEmail : ''}</p>
+          <p>Regards,<br/>Team RecruiterV</p>
+        </div>`,
+      });
+    } catch (mailErr) { console.error('approve emails failed:', mailErr.message); }
+
     res.json({ success: true, message: 'Approved. Company created and routed to the ClientSPOC.', credentials: { email: lc(companyEmail), password }, companyId: company.id });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// POST /admin/waitlist/:id — hold a request for later (stays in the review queue).
+router.post('/admin/waitlist/:id', managerAuth, async (req, res) => {
+  try {
+    const reason = (req.body?.reason || '').toString().trim();
+    const doc = await POS.doc(req.params.id).get();
+    if (!doc.exists || !['admin-pending', 'waitlist'].includes(doc.data().status)) {
+      return res.status(404).json({ success: false, message: 'Job request not found.' });
+    }
+    await adminF.updatePositionById(req.params.id, { status: 'waitlist', waitlistReason: reason, waitlistedBy: req.managerEmail, waitlistedAt: new Date() });
+    res.json({ success: true, message: 'Moved to waitlist.' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
@@ -187,7 +258,7 @@ router.post('/admin/reject/:id', managerAuth, async (req, res) => {
     const reason = (req.body?.reason || '').toString().trim();
     if (!reason) return res.status(400).json({ success: false, message: 'A reason is required.' });
     const doc = await POS.doc(req.params.id).get();
-    if (!doc.exists || doc.data().status !== 'admin-pending') return res.status(404).json({ success: false, message: 'Job request not found.' });
+    if (!doc.exists || !['admin-pending', 'waitlist'].includes(doc.data().status)) return res.status(404).json({ success: false, message: 'Job request not found.' });
     await adminF.updatePositionById(req.params.id, { status: 'rejected', rejectReason: reason, rejectedBy: req.managerEmail, rejectedAt: new Date() });
     res.json({ success: true, message: 'Rejected.' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }

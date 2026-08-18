@@ -53,6 +53,13 @@ export default function SuperAdminPublicJobs() {
     finally { setBusy(b => { const n = { ...b }; delete n[id]; return n; }); }
   };
 
+  const waitlist = async (id) => {
+    setBusy(b => ({ ...b, [id]: true }));
+    try { await axios.post(`/api/public-job/admin/waitlist/${id}`, { reason: reason.trim() }, { withCredentials: true }); await load(); }
+    catch (e) { setError(e.response?.data?.message || 'Failed to waitlist.'); }
+    finally { setBusy(b => { const n = { ...b }; delete n[id]; return n; }); }
+  };
+
   const loc = (p) => (Array.isArray(p.location) ? p.location.join(', ') : p.location) || '—';
 
   return (
@@ -114,9 +121,14 @@ export default function SuperAdminPublicJobs() {
                   </label>
                 </div>
 
-                <div className="flex justify-end gap-2 mt-3">
+                <div className="flex justify-end gap-2 mt-3 flex-wrap">
+                  {job.waitlisted && <span className="mr-auto inline-flex items-center text-[11px] font-semibold px-2 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">⏳ Waitlisted</span>}
                   <button onClick={() => { setRejecting(rejecting === job.id ? null : job.id); setReason(''); }} disabled={!!busy[job.id]}
                     className="flex items-center gap-1 text-xs font-medium text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50"><XCircle size={14} /> Reject</button>
+                  {!job.waitlisted && (
+                    <button onClick={() => waitlist(job.id)} disabled={!!busy[job.id]}
+                      className="flex items-center gap-1 text-xs font-medium text-amber-700 border border-amber-200 rounded-lg px-3 py-1.5 hover:bg-amber-50">⏳ Waitlist</button>
+                  )}
                   <button onClick={() => approve(job)} disabled={!!busy[job.id]}
                     className="flex items-center gap-1 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg px-3 py-1.5 disabled:opacity-60">
                     {busy[job.id] ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={14} />} Approve & create company
