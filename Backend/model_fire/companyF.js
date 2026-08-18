@@ -27,13 +27,30 @@ async function checkCompanyCredentials(email, pass){
     return { success:true, company:c };
 }
 
-// SuperAdmin sets/updates a company's portal login + assigned ClientSPOC.
-async function setCompanyPortalAccess(id, { email, password, clientspocEmail, clientspocName, portalEnabled }){
+// SuperAdmin sets/updates a company's portal login + assigned ClientSPOC(s).
+// `clientspocs` (array of {email,name}) enables multiple SPOCs; the first is kept as
+// the primary in assignedClientspoc/Name for backward compatibility.
+async function setCompanyPortalAccess(id, { email, password, clientspocEmail, clientspocName, clientspocs, portalEnabled }){
     const patch = { updatedAt: new Date() };
     if (email !== undefined) patch.email = (email || '').toLowerCase().trim();
     if (password) patch.codPass = await bcrypt.hash(password, 10);
-    if (clientspocEmail !== undefined) patch.assignedClientspoc = (clientspocEmail || '').toLowerCase().trim();
-    if (clientspocName !== undefined) patch.assignedClientspocName = clientspocName || '';
+
+    // Normalise a multi-SPOC list; fall back to the single clientspocEmail/Name.
+    let list = null;
+    if (Array.isArray(clientspocs)) {
+        const seen = new Set();
+        list = clientspocs
+            .map(s => ({ email: (s.email || '').toLowerCase().trim(), name: (s.name || '').trim() }))
+            .filter(s => s.email && !seen.has(s.email) && seen.add(s.email));
+    } else if (clientspocEmail !== undefined) {
+        list = clientspocEmail ? [{ email: (clientspocEmail || '').toLowerCase().trim(), name: clientspocName || '' }] : [];
+    }
+    if (list) {
+        patch.assignedClientspocs = list;
+        patch.assignedClientspoc = list[0]?.email || '';
+        patch.assignedClientspocName = list[0]?.name || '';
+    }
+
     if (portalEnabled !== undefined) patch.portalEnabled = !!portalEnabled;
     await company.doc(id).set(patch, { merge: true });
     const doc = await company.doc(id).get();

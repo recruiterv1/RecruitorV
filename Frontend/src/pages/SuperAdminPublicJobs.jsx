@@ -29,15 +29,22 @@ export default function SuperAdminPublicJobs() {
 
   const setField = (id, k, v) => setDraft(d => ({ ...d, [id]: { ...d[id], [k]: v } }));
 
+  const toggleSpoc = (id, email) => setDraft(d => {
+    const cur = Array.isArray(d[id]?.spocs) ? d[id].spocs : [];
+    const next = cur.includes(email) ? cur.filter(e => e !== email) : [...cur, email];
+    return { ...d, [id]: { ...d[id], spocs: next } };
+  });
+
   const approve = async (job) => {
     const d = draft[job.id] || {};
     const email = (d.email !== undefined ? d.email : job.posterEmail) || '';
-    const spoc = spocs.find(s => s.email === d.spoc);
-    if (!email || !d.password || !d.spoc) { setError('Enter a login email, password and assign a ClientSPOC.'); return; }
+    const selected = Array.isArray(d.spocs) ? d.spocs : [];
+    if (!email || !d.password || !selected.length) { setError('Enter a login email, password and assign at least one ClientSPOC.'); return; }
+    const clientspocs = selected.map(e => ({ email: e, name: spocs.find(s => s.email === e)?.name || '' }));
     setBusy(b => ({ ...b, [job.id]: true })); setError('');
     try {
       const r = await axios.post(`/api/public-job/admin/approve/${job.id}`, {
-        companyEmail: email, password: d.password, clientspocEmail: d.spoc, clientspocName: spoc?.name || '',
+        companyEmail: email, password: d.password, clientspocs,
       }, { withCredentials: true });
       setApproved(a => ({ ...a, [job.id]: r.data.credentials }));
       setList(l => l.filter(x => x.id !== job.id));
@@ -112,13 +119,21 @@ export default function SuperAdminPublicJobs() {
                     <input value={d.password || ''} onChange={e => setField(job.id, 'password', e.target.value)} placeholder="set a password"
                       className="mt-1 w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-blue-500/30" />
                   </label>
-                  <label className="text-xs text-gray-500"><span className="flex items-center gap-1"><UserCheck size={12} /> Assign ClientSPOC</span>
-                    <select value={d.spoc || ''} onChange={e => setField(job.id, 'spoc', e.target.value)}
-                      className="mt-1 w-full text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-blue-500/30">
-                      <option value="">— select —</option>
-                      {spocs.map(s => <option key={s.email} value={s.email}>{s.name} ({s.email})</option>)}
-                    </select>
-                  </label>
+                  <div className="text-xs text-gray-500">
+                    <span className="flex items-center gap-1 mb-1"><UserCheck size={12} /> Assign ClientSPOC(s) — pick one or more</span>
+                    <div className="max-h-32 overflow-y-auto border border-gray-300 rounded-lg p-1.5 space-y-0.5">
+                      {spocs.length === 0 && <div className="text-gray-400 px-1 py-0.5">No ClientSPOCs found.</div>}
+                      {spocs.map(s => {
+                        const checked = Array.isArray(d.spocs) && d.spocs.includes(s.email);
+                        return (
+                          <label key={s.email} className="flex items-center gap-2 px-1 py-0.5 rounded hover:bg-gray-50 cursor-pointer">
+                            <input type="checkbox" checked={!!checked} onChange={() => toggleSpoc(job.id, s.email)} className="w-3.5 h-3.5 accent-blue-600" />
+                            <span className="text-gray-700 truncate">{s.name} <span className="text-gray-400">({s.email})</span></span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-2 mt-3 flex-wrap">

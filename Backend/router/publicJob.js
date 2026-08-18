@@ -155,8 +155,16 @@ router.get('/admin/clientspocs', managerAuth, async (req, res) => {
 // carry the poster's questions onto the company, and route the position to the SPOC.
 router.post('/admin/approve/:id', managerAuth, async (req, res) => {
   try {
-    const { clientspocEmail, clientspocName, companyEmail, password } = req.body || {};
-    if (!clientspocEmail) return res.status(400).json({ success: false, message: 'Assign a ClientSPOC.' });
+    let { clientspocs, clientspocEmail, clientspocName, companyEmail, password } = req.body || {};
+    // Accept a multi-SPOC array, or fall back to the single-SPOC fields.
+    if (!Array.isArray(clientspocs) || !clientspocs.length) {
+      clientspocs = clientspocEmail ? [{ email: clientspocEmail, name: clientspocName || '' }] : [];
+    }
+    const seen = new Set();
+    clientspocs = clientspocs
+      .map(s => ({ email: lc(s.email), name: (s.name || '').trim() }))
+      .filter(s => s.email && !seen.has(s.email) && seen.add(s.email));
+    if (!clientspocs.length) return res.status(400).json({ success: false, message: 'Assign at least one ClientSPOC.' });
     if (!companyEmail || !password) return res.status(400).json({ success: false, message: 'Company login email and password are required.' });
 
     const posDoc = await POS.doc(req.params.id).get();
@@ -186,25 +194,30 @@ router.post('/admin/approve/:id', managerAuth, async (req, res) => {
       await companyF.updateCompany(company.id, { questions: pos.client_questions });
     }
 
-    // Set the portal login + assign the SPOC.
+    // Set the portal login + assign the SPOC(s).
     await companyF.setCompanyPortalAccess(company.id, {
-      email: companyEmail, password,
-      clientspocEmail, clientspocName: clientspocName || '', portalEnabled: true,
+      email: companyEmail, password, clientspocs, portalEnabled: true,
     });
 
-    // Route the position to the SPOC's approval queue.
+    // Enrich each SPOC with name/phone from their record.
+    const clientspocF = require('../model_fire/clientspocF');
+    for (const s of clientspocs) {
+      try { const rec = await clientspocF.findClientSpocByEmail(s.email); if (rec) { s.name = s.name || rec.name || ''; s.phone = rec.phone || rec.mobile || rec.mob || rec.contact || ''; } } catch (_) {}
+    }
+    const primary = clientspocs[0];
+
+    // Route the position to the SPOCs' approval queue (primary + full list).
     await adminF.updatePositionById(req.params.id, {
       status: 'pending', postedByCompany: company.id,
-      clientspoc: lc(clientspocEmail), clientspoc_name: clientspocName || '',
+      clientspoc: primary.email, clientspoc_name: primary.name || '',
+      clientspocs: clientspocs.map(s => s.email),
       approvedByAdmin: req.managerEmail, approvedByAdminAt: new Date(),
     });
 
-    // Emails: company gets its login + SPOC details; the SPOC gets the assignment.
+    // Emails: company gets its login + all SPOC details; each SPOC gets the assignment.
     try {
-      const clientspocF = require('../model_fire/clientspocF');
       const { sendEmailFull } = require('../utils/email');
-      let spocName = clientspocName || '', spocPhone = '';
-      try { const s = await clientspocF.findClientSpocByEmail(clientspocEmail); if (s) { spocName = spocName || s.name || ''; spocPhone = s.phone || s.mobile || s.mob || s.contact || ''; } } catch (_) {}
+      const spocLines = clientspocs.map(s => `${s.name || '—'} — ${s.email}${s.phone ? ' — ' + s.phone : ''}`).join('<br/>');
 
       await sendEmailFull({
         to: lc(companyEmail), toName: companyName,
@@ -215,28 +228,29 @@ router.post('/admin/approve/:id', managerAuth, async (req, res) => {
           <p><b>Login:</b> https://www.recruiterv.com/company<br/>
           <b>Email:</b> ${lc(companyEmail)}<br/>
           <b>Password:</b> ${password}</p>
-          <p><b>Your dedicated Client SPOC</b><br/>
-          Name: ${spocName || '—'}<br/>Email: ${lc(clientspocEmail)}<br/>Phone: ${spocPhone || '—'}</p>
+          <p><b>Your Client SPOC${clientspocs.length > 1 ? 's' : ''}</b><br/>${spocLines}</p>
           <p>Please change your password after your first login.</p>
           <p>Regards,<br/>Team RecruiterV</p>
         </div>`,
       });
 
-      await sendEmailFull({
-        to: lc(clientspocEmail), toName: spocName || 'Client SPOC',
-        subject: `You've been assigned to ${companyName}`,
-        htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
-          <p>Hi ${spocName || 'there'},</p>
-          <p>You've been assigned as the <b>Client SPOC</b> for <b>${companyName}</b>. A position they posted (<b>${pos.position}</b>) is now in your approval queue — review and make it live from your dashboard.</p>
-          <p><b>Company:</b> ${companyName}<br/>
-          <b>Company login email:</b> ${lc(companyEmail)}<br/>
-          <b>Posted by:</b> ${pos.posterName || '—'}${pos.posterPhone ? ' · ' + pos.posterPhone : ''}${pos.posterEmail ? ' · ' + pos.posterEmail : ''}</p>
-          <p>Regards,<br/>Team RecruiterV</p>
-        </div>`,
-      });
+      for (const s of clientspocs) {
+        await sendEmailFull({
+          to: s.email, toName: s.name || 'Client SPOC',
+          subject: `You've been assigned to ${companyName}`,
+          htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
+            <p>Hi ${s.name || 'there'},</p>
+            <p>You've been assigned as a <b>Client SPOC</b> for <b>${companyName}</b>. A position they posted (<b>${pos.position}</b>) is now in your approval queue — review and make it live from your dashboard.</p>
+            <p><b>Company:</b> ${companyName}<br/>
+            <b>Company login email:</b> ${lc(companyEmail)}<br/>
+            <b>Posted by:</b> ${pos.posterName || '—'}${pos.posterPhone ? ' · ' + pos.posterPhone : ''}${pos.posterEmail ? ' · ' + pos.posterEmail : ''}</p>
+            <p>Regards,<br/>Team RecruiterV</p>
+          </div>`,
+        });
+      }
     } catch (mailErr) { console.error('approve emails failed:', mailErr.message); }
 
-    res.json({ success: true, message: 'Approved. Company created and routed to the ClientSPOC.', credentials: { email: lc(companyEmail), password }, companyId: company.id });
+    res.json({ success: true, message: 'Approved. Company created and routed to the ClientSPOC(s).', credentials: { email: lc(companyEmail), password }, companyId: company.id });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

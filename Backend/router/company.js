@@ -175,11 +175,15 @@ router.post('/positions', companyAuth, async (req, res) => {
     if (!(body.skill_category || '').toString().trim()) return res.status(400).json({ message: 'Skill category is required.' });
 
     // Force company-owned + pending; route to the assigned SPOC; brand as this company.
+    const spocEmails = Array.isArray(c.assignedClientspocs) && c.assignedClientspocs.length
+      ? c.assignedClientspocs.map(s => lc(s.email)).filter(Boolean)
+      : (c.assignedClientspoc ? [lc(c.assignedClientspoc)] : []);
     const data = {
       ...body,
       client: c.name,
       clientspoc: c.assignedClientspoc,
       clientspoc_name: c.assignedClientspocName || '',
+      clientspocs: spocEmails,
       status: 'pending',                 // hidden from recruiters until SPOC makes it live
       postedByCompany: c.id,
       companyEmail: c.email,
@@ -438,18 +442,26 @@ const spocAuth = async (req, res, next) => {
 // Pending company-posted positions routed to this SPOC.
 router.get('/spoc/pending', spocAuth, async (req, res) => {
   try {
-    const snap = await POS.where('clientspoc', '==', req.spocEmail).get();
-    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    // A position may name this SPOC as the primary (clientspoc) or one of several (clientspocs[]).
+    const [byPrimary, byArray] = await Promise.all([
+      POS.where('clientspoc', '==', req.spocEmail).get(),
+      POS.where('clientspocs', 'array-contains', req.spocEmail).get().catch(() => ({ docs: [] })),
+    ]);
+    const byId = {};
+    [...byPrimary.docs, ...byArray.docs].forEach(d => { byId[d.id] = { id: d.id, ...d.data() }; });
+    const list = Object.values(byId)
       .filter(p => (p.postedByCompany || p.postedByFirm) && lc(p.status) === 'pending')
       .map(p => ({ id: p.id, pos_id: p.pos_id, position: p.position, companyName: p.companyName || p.consultingFirmName || p.client, skill_category: p.skill_category, location: p.location, state: p.state, datePosted: p.datePosted || null }));
     res.json({ success: true, positions: list });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
+const spocOwns = (p, spocEmail) => lc(p.clientspoc) === spocEmail || (Array.isArray(p.clientspocs) && p.clientspocs.map(lc).includes(spocEmail));
+
 router.post('/spoc/positions/:id/golive', spocAuth, async (req, res) => {
   try {
     const doc = await POS.doc(req.params.id).get();
-    if (!doc.exists || lc(doc.data().clientspoc) !== req.spocEmail || !(doc.data().postedByCompany || doc.data().postedByFirm)) {
+    if (!doc.exists || !spocOwns(doc.data(), req.spocEmail) || !(doc.data().postedByCompany || doc.data().postedByFirm)) {
       return res.status(404).json({ message: 'Position not found.' });
     }
     await POS.doc(req.params.id).update({ status: 'active', wentLiveAt: new Date(), approvedBy: req.spocEmail });
@@ -468,7 +480,7 @@ router.post('/spoc/positions/:id/reject', spocAuth, async (req, res) => {
     const reason = (req.body?.reason || '').toString().trim();
     if (!reason) return res.status(400).json({ message: 'A reason is required to reject a position.' });
     const doc = await POS.doc(req.params.id).get();
-    if (!doc.exists || lc(doc.data().clientspoc) !== req.spocEmail || !(doc.data().postedByCompany || doc.data().postedByFirm)) {
+    if (!doc.exists || !spocOwns(doc.data(), req.spocEmail) || !(doc.data().postedByCompany || doc.data().postedByFirm)) {
       return res.status(404).json({ message: 'Position not found.' });
     }
     await POS.doc(req.params.id).update({ status: 'rejected', rejectReason: reason, rejectedBy: req.spocEmail, rejectedAt: new Date() });

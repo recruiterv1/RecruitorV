@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useChatNotify } from '../context/ChatNotify';
 import {
   LayoutDashboard,
+  Building2,
   Briefcase,
   Users,
   FileText,
@@ -269,6 +270,7 @@ const Sidebar = () => {
         children: [
           { icon: UserPlus,  label: 'Add Position',       path: '/ad_panel#add-position' },
           { icon: Briefcase, label: 'My Added Positions', path: '/ad_panel#my-added-positions' },
+          { icon: Building2, label: 'Company Positions',  path: '/clientspoc-company-approvals' },
           { icon: TrendingUp, label: 'My Position Stats', path: '/ad_panel#clientspoc-my-positions' },
           { icon: Briefcase, label: 'All Positions',      path: '/ad_panel#positions' },
         ],
