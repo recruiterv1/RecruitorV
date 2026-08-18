@@ -787,14 +787,30 @@ function DashViewV2Inner() {
   // Coaches/experts never self-request via the recruiter flow — access comes from a
   // SPOC-approved request or self-assignment elsewhere, so they see Submit (if
   // approved) or "Not approved", never "Assign Me".
-  const submitLabel = access === null ? 'Submit Candidate'
+  // A paused/held/closed position can't take new candidates.
+  const positionClosed = ['paused', 'hold', 'on hold', 'closed', 'inactive', 'rejected'].includes((job?.status || '').toString().toLowerCase().trim());
+  const isLTIMindtree = /ltimindtree/i.test(job?.client || '');
+  const [rhGateOpen, setRhGateOpen] = useState(false);
+  const [rhChecked, setRhChecked] = useState(false);
+
+  const submitLabel = positionClosed ? 'Position Paused'
+    : access === null ? 'Submit Candidate'
     : hasAccess ? 'Submit Candidate'
     : isCoachExpert ? 'Not approved'
     : requesting ? 'Requesting…'
     : isPendingAccess ? 'Request Pending' : 'Assign Me';
   const handleSubmitEntry = () => {
+    if (positionClosed) {                         // paused/closed → no submissions
+      setToast('⚠ This position is paused — submissions are closed.');
+      setTimeout(() => setToast(''), 3500);
+      return;
+    }
     if (access === null) return;                 // still checking
-    if (hasAccess) { setView('form'); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    if (hasAccess) {
+      // LTIMindtree → gate on a RippleHire duplicacy check first.
+      if (isLTIMindtree && !rhChecked) { setRhGateOpen(true); return; }
+      setView('form'); window.scrollTo({ top: 0, behavior: 'smooth' }); return;
+    }
     if (isCoachExpert) {                          // coach/expert can't self-request here
       setToast('⚠ You are not approved for this position yet.');
       setTimeout(() => setToast(''), 3500);
@@ -1087,6 +1103,7 @@ function DashViewV2Inner() {
   };
 
   const trySubmit = async () => {
+    if (positionClosed) { flagInvalid('This position is paused — submissions are closed.'); return; }
     // Validate every step; jump to the first incomplete one.
     for (let k = 0; k < STEP_NAMES.length; k++) {
       const err = validateStep(k);
@@ -2205,6 +2222,43 @@ function DashViewV2Inner() {
                 <button onClick={saveBriefing} disabled={briefingSaving}
                   style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: briefingSaving ? 0.6 : 1 }}>
                   {briefingSaving ? 'Saving…' : 'Save briefing'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RippleHire duplicacy check gate — LTIMindtree positions only */}
+      {rhGateOpen && (
+        <div onClick={() => setRhGateOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,20,35,0.55)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 460, boxShadow: '0 24px 60px -12px rgba(0,0,0,0.5)', overflow: 'hidden' }}>
+            <div style={{ background: 'linear-gradient(135deg,#2563eb,#f97316)', color: '#fff', padding: 18 }}>
+              <div style={{ fontSize: 16, fontWeight: 800 }}>Check RippleHire first</div>
+              <div style={{ fontSize: 12, opacity: 0.9 }}>LTIMindtree requires a duplicacy check before submission.</div>
+            </div>
+            <div style={{ padding: 20 }}>
+              <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, margin: '0 0 12px' }}>
+                Before submitting, open this role in RippleHire and confirm this candidate isn't already submitted there.
+                {job?.ripplehire_job_id ? <> Job ID: <b>{job.ripplehire_job_id}</b>.</> : ''}
+              </p>
+              <a href={job?.ripplehire_job_id ? `https://ltimindtreeapp.ripplehire.com/vendor/agency#apply/job/${encodeURIComponent(job.ripplehire_job_id)}` : 'https://ltimindtreeapp.ripplehire.com/auth/login'}
+                target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 13, borderRadius: 10, padding: '9px 16px', textDecoration: 'none' }}>
+                🔗 Open job in RippleHire
+              </a>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 16, fontSize: 13, color: '#0f172a', cursor: 'pointer' }}>
+                <input type="checkbox" checked={rhChecked} onChange={e => setRhChecked(e.target.checked)} style={{ marginTop: 3 }} />
+                I've checked RippleHire — this candidate is not already submitted for this position.
+              </label>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+                <button onClick={() => setRhGateOpen(false)} style={{ padding: '9px 16px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                <button disabled={!rhChecked}
+                  onClick={() => { setRhGateOpen(false); setView('form'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 13, cursor: rhChecked ? 'pointer' : 'not-allowed', opacity: rhChecked ? 1 : 0.5 }}>
+                  Continue to submit
                 </button>
               </div>
             </div>

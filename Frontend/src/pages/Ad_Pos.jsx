@@ -139,6 +139,7 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
     clientspoc: editData?.clientspoc || getUserEmail(), // Store email in database
     clientspoc_name: editData?.clientspoc_name || getUserFirstName(), // Store name in database
     hr_name: copiedData?.hr_name || "",
+    ripplehire_job_id: editData?.ripplehire_job_id || copiedData?.ripplehire_job_id || "",
     client: companyMode?.companyName || publicMode?.companyName || copiedData?.client || "",
     ctcStart: copiedData?.ctcStart || "",
     ctcEnd: copiedData?.ctcEnd || "",
@@ -993,6 +994,24 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                     required
                   />
                 </div>
+
+                {/* RippleHire Job ID — only for LTIMindtree positions */}
+                {/ltimindtree/i.test(form.client || '') && (
+                  <div className="flex flex-col">
+                    <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
+                      RippleHire Job ID <span className="font-normal text-gray-400">(LTIMindtree)</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="ripplehire_job_id"
+                      value={form.ripplehire_job_id}
+                      onChange={handleChange}
+                      placeholder="e.g. 123456"
+                      className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm"
+                    />
+                    <span className="text-[11px] text-gray-400 mt-1">Recruiters are prompted to check this job in RippleHire before submitting.</span>
+                  </div>
+                )}
 
                 {publicMode ? (
                   // Public poster: SPOC is assigned by the admin after approval.

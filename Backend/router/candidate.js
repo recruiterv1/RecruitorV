@@ -195,6 +195,8 @@ const CLOSED_POSITION_STATUSES = [
   'rejected',
   'pending',
   'hold',
+  'paused',
+  'inactive',
   'closed',
   'on hold',
   'closed - filled',
