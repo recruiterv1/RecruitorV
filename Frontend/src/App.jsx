@@ -64,6 +64,7 @@ const Messages = React.lazy(() => import('./pages/Messages'));
 const MainFreelance = React.lazy(() => import('./pages/MainFreelance'));
 const MainEstablished = React.lazy(() => import('./pages/MainEstablished'));
 const Pricing = React.lazy(() => import('./pages/Pricing'));
+const ForEmployer = React.lazy(() => import('./pages/ForEmployer'));
 const AboutUs = React.lazy(() => import('./components/AboutUs'));
 const CoachExpert = React.lazy(() => import('./components/CoachExpert'));
 const SuperAdmin = React.lazy(() => import('./components/SuperAdmin'));
@@ -437,6 +438,7 @@ const App = () => {
             <Route path='/freelance' element={<MainFreelance/>} />
             <Route path='/established' element={<MainEstablished/>} />
             <Route path='/pricing' element={<Pricing/>} />
+            <Route path='/for-employer' element={<ForEmployer/>} />
             <Route path='/about' element={<AboutUs/>} />
             <Route path='/coachexpert' element={<CoachExpert/>} />
             <Route path='/superadmin' element={<SuperAdmin/>} />

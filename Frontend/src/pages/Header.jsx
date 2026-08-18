@@ -265,6 +265,13 @@ const Header = () => {
               </Link>
 
               <Link
+                to="/for-employer"
+                className="text-gray-700 hover:text-blue-600 font-medium px-3 py-2 rounded-lg hover:bg-blue-50 transition-all duration-300"
+              >
+                For Employer
+              </Link>
+
+              <Link
                 to="/log_rec"
                 className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-5 py-2.5 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-300 shadow-md hover:shadow-lg font-semibold transform hover:-translate-y-0.5"
               >
@@ -424,6 +431,14 @@ const Header = () => {
               >
                 <DollarSign size={20} />
                 <span>Pricing</span>
+              </Link>
+
+              <Link
+                to="/for-employer"
+                onClick={() => setIsMenuOpen(false)}
+                className="w-full flex items-center justify-center gap-2 text-gray-700 font-medium px-4 py-3 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-all duration-300 border-2 border-gray-200"
+              >
+                <span>For Employer</span>
               </Link>
 
               <div className="border-t-2 border-gray-300 my-3"></div>
