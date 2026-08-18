@@ -1014,9 +1014,9 @@ function DashViewV2Inner() {
       return null;
     }
     if (i === 1) {
-      if (form.totalYrs === '') return 'Total Experience is required';
-      if (relYrs === '') return 'Relevant Experience is required';
-      if (!skillEvidence) return 'Please select Skill Evidence';
+      if (isReq('total_exp', true) && form.totalYrs === '') return 'Total Experience is required';
+      if (isReq('rel_exp', true) && relYrs === '') return 'Relevant Experience is required';
+      if (isReq('skill_evidence', true) && !skillEvidence) return 'Please select Skill Evidence';
       // Skill selection — only enforced when the position actually has categories set
       if (childOptions.length > 0) {
         if (selChildren.length === 0) return 'Please select at least one sub-category';
@@ -1033,27 +1033,27 @@ function DashViewV2Inner() {
     if (i === 2) {
       if (isReq('current_ctc', true) && !currentCTC) return 'Current CTC is required';
       if (isReq('exp_ctc', true) && !expectedCTC) return 'Expected CTC is required';
-      if (isReq('notice_period', false) && !notice) return 'Notice Period is required';
-      if (!offer) return 'Please select Offer In Hand';
+      if (isReq('offer_hand', true) && !offer) return 'Please select Offer In Hand';
       return null;
     }
     if (i === 3) {
       if (isReq('curr_loc', true) && !currentCity.trim()) return 'Current City is required';
-      if (!form.curr_state.trim()) return 'Current State is required';
-      if (!relocation) return 'Please select Relocation Willingness';
+      if (isReq('curr_state', true) && !form.curr_state.trim()) return 'Current State is required';
+      if (isReq('relocation', true) && !relocation) return 'Please select Relocation Willingness';
       return null;
     }
     if (i === 4) {
-      if (notice === '') return 'Notice Period is required';
-      if (!noticeProof) return 'Please select Notice Proof Status';
+      if (isReq('notice_period', true) && notice === '') return 'Notice Period is required';
+      if (isReq('last_day', false) && !form.joinDate) return 'Earliest Joining Date is required';
+      if (isReq('notice_proof', true) && !noticeProof) return 'Please select Notice Proof Status';
       return null;
     }
     if (i === 5) {
-      if (!form.avgTenure) return 'Average Tenure is required';
-      if (!form.empGaps) return 'Employment Gaps is required';
-      if (!form.employerTier) return 'Employer Verification Tier is required';
-      if (!form.industryMatch) return 'Industry Match is required';
-      if (!selfRating) return 'Self Rating is required';
+      if (isReq('avg_tenure', true) && !form.avgTenure) return 'Average Tenure is required';
+      if (isReq('emp_gaps', true) && !form.empGaps) return 'Employment Gaps is required';
+      if (isReq('employer_tier', true) && !form.employerTier) return 'Employer Verification Tier is required';
+      if (isReq('industry_match', true) && !form.industryMatch) return 'Industry Match is required';
+      if (isReq('self_rate', true) && !selfRating) return 'Self Rating is required';
       return null;
     }
     if (i === 6) {
