@@ -999,14 +999,14 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                 {/ltimindtree/i.test(form.client || '') && (
                   <div className="flex flex-col">
                     <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
-                      RippleHire Job ID <span className="font-normal text-gray-400">(LTIMindtree)</span>
+                      RippleHire JR / Job ID <span className="font-normal text-gray-400">(LTIMindtree)</span>
                     </label>
                     <input
                       type="text"
                       name="ripplehire_job_id"
                       value={form.ripplehire_job_id}
                       onChange={handleChange}
-                      placeholder="e.g. 123456"
+                      placeholder="e.g. 886183"
                       className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm"
                     />
                     <span className="text-[11px] text-gray-400 mt-1">Recruiters are prompted to check this job in RippleHire before submitting.</span>

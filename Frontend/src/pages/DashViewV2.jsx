@@ -792,6 +792,7 @@ function DashViewV2Inner() {
   const isLTIMindtree = /ltimindtree/i.test(job?.client || '');
   const [rhGateOpen, setRhGateOpen] = useState(false);
   const [rhChecked, setRhChecked] = useState(false);
+  const [rhOpened, setRhOpened] = useState(false);   // step 1 (sign-in tab) done
 
   const submitLabel = positionClosed ? 'Position Paused'
     : access === null ? 'Submit Candidate'
@@ -2240,15 +2241,37 @@ function DashViewV2Inner() {
               <div style={{ fontSize: 12, opacity: 0.9 }}>LTIMindtree requires a duplicacy check before submission.</div>
             </div>
             <div style={{ padding: 20 }}>
-              <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, margin: '0 0 12px' }}>
-                Before submitting, open this role in RippleHire and confirm this candidate isn't already submitted there.
-                {job?.ripplehire_job_id ? <> Job ID: <b>{job.ripplehire_job_id}</b>.</> : ''}
+              <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, margin: '0 0 14px' }}>
+                Before submitting, check this candidate in RippleHire for this role.
+                {job?.ripplehire_job_id ? <> JR / Job ID: <b>{job.ripplehire_job_id}</b>.</> : ''}
               </p>
-              <a href={job?.ripplehire_job_id ? `https://ltimindtreeapp.ripplehire.com/vendor/agency#apply/job/${encodeURIComponent(job.ripplehire_job_id)}` : 'https://ltimindtreeapp.ripplehire.com/auth/login'}
-                target="_blank" rel="noopener noreferrer"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 13, borderRadius: 10, padding: '9px 16px', textDecoration: 'none' }}>
-                🔗 Open job in RippleHire
-              </a>
+
+              {/* RippleHire drops the #hash when it redirects through login, so step 1
+                  signs in and step 2 re-navigates the SAME tab to the job deep link. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button type="button"
+                  onClick={() => { window.open('https://ltimindtreeapp.ripplehire.com/auth/login', 'ripplehire'); setRhOpened(true); }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: rhOpened ? '#eef2f7' : '#2563eb', color: rhOpened ? '#334155' : '#fff', fontWeight: 700, fontSize: 13, borderRadius: 10, padding: '10px 16px', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: rhOpened ? '#22c55e' : 'rgba(255,255,255,0.25)', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{rhOpened ? '✓' : '1'}</span>
+                  Open RippleHire &amp; sign in
+                </button>
+
+                {job?.ripplehire_job_id ? (
+                  <button type="button"
+                    onClick={() => window.open(`https://ltimindtreeapp.ripplehire.com/vendor/agency#apply/job/${encodeURIComponent(job.ripplehire_job_id)}`, 'ripplehire')}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 13, borderRadius: 10, padding: '10px 16px', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                    <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>2</span>
+                    Go to Job #{job.ripplehire_job_id}
+                  </button>
+                ) : (
+                  <div style={{ fontSize: 12, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 12px' }}>
+                    No RippleHire JR / Job ID is set on this position — add it via Edit Position to enable the direct job link.
+                  </div>
+                )}
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                  Step 2 reuses the same RippleHire tab, so the job opens directly once you're signed in.
+                </span>
+              </div>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 16, fontSize: 13, color: '#0f172a', cursor: 'pointer' }}>
                 <input type="checkbox" checked={rhChecked} onChange={e => setRhChecked(e.target.checked)} style={{ marginTop: 3 }} />
                 I've checked RippleHire — this candidate is not already submitted for this position.
