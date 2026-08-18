@@ -259,7 +259,28 @@ router.post('/admin/reject/:id', managerAuth, async (req, res) => {
     if (!reason) return res.status(400).json({ success: false, message: 'A reason is required.' });
     const doc = await POS.doc(req.params.id).get();
     if (!doc.exists || !['admin-pending', 'waitlist'].includes(doc.data().status)) return res.status(404).json({ success: false, message: 'Job request not found.' });
+    const pos = doc.data();
     await adminF.updatePositionById(req.params.id, { status: 'rejected', rejectReason: reason, rejectedBy: req.managerEmail, rejectedAt: new Date() });
+
+    // Let the employer know, politely.
+    try {
+      if (pos.posterEmail) {
+        const { sendEmailFull } = require('../utils/email');
+        await sendEmailFull({
+          to: lc(pos.posterEmail), toName: pos.posterName || 'there',
+          subject: 'Update on your position — RecruiterV',
+          htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
+            <p>Hi ${pos.posterName || 'there'},</p>
+            <p>Thank you for your interest in RecruiterV and for submitting <b>${pos.position}</b> for <b>${pos.companyName || pos.client}</b>.</p>
+            <p>We're sorry to let you know that we're unable to take this position forward at this time.</p>
+            ${reason ? `<p><b>Note from our team:</b> ${reason}</p>` : ''}
+            <p>You're welcome to reach out or submit again in the future — we'd be glad to help with your hiring needs.</p>
+            <p>Regards,<br/>Team RecruiterV</p>
+          </div>`,
+        });
+      }
+    } catch (mailErr) { console.error('rejection email failed:', mailErr.message); }
+
     res.json({ success: true, message: 'Rejected.' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
