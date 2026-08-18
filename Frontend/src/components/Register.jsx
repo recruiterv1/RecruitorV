@@ -261,8 +261,7 @@ export default function Register() {
     );
   };
   const experienceOptions = [
-    { value: "Corporate Recruiters", icon: "💼" },
-    { value: "Career Restart", icon: "🚀" },
+    { value: "Part time freelancer", icon: "🚀" },
     { value: "Full-Time Freelancing", icon: "💻" },
     // { value: "Elite Partner Program", icon: "⭐" }
   ];

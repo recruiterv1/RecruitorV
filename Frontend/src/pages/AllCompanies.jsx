@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Building2, Search, Loader2, RefreshCw, BadgePercent, Pencil, X, Camera } from 'lucide-react';
 import QuestionsEditor, { validateQuestions } from '../components/QuestionsEditor';
 import RichTextEditor from '../components/RichTextEditor';
+import MandatoryFieldsEditor, { defaultRequiredFields } from '../components/MandatoryFieldsEditor';
 
 // ── Edit Modal ────────────────────────────────────────────────────────────────
 const EditModal = ({ company, onClose, onSaved }) => {
@@ -15,6 +16,7 @@ const EditModal = ({ company, onClose, onSaved }) => {
     audioText:    company.audioText    || '',
     photoRequired: company.photoRequired === true,
   });
+  const [requiredFields, setRequiredFields] = useState(() => defaultRequiredFields(company));
   // Tier-based commission (same as Add New Company) — each row has its own type
   const [tiers, setTiers] = useState(
     Array.isArray(company.commissionTiers) && company.commissionTiers.length
@@ -66,7 +68,8 @@ const EditModal = ({ company, onClose, onSaved }) => {
     setSaving(true);
     setError('');
     try {
-      await axios.put(`/clientspoc/company/${company.id}`, { ...form, lower: form.lower.trim(), ...commissionPayload, questions: cleanQuestions }, { withCredentials: true });
+      const photoRequired = (requiredFields.find(f => f.key === 'photo')?.required) === true;
+      await axios.put(`/clientspoc/company/${company.id}`, { ...form, photoRequired, lower: form.lower.trim(), ...commissionPayload, questions: cleanQuestions, requiredFields }, { withCredentials: true });
       onSaved();
       onClose();
     } catch (err) {
@@ -190,17 +193,10 @@ const EditModal = ({ company, onClose, onSaved }) => {
               className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:border-blue-500 outline-none transition-all resize-vertical" />
           </div>
 
-          {/* Photo required toggle */}
-          <div className="flex items-center gap-3 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
-            <input type="checkbox" id="photoRequired" name="photoRequired"
-              checked={form.photoRequired} onChange={handleChange}
-              className="w-5 h-5 accent-blue-600 cursor-pointer flex-shrink-0" />
-            <label htmlFor="photoRequired" className="text-sm font-semibold text-gray-700 cursor-pointer select-none">
-              Candidate photo required
-              <span className="block text-xs font-normal text-gray-500 mt-0.5">
-                Recruiters must upload a candidate photo when submitting for this company's positions.
-              </span>
-            </label>
+          {/* Mandatory fields in the submit form */}
+          <div>
+            <label className="text-sm font-semibold text-gray-700 block mb-1">Mandatory fields in submit form</label>
+            <MandatoryFieldsEditor value={requiredFields} onChange={setRequiredFields} />
           </div>
 
           {/* Client Requirement Questions */}

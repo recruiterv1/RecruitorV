@@ -88,6 +88,21 @@ router.get('/companies-full', async (req, res) => {
 // Sanitize client-requirement questions. Returns undefined when the field was
 // not sent (leave stored value untouched) or a clean array otherwise.
 const QUESTION_TYPES = new Set(['subjective', 'yesno', 'multiselect']);
+// Per-company "mandatory fields in the submit form": [{ key, label, required }].
+// key is a slug; label is what recruiters see; required toggles enforcement.
+function sanitizeRequiredFields(fields) {
+  if (!Array.isArray(fields)) return undefined;
+  const seen = new Set();
+  return fields
+    .map(f => ({
+      key: String(f.key || f.label || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
+      label: String(f.label || '').trim(),
+      required: f.required === true || f.required === 'true',
+    }))
+    .filter(f => f.key && f.label && !seen.has(f.key) && seen.add(f.key))
+    .slice(0, 30);
+}
+
 function sanitizeQuestions(questions) {
   if (questions === undefined) return undefined;
   if (!Array.isArray(questions)) return [];
@@ -105,7 +120,7 @@ function sanitizeQuestions(questions) {
 
 router.post('/companyAdd',async (req,res)=>{
 
-    let { commisson,lower,name,overview,photoRequired,commissionType,commissionTiers,questions,candidateInstructions,audioText}=req.body;
+    let { commisson,lower,name,overview,photoRequired,commissionType,commissionTiers,questions,candidateInstructions,audioText,requiredFields}=req.body;
 
     try{
 
@@ -132,6 +147,7 @@ router.post('/companyAdd',async (req,res)=>{
                 ...(qs !== undefined ? { questions: qs } : {}),
                 ...(candidateInstructions !== undefined ? { candidateInstructions: String(candidateInstructions) } : {}),
                 ...(audioText !== undefined ? { audioText: String(audioText) } : {}),
+                ...(sanitizeRequiredFields(requiredFields) !== undefined ? { requiredFields: sanitizeRequiredFields(requiredFields) } : {}),
 
         })
 
@@ -157,10 +173,14 @@ router.get('/company-settings', async (req, res) => {
     const name = (req.query.name || '').trim();
     if (!name) return res.json({ photoRequired: false });
     const company = await fetchCompanyOverview(name);
-    return res.json({ photoRequired: company?.photoRequired === true });
+    const requiredFields = Array.isArray(company?.requiredFields) ? company.requiredFields : [];
+    // photoRequired stays for backward compat; also honour a 'photo' entry in requiredFields.
+    const photoField = requiredFields.find(f => f.key === 'photo');
+    const photoRequired = company?.photoRequired === true || (photoField ? photoField.required === true : false);
+    return res.json({ photoRequired, requiredFields });
   } catch (err) {
     console.error('company-settings error:', err);
-    return res.json({ photoRequired: false });
+    return res.json({ photoRequired: false, requiredFields: [] });
   }
 });
 
@@ -172,7 +192,7 @@ router.put('/company/:id', async (req, res) => {
   try {
     const { updateCompany } = require('../model_fire/companyF');
     const { id } = req.params;
-    const { commisson, lower, name, overview, photoRequired, commissionType, commissionTiers, questions, candidateInstructions, audioText } = req.body;
+    const { commisson, lower, name, overview, photoRequired, commissionType, commissionTiers, questions, candidateInstructions, audioText, requiredFields } = req.body;
     if (!id) return res.status(400).json({ message: 'Company ID required' });
     // Sanitize tier rows when provided (same shape as companyAdd).
     const tiers = Array.isArray(commissionTiers)
@@ -191,6 +211,7 @@ router.put('/company/:id', async (req, res) => {
       ...(qs !== undefined && { questions: qs }),
       ...(candidateInstructions !== undefined && { candidateInstructions: String(candidateInstructions) }),
       ...(audioText !== undefined && { audioText: String(audioText) }),
+      ...(sanitizeRequiredFields(requiredFields) !== undefined && { requiredFields: sanitizeRequiredFields(requiredFields) }),
       photoRequired: photoRequired === true || photoRequired === 'true',
     });
     return res.json({ success: true, company: updated });

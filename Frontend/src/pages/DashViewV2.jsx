@@ -381,6 +381,7 @@ function DashViewV2Inner() {
   const [existingCv, setExistingCv] = useState('');       // resume URL from a matched candidate
   const [existingPhoto, setExistingPhoto] = useState(''); // photo URL from a matched candidate
   const [photoRequired, setPhotoRequired] = useState(false);
+  const [companyRequired, setCompanyRequired] = useState([]);   // [{key,label,required}] from company config
   const [access, setAccess] = useState(null);       // null = checking; { hasAccess, status }
   const [requesting, setRequesting] = useState(false);
   const [signal, setSignal] = useState(null);       // { submitted, rejected, inProcess, topReasons }
@@ -671,7 +672,7 @@ function DashViewV2Inner() {
   });
   // Remaining form fields (identity / experience / location / notice / stability)
   const [form, setForm] = useState({
-    candidate: '', mob: '', emails: '', dob: '', pan_number: '', curr_emp: '', highest_education: '',
+    candidate: '', mob: '', emails: '', dob: '', pan_number: '', jr_number: '', curr_emp: '', highest_education: '',
     totalYrs: '', totalMos: '0', relMos: '0', curr_state: '', joinDate: '',
     avgTenure: '', empGaps: '', employerTier: '', industryMatch: '', internshipExcluded: false,
   });
@@ -873,13 +874,20 @@ function DashViewV2Inner() {
   // live "Use your own" form — driven by Company_Overview.photoRequired)
   useEffect(() => {
     const client = job?.client;
-    if (!client) { setPhotoRequired(false); return; }
+    if (!client) { setPhotoRequired(false); setCompanyRequired([]); return; }
     let live = true;
     axios.get(`/clientspoc/company-settings?name=${encodeURIComponent(client)}`)
-      .then(r => { if (live) setPhotoRequired(r.data?.photoRequired === true); })
-      .catch(() => { if (live) setPhotoRequired(false); });
+      .then(r => { if (live) { setPhotoRequired(r.data?.photoRequired === true); setCompanyRequired(Array.isArray(r.data?.requiredFields) ? r.data.requiredFields : []); } })
+      .catch(() => { if (live) { setPhotoRequired(false); setCompanyRequired([]); } });
     return () => { live = false; };
   }, [job?.client]);
+
+  // Is a candidate field mandatory for this company? Uses the company config when it
+  // has an entry for the field, else the form's legacy default (2nd arg).
+  const isReq = (key, legacyDefault) => {
+    const f = companyRequired.find(x => x.key === key);
+    return f ? f.required === true : legacyDefault;
+  };
 
   // ── derived JD fields ──
   const jd = useMemo(() => {
@@ -993,11 +1001,16 @@ function DashViewV2Inner() {
       if (!form.candidate.trim()) return 'Candidate Name is required';
       if (!/^\d{10}$/.test(form.mob.trim())) return 'Contact Number must be a 10-digit mobile';
       if (!/^\S+@\S+\.\S+$/.test(form.emails.trim())) return 'A valid Email is required';
-      if (!form.dob) return 'Date of Birth is required';
-      if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(form.pan_number.trim())) return 'A valid PAN Number is required (e.g. ABCDE1234F)';
-      if (!form.highest_education.trim()) return 'Highest Education is required';
+      if (isReq('dob', true) && !form.dob) return 'Date of Birth is required';
+      // PAN mandatory per company config (default yes). Validate the format when a value is present either way.
+      const panOk = /^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(form.pan_number.trim());
+      if (isReq('pan_number', true)) { if (!panOk) return 'A valid PAN Number is required (e.g. ABCDE1234F)'; }
+      else if (form.pan_number.trim() && !panOk) return 'Enter a valid PAN Number, or leave it blank';
+      if (isReq('highest_education', true) && !form.highest_education.trim()) return 'Highest Education is required';
+      if (isReq('jr_number', false) && !form.jr_number.trim()) return 'JR Number is required';
+      if (isReq('curr_emp', false) && !form.curr_emp.trim()) return 'Current Employer is required';
       if (!cvFile && !existingCv) return 'Please upload the candidate CV';
-      if (photoRequired && !photoFile && !existingPhoto) return 'This client requires a candidate photo';
+      if (isReq('photo', photoRequired) && !photoFile && !existingPhoto) return 'This client requires a candidate photo';
       return null;
     }
     if (i === 1) {
@@ -1018,13 +1031,14 @@ function DashViewV2Inner() {
       return null;
     }
     if (i === 2) {
-      if (!currentCTC) return 'Current CTC is required';
-      if (!expectedCTC) return 'Expected CTC is required';
+      if (isReq('current_ctc', true) && !currentCTC) return 'Current CTC is required';
+      if (isReq('exp_ctc', true) && !expectedCTC) return 'Expected CTC is required';
+      if (isReq('notice_period', false) && !notice) return 'Notice Period is required';
       if (!offer) return 'Please select Offer In Hand';
       return null;
     }
     if (i === 3) {
-      if (!currentCity.trim()) return 'Current City is required';
+      if (isReq('curr_loc', true) && !currentCity.trim()) return 'Current City is required';
       if (!form.curr_state.trim()) return 'Current State is required';
       if (!relocation) return 'Please select Relocation Willingness';
       return null;
@@ -1165,7 +1179,7 @@ function DashViewV2Inner() {
         })),
         cv_url,
         photo_url,
-        jr_number: '',
+        jr_number: form.jr_number || '',
         rh_id: '',
         // v2 screening extras — stored on the candidate in their own fields
         skill_evidence: skillEvidence,
@@ -1184,7 +1198,7 @@ function DashViewV2Inner() {
       setToast('✓ Candidate submitted successfully!');
       setTimeout(() => setToast(''), 4000);
       // Reset the form for the next candidate.
-      setForm({ candidate: '', mob: '', emails: '', dob: '', pan_number: '', curr_emp: '', highest_education: '',
+      setForm({ candidate: '', mob: '', emails: '', dob: '', pan_number: '', jr_number: '', curr_emp: '', highest_education: '',
         totalYrs: '', totalMos: '0', relMos: '0', curr_state: '', joinDate: '',
         avgTenure: '', empGaps: '', employerTier: '', industryMatch: '', internshipExcluded: false });
       setRelYrs(''); setCurrentCTC(''); setExpectedCTC(''); setOffer(''); setRelocation('');
@@ -1256,7 +1270,7 @@ function DashViewV2Inner() {
     const f = d.form || {};
     setForm(prev => ({ ...prev,
       candidate: f.candidate || '', mob: f.mob || '', emails: f.emails || '', dob: f.dob || '',
-      pan_number: f.pan_number || '', curr_emp: f.curr_emp || '', highest_education: f.highest_education || '',
+      pan_number: f.pan_number || '', jr_number: f.jr_number || '', curr_emp: f.curr_emp || '', highest_education: f.highest_education || '',
       totalYrs: f.totalYrs || '', totalMos: f.totalMos || '0', relMos: f.relMos || '0',
       curr_state: f.curr_state || '', joinDate: f.joinDate || '', avgTenure: f.avgTenure || '',
       empGaps: f.empGaps || '', employerTier: f.employerTier || '', industryMatch: f.industryMatch || '',
@@ -1761,7 +1775,10 @@ function DashViewV2Inner() {
                     <div className="field"><label>Contact Number <span className="req">*</span></label><input type="tel" placeholder="10-digit mobile" maxLength={10} value={form.mob} onChange={e => upd('mob', e.target.value.replace(/[^\d]/g, ''))} onBlur={runDupCheck} /></div>
                     <div className="field"><label>Email <span className="req">*</span></label><input type="email" placeholder="name@email.com" value={form.emails} onChange={e => upd('emails', e.target.value)} onBlur={runDupCheck} /></div>
                     <div className="field"><label>Date of Birth <span className="req">*</span></label><input type="date" value={form.dob} onChange={e => upd('dob', e.target.value)} /></div>
-                    <div className="field"><label>PAN Number <span className="req">*</span></label><input type="text" placeholder="ABCDE1234F" maxLength={10} style={{ textTransform: 'uppercase' }} value={form.pan_number} onChange={e => upd('pan_number', e.target.value)} /></div>
+                    <div className="field"><label>PAN Number {isReq('pan_number', true) && <span className="req">*</span>}</label><input type="text" placeholder="ABCDE1234F" maxLength={10} style={{ textTransform: 'uppercase' }} value={form.pan_number} onChange={e => upd('pan_number', e.target.value)} /></div>
+                    {isReq('jr_number', false) && (
+                      <div className="field"><label>JR Number <span className="req">*</span></label><input type="text" placeholder="Requisition / JR number" value={form.jr_number} onChange={e => upd('jr_number', e.target.value)} /></div>
+                    )}
                     <div className="field"><label>Current Employer</label><input type="text" placeholder="Company name" value={form.curr_emp} onChange={e => upd('curr_emp', e.target.value)} /></div>
                     <div className="field"><label>Highest Education <span className="req">*</span></label>
                       <MultiSelect value={form.highest_education} onChange={v => upd('highest_education', v)}

@@ -4,6 +4,7 @@ import axios from "axios";
 import { Eye, EyeOff, Phone, Mail, User, Lock, Briefcase, Shield, Users, UserCheck, BookOpen, Award } from "lucide-react";
 import QuestionsEditor, { validateQuestions } from "../components/QuestionsEditor";
 import RichTextEditor from "../components/RichTextEditor";
+import MandatoryFieldsEditor, { defaultRequiredFields } from "../components/MandatoryFieldsEditor";
 
 const ClientSpocCompany=()=> {
   
@@ -22,6 +23,7 @@ const ClientSpocCompany=()=> {
   const [candidateInstructions, setCandidateInstructions] = useState("");
   // Audio description — spoken aloud from the 🔊 speaker next to the company name.
   const [audioText, setAudioText] = useState("");
+  const [requiredFields, setRequiredFields] = useState(() => defaultRequiredFields({}));
 
   // Tier-based commission: each tier row has its own Fixed/Percentage type.
   const [tiers, setTiers] = useState([{ type: "", tier: "", value: "" }]);
@@ -105,7 +107,8 @@ const ClientSpocCompany=()=> {
           overview:form.overview.trim(),
           candidateInstructions,
           audioText,
-          photoRequired: form.photoRequired
+          requiredFields,
+          photoRequired: (requiredFields.find(f => f.key === 'photo')?.required) === true
     };
 
     console.log("Data being sent to backend:", dataToSend);
@@ -335,22 +338,13 @@ const ClientSpocCompany=()=> {
               />
             </div>
 
-            {/* Candidate Photo Required */}
-            <div className="flex items-center gap-3 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl">
-              <input
-                type="checkbox"
-                id="photoRequired"
-                name="photoRequired"
-                checked={form.photoRequired}
-                onChange={handleChange}
-                className="w-5 h-5 accent-blue-600 cursor-pointer flex-shrink-0"
-              />
-              <label htmlFor="photoRequired" className="text-sm font-semibold text-gray-700 cursor-pointer select-none">
-                Candidate photo required for this company
-                <span className="block text-xs font-normal text-gray-500 mt-0.5">
-                  When enabled, recruiters must upload a candidate photo when submitting for any position of this company.
-                </span>
+            {/* Mandatory fields in the submit form */}
+            <div className="relative">
+              <label className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                <BookOpen size={16} className="text-blue-600" />
+                Mandatory fields in submit form
               </label>
+              <MandatoryFieldsEditor value={requiredFields} onChange={setRequiredFields} />
             </div>
 
             {/* Client Requirement Questions */}
