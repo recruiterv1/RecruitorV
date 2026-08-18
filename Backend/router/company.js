@@ -29,9 +29,10 @@ const CAND = db.collection('candidate_db');
 
 // Statuses a company may set on a submitted candidate (each requires a reason).
 const COMPANY_STATUSES = [
+  'Schedule Interview',
   'L1 To be Schedule', 'L2 To be Schedule', 'L3 To be Schedule', 'HR To be Schedule',
+  'Selected', 'To Be Offered', 'Offer Accepted',
   'Screen Reject', 'L1 Reject', 'L2 Reject', 'L3 Reject', 'HR Reject',
-  'To Be Offered', 'Offer Accepted',
   'Position On Hold', 'Client Drop',
 ];
 const COMPANY_STATUS_SET = new Set(COMPANY_STATUSES.map(lc));
@@ -244,10 +245,17 @@ router.get('/candidates', companyAuth, async (req, res) => {
     const results = await Promise.all(chunks.map(ch => CAND.where('pos_id', 'in', ch).get()));
     // Return the full candidate doc (minus heavy internal blobs) so the detail
     // modal has everything; keep cv_data for the resume link.
+    // Only candidates actually SUBMITTED against the company are shown — hide raw
+    // direct-applies ("Applied"), resume-bank entries and bulk uploads.
+    const HIDE_STATUSES = new Set(['applied', 'resume bank', 'draft', 'incomplete']);
     const candidates = results.flatMap(s => s.docs.map(d => {
       const { matchReasoning, matchSummary, ...rest } = d.data();
       return { id: d.id, ...rest };
-    }));
+    })).filter(c => {
+      if (c.source === 'clientspoc_bulk') return false;
+      if (HIDE_STATUSES.has(lc(c.statusa))) return false;
+      return true;
+    });
     res.json({ success: true, candidates, allowedStatuses: COMPANY_STATUSES });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });

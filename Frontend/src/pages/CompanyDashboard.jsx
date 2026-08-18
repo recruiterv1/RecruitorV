@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2, Briefcase, Users, HelpCircle, LogOut, Plus, Loader2, PauseCircle,
-  Trash2, Save, Menu, X, CheckCircle2, Search, LayoutDashboard, UserCircle, KeyRound,
+  Trash2, Save, Menu, X, CheckCircle2, Search, LayoutDashboard, UserCircle, KeyRound, ArrowLeft,
 } from 'lucide-react';
 import Ad_Pos from './Ad_Pos';
 import QuestionsEditor, { validateQuestions } from '../components/QuestionsEditor';
@@ -82,27 +82,196 @@ const Row = ({ label, value }) => {
   );
 };
 
+// ── Company position detail (JD Details + Candidates tabs) ───────────────────
+function CompanyPositionDetail({ position, onBack, onChanged }) {
+  const [tab, setTab] = useState('jd');           // 'jd' | 'candidates'
+  const [cands, setCands] = useState(null);
+  const [allowed, setAllowed] = useState([]);
+  const [openCand, setOpenCand] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [statusa, setStatusa] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [holdOpen, setHoldOpen] = useState(false);
+  const [holdReason, setHoldReason] = useState('');
+  const loc = (Array.isArray(position.location) ? position.location.join(', ') : position.location) || '—';
+
+  const loadCands = useCallback(() => {
+    api.get('/candidates').then(r => {
+      setAllowed(r.data.allowedStatuses || []);
+      setCands((r.data.candidates || []).filter(c => String(c.pos_id) === String(position.pos_id)));
+    }).catch(() => setCands([]));
+  }, [position.pos_id]);
+  useEffect(() => { if (tab === 'candidates' && cands === null) loadCands(); }, [tab, cands, loadCands]);
+
+  const saveStatus = async () => {
+    if (!statusa || !reason.trim()) return;
+    setBusy(true);
+    try {
+      await api.post(`/candidates/${openCand.id}/status`, { statusa, reason: reason.trim() });
+      setEditing(false); setStatusa(''); setReason(''); setOpenCand(null); setCands(null); loadCands();
+    } catch (e) { alert(e.response?.data?.message || 'Failed to update.'); }
+    finally { setBusy(false); }
+  };
+
+  const doHold = async () => {
+    if (!holdReason.trim()) return;
+    setBusy(true);
+    try { await api.post(`/positions/${position.id}/hold`, { reason: holdReason.trim() }); setHoldOpen(false); setHoldReason(''); onChanged && onChanged(); onBack(); }
+    catch (e) { alert(e.response?.data?.message || 'Failed to hold.'); }
+    finally { setBusy(false); }
+  };
+
+  const tabBtn = (id, label) => (
+    <button onClick={() => setTab(id)}
+      className={`px-4 py-2.5 text-sm font-semibold border-b-2 ${tab === id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{label}</button>
+  );
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1"><ArrowLeft size={15} /> Back</button>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-gray-900 text-lg truncate">{position.position}</div>
+          <div className="text-xs text-gray-400 flex items-center gap-2">#{position.pos_id} <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusPill(position.status)}`}>{statusText(position.status)}</span></div>
+        </div>
+        {(position.status === 'active' || position.status === 'pending') && !holdOpen && (
+          <button onClick={() => setHoldOpen(true)} className="flex items-center gap-1 text-sm font-medium text-orange-600 border border-orange-200 rounded-lg px-3 py-1.5 hover:bg-orange-50"><PauseCircle size={15} /> Hold position</button>
+        )}
+      </div>
+      {holdOpen && (
+        <div className="mb-4 bg-white border border-orange-200 rounded-xl p-3">
+          <textarea value={holdReason} onChange={e => setHoldReason(e.target.value)} rows={2} placeholder="Reason for holding this position (required)…"
+            className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-400/40" />
+          <div className="flex justify-end gap-2 mt-2">
+            <button onClick={() => setHoldOpen(false)} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>
+            <button onClick={doHold} disabled={busy || !holdReason.trim()} className="text-xs font-semibold text-white bg-orange-600 hover:bg-orange-700 rounded-lg px-3 py-1.5 disabled:opacity-50">Confirm hold</button>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200 mb-4">
+        {tabBtn('jd', 'JD Details')}
+        {tabBtn('candidates', `Candidates${cands ? ` (${cands.length})` : ''}`)}
+      </div>
+
+      {tab === 'jd' ? (
+        <div className="bg-white border border-gray-200 rounded-2xl p-5">
+          <Row label="Status" value={statusText(position.status)} />
+          <Row label="Position ID" value={position.pos_id} />
+          <Row label="Client" value={position.client} />
+          <Row label="ClientSPOC" value={position.clientspoc_name || position.clientspoc} />
+          <Row label="Skill category" value={position.skill_category} />
+          <Row label="Sub category" value={position.skill_sub_category} />
+          <Row label="Specialization" value={position.specialization} />
+          <Row label="Employment type" value={position.employment_type} />
+          <Row label="Work mode" value={position.work_mode} />
+          <Row label="No. of positions" value={position.no_of_positions} />
+          <Row label="Experience" value={position.experience || position.min_exp} />
+          <Row label="Education" value={position.req_education} />
+          <Row label="CTC" value={position.ctcStart && position.ctcEnd ? `${position.ctcStart} – ${position.ctcEnd}` : (position.commison || position.budget)} />
+          <Row label="Location" value={loc} />
+          <Row label="State" value={position.state} />
+          <Row label="HR name" value={position.hr_name} />
+          <Row label="Job summary" value={stripHtml(position.job_desc) || stripHtml(position.overview)} />
+          <Row label="Must-have skills" value={stripHtml(position.m_have)} />
+          <Row label="Good-to-have" value={stripHtml(position.g_have)} />
+          <Row label="Key responsibilities" value={stripHtml(position.key_res)} />
+          {position.holdReason && <Row label="Hold reason" value={position.holdReason} />}
+          {position.rejectReason && <Row label="Reject reason" value={position.rejectReason} />}
+        </div>
+      ) : (
+        <div>
+          {cands === null ? (
+            <div className="py-16 grid place-items-center text-gray-400"><Loader2 size={24} className="animate-spin" /></div>
+          ) : cands.length === 0 ? (
+            <div className="py-16 text-center text-gray-400 text-sm">No candidates submitted for this position yet.</div>
+          ) : (
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {cands.map(c => (
+                <button key={c.id} onClick={() => { setOpenCand(c); setEditing(false); setStatusa(''); setReason(''); }}
+                  className="text-left bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-md hover:border-blue-300 transition">
+                  <div className="flex items-start gap-3">
+                    {c.photo_url
+                      ? <img src={c.photo_url} alt="" className="w-11 h-11 rounded-full object-cover flex-shrink-0 border border-gray-200" />
+                      : <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 grid place-items-center font-bold flex-shrink-0">{(c.candidate || '?')[0].toUpperCase()}</div>}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-semibold text-gray-900 leading-snug truncate">{c.candidate || 'Unnamed'}</div>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 flex-shrink-0">{c.statusa || 'Submitted'}</span>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">Exp {c.total_exp || '—'}y · {rupee(c.exp_ctc)}</div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {openCand && (
+            <Modal title={openCand.candidate} subtitle={`${openCand.pos_name || ''} · ${openCand.statusa || 'Submitted'}`} onClose={() => setOpenCand(null)}
+              footer={
+                editing ? (
+                  <div className="space-y-2">
+                    <select value={statusa} onChange={e => setStatusa(e.target.value)} className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30">
+                      <option value="">— select status —</option>
+                      {allowed.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Reason for this status (required)…"
+                      className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30" />
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => setEditing(false)} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>
+                      <button onClick={saveStatus} disabled={busy || !statusa || !reason.trim()} className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg px-3 py-1.5 disabled:opacity-50">Update status</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    {openCand.cv_data ? <a href={openCand.cv_data} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">View resume →</a> : <span />}
+                    <button onClick={() => setEditing(true)} className="text-sm font-medium text-blue-600 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50">Change status</button>
+                  </div>
+                )
+              }>
+              {openCand.photo_url && (
+                <div className="mb-3 flex justify-center">
+                  <img src={openCand.photo_url} alt="candidate" className="w-24 h-24 rounded-xl object-cover border border-gray-200" />
+                </div>
+              )}
+              <Row label="Current status" value={openCand.statusa || 'Submitted'} />
+              <Row label="Email" value={openCand.emails} />
+              <Row label="Phone" value={openCand.mob} />
+              <Row label="RH ID" value={openCand.rh_id} />
+              <Row label="Current employer" value={openCand.curr_emp} />
+              <Row label="Highest education" value={openCand.highest_education} />
+              <Row label="Relevant exp" value={openCand.rel_exp && `${openCand.rel_exp} yrs`} />
+              <Row label="Total exp" value={openCand.total_exp && `${openCand.total_exp} yrs`} />
+              <Row label="Current CTC" value={openCand.current_ctc && rupee(openCand.current_ctc)} />
+              <Row label="Expected CTC" value={openCand.exp_ctc && rupee(openCand.exp_ctc)} />
+              <Row label="Notice period" value={openCand.notice_period} />
+              <Row label="Current location" value={openCand.curr_loc ? `${openCand.curr_loc}${openCand.curr_state ? ', ' + openCand.curr_state : ''}` : ''} />
+              <Row label="Tech skills" value={openCand.tech_skill} />
+              <Row label="Submitted by" value={openCand.recName} />
+              {openCand.rejectReason && <Row label="Last reason" value={openCand.rejectReason} />}
+            </Modal>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── My Positions ─────────────────────────────────────────────────────────────
 function MyPositions() {
   const [list, setList] = useState(null);
-  const [open, setOpen] = useState(null);     // position object in modal
-  const [reason, setReason] = useState('');
-  const [holdOpen, setHoldOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [detailPos, setDetailPos] = useState(null);   // position shown in the detail view
   const [q, setQ] = useState('');
   const [sf, setSf] = useState('all');
 
   const load = useCallback(() => api.get('/positions').then(r => setList(r.data.positions || [])).catch(() => setList([])), []);
   useEffect(() => { load(); }, [load]);
 
-  const doHold = async () => {
-    if (!reason.trim()) return;
-    setBusy(true);
-    try { await api.post(`/positions/${open.id}/hold`, { reason: reason.trim() }); setHoldOpen(false); setReason(''); setOpen(null); await load(); }
-    catch (e) { alert(e.response?.data?.message || 'Failed to hold.'); }
-    finally { setBusy(false); }
-  };
-
+  if (detailPos) return <CompanyPositionDetail position={detailPos} onBack={() => setDetailPos(null)} onChanged={load} />;
   if (!list) return <div className="py-16 grid place-items-center text-gray-400"><Loader2 size={24} className="animate-spin" /></div>;
   if (!list.length) return <div className="py-16 text-center text-gray-400 text-sm">No positions yet. Post one from “Post Position”.</div>;
 
@@ -123,7 +292,7 @@ function MyPositions() {
       <div className="text-xs text-gray-400 mb-2">{view.length} of {list.length}</div>
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {view.map(p => (
-          <button key={p.id} onClick={() => { setOpen(p); setHoldOpen(false); setReason(''); }}
+          <button key={p.id} onClick={() => setDetailPos(p)}
             className="text-left bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-md hover:border-blue-300 transition">
             <div className="flex items-start justify-between gap-2">
               <div className="font-semibold text-gray-900 leading-snug">{p.position}</div>
@@ -136,48 +305,6 @@ function MyPositions() {
         ))}
       </div>
 
-      {open && (
-        <Modal title={open.position} subtitle={`#${open.pos_id} · ${statusText(open.status)}`} onClose={() => setOpen(null)}
-          footer={(open.status === 'active' || open.status === 'pending') && (
-            holdOpen ? (
-              <div>
-                <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Reason for holding this position (required)…"
-                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-400/40" />
-                <div className="flex justify-end gap-2 mt-2">
-                  <button onClick={() => setHoldOpen(false)} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>
-                  <button onClick={doHold} disabled={busy || !reason.trim()} className="text-xs font-semibold text-white bg-orange-600 hover:bg-orange-700 rounded-lg px-3 py-1.5 disabled:opacity-50">Confirm hold</button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-end">
-                <button onClick={() => setHoldOpen(true)} className="flex items-center gap-1 text-sm font-medium text-orange-600 border border-orange-200 rounded-lg px-3 py-1.5 hover:bg-orange-50"><PauseCircle size={15} /> Hold position</button>
-              </div>
-            )
-          )}>
-          <Row label="Status" value={statusText(open.status)} />
-          <Row label="Position ID" value={open.pos_id} />
-          <Row label="Client" value={open.client} />
-          <Row label="ClientSPOC" value={open.clientspoc_name || open.clientspoc} />
-          <Row label="Skill category" value={open.skill_category} />
-          <Row label="Sub category" value={open.skill_sub_category} />
-          <Row label="Specialization" value={open.specialization} />
-          <Row label="Employment type" value={open.employment_type} />
-          <Row label="Work mode" value={open.work_mode} />
-          <Row label="No. of positions" value={open.no_of_positions} />
-          <Row label="Experience" value={open.experience || open.min_exp} />
-          <Row label="Education" value={open.req_education} />
-          <Row label="CTC" value={open.ctcStart && open.ctcEnd ? `${open.ctcStart} – ${open.ctcEnd}` : (open.commison || open.budget)} />
-          <Row label="Location" value={loc(open)} />
-          <Row label="State" value={open.state} />
-          <Row label="HR name" value={open.hr_name} />
-          <Row label="Job summary" value={stripHtml(open.job_desc) || stripHtml(open.overview)} />
-          <Row label="Must-have skills" value={stripHtml(open.m_have)} />
-          <Row label="Good-to-have" value={stripHtml(open.g_have)} />
-          <Row label="Key responsibilities" value={stripHtml(open.key_res)} />
-          {open.holdReason && <Row label="Hold reason" value={open.holdReason} />}
-          {open.rejectReason && <Row label="Reject reason" value={open.rejectReason} />}
-        </Modal>
-      )}
     </>
   );
 }
