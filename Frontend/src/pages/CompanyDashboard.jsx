@@ -83,7 +83,7 @@ const Row = ({ label, value }) => {
 };
 
 // A candidate whose status the COMPANY still needs to action (fresh submission).
-const needsCompanyUpdate = (s) => { const x = (s || '').toString().toLowerCase().trim(); return x === '' || x === 'submitted'; };
+const needsCompanyUpdate = (s) => { const x = (s || '').toString().toLowerCase().trim(); return x === '' || x === 'submitted' || x === 'cv feedback pending'; };
 // A positive/closed-won status → green.
 const isJoinedStatus = (s) => { const x = (s || '').toString().toLowerCase(); return x.includes('join') || x === 'offer accepted' || x === 'selected'; };
 
