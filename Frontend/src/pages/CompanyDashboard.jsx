@@ -82,6 +82,11 @@ const Row = ({ label, value }) => {
   );
 };
 
+// A candidate whose status the COMPANY still needs to action (fresh submission).
+const needsCompanyUpdate = (s) => { const x = (s || '').toString().toLowerCase().trim(); return x === '' || x === 'submitted'; };
+// A positive/closed-won status → green.
+const isJoinedStatus = (s) => { const x = (s || '').toString().toLowerCase(); return x.includes('join') || x === 'offer accepted' || x === 'selected'; };
+
 // ── Company position detail (JD Details + Candidates tabs) ───────────────────
 function CompanyPositionDetail({ position, onBack, onChanged }) {
   const [tab, setTab] = useState('jd');           // 'jd' | 'candidates'
@@ -268,8 +273,16 @@ function MyPositions() {
   const [q, setQ] = useState('');
   const [sf, setSf] = useState('all');
 
+  const [pendingCounts, setPendingCounts] = useState({});   // pos_id -> # candidates awaiting company action
   const load = useCallback(() => api.get('/positions').then(r => setList(r.data.positions || [])).catch(() => setList([])), []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    api.get('/candidates').then(r => {
+      const counts = {};
+      (r.data.candidates || []).forEach(c => { if (needsCompanyUpdate(c.statusa)) counts[c.pos_id] = (counts[c.pos_id] || 0) + 1; });
+      setPendingCounts(counts);
+    }).catch(() => {});
+  }, []);
 
   if (detailPos) return <CompanyPositionDetail position={detailPos} onBack={() => setDetailPos(null)} onChanged={load} />;
   if (!list) return <div className="py-16 grid place-items-center text-gray-400"><Loader2 size={24} className="animate-spin" /></div>;
@@ -301,6 +314,14 @@ function MyPositions() {
             <div className="text-xs text-gray-400 mt-0.5">#{p.pos_id}</div>
             <div className="text-xs text-gray-500 mt-2">{p.skill_category || '—'}</div>
             <div className="text-xs text-gray-500 mt-0.5 truncate">{loc(p)}</div>
+            {(() => {
+              const n = pendingCounts[p.pos_id] || 0;
+              return (
+                <div className={`mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full ${n > 0 ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-500'}`}>
+                  <Users size={12} /> {n} to update
+                </div>
+              );
+            })()}
           </button>
         ))}
       </div>
@@ -359,9 +380,17 @@ function Candidates() {
         {view.length ? `Showing ${start + 1}–${Math.min(start + PAGE_SIZE, view.length)} of ${view.length}` : `0 of ${candidates.length}`}
       </div>
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {pageRows.map(c => (
+        {pageRows.map(c => {
+          const green = isJoinedStatus(c.statusa);
+          const orange = needsCompanyUpdate(c.statusa);
+          const cardCls = green
+            ? 'bg-green-50 border-green-300 hover:border-green-400'
+            : orange
+              ? 'bg-orange-50 border-orange-300 hover:border-orange-400'
+              : 'bg-white border-gray-200 hover:border-blue-300';
+          return (
           <button key={c.id} onClick={() => { setOpen(c); setEditing(false); setStatusa(''); setReason(''); }}
-            className="text-left bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-md hover:border-blue-300 transition">
+            className={`text-left border rounded-2xl p-4 hover:shadow-md transition ${cardCls}`}>
             <div className="flex items-start justify-between gap-2">
               <div className="font-semibold text-gray-900 leading-snug truncate">{c.candidate}</div>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 flex-shrink-0">{c.statusa || 'Submitted'}</span>
@@ -369,7 +398,8 @@ function Candidates() {
             <div className="text-xs text-gray-500 mt-1 truncate">{c.pos_name}</div>
             <div className="text-xs text-gray-400 mt-2">Exp {c.total_exp || '—'}y · Expected {rupee(c.exp_ctc)}</div>
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {totalPages > 1 && (
