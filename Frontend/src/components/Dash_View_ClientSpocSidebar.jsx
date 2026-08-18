@@ -45,6 +45,7 @@ const clientSpocMenuItems = [
       { icon: PlusCircle, label: 'Add Position',       path: '/ad_panel#add-position' },
       { icon: Briefcase,  label: 'My Added Positions', path: '/ad_panel#my-added-positions' },
       { icon: TrendingUp, label: 'My Position Stats',  path: '/ad_panel#clientspoc-my-positions' },
+      { icon: Building2,  label: 'Company Positions',  path: '/clientspoc-company-approvals' },
       { icon: Briefcase,  label: 'All Positions',      path: '/ad_panel#positions' },
     ],
   },
@@ -58,7 +59,6 @@ const clientSpocMenuItems = [
       { icon: Users,     label: 'Coach-Recruiter Assignments',  path: '/ad_panel#coach-recruiter-assignments' },
     ],
   },
-  { icon: Building2, label: 'Company Approvals', path: '/clientspoc-company-approvals' },
   { icon: BarChart3, label: 'Reports', path: '/clientspoc-reports' },
   {
     icon: Users,
