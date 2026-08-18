@@ -312,11 +312,16 @@ const CANDIDATE_REJECTED_STATUSES = new Set([
   'rejected', 'client drop', 'candidate drop', 'duplicate', 'offer declined',
 ]);
 
-async function alreadySubmittedToPosition(pos_id, emails, mob) {
+async function alreadySubmittedToPosition(pos_id, emails, mob, candidate, recEmail) {
   const { db } = require('../router/firebase_ad');
   const email = (emails || '').trim().toLowerCase();
   const phone = (mob || '').toString().replace(/\D/g, '');
-  if (!pos_id || (!email && !phone)) return false;
+  const name = (candidate || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+  const rec = (recEmail || '').toString().toLowerCase().trim();
+  if (!pos_id) return false;
+  const hasIdentity = !!(email || phone);
+  // Nothing to match on at all → can't detect a duplicate.
+  if (!hasIdentity && !name) return false;
   const snap = await db.collection('candidate_db').where('pos_id', '==', pos_id).get();
   return snap.docs.some(d => {
     const c = d.data();
@@ -325,7 +330,11 @@ async function alreadySubmittedToPosition(pos_id, emails, mob) {
     if (CANDIDATE_REJECTED_STATUSES.has((c.statusa || '').toLowerCase().trim())) return false;
     const e = (c.emails || '').trim().toLowerCase();
     const p = (c.mob || '').toString().replace(/\D/g, '');
-    return (email && e === email) || (phone && p && p === phone);
+    if (hasIdentity) return (email && e === email) || (phone && p && p === phone);
+    // No email/phone on the incoming candidate → fall back to name + same recruiter
+    // (covers email/WhatsApp-sourced entries that carry no contact fields).
+    const cn = (c.candidate || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+    return name && cn === name && rec && (c.recEmail || '').toString().toLowerCase().trim() === rec;
   });
 }
 
@@ -415,7 +424,7 @@ let {
     if (!Array.isArray(client_answers)) client_answers = [];
 
     // 🔒 A candidate already submitted to this position cannot be submitted again.
-    if (await alreadySubmittedToPosition(pos_id, emails, mob)) {
+    if (await alreadySubmittedToPosition(pos_id, emails, mob, candidate, news.email)) {
       return res.status(409).json({
         message: "This candidate has already been submitted to this position and cannot be submitted again.",
       });
@@ -504,6 +513,41 @@ let {
       photo_url: photo_url || '',
       client_answers
     });
+
+    // 🔒 Race-safe de-dupe: two near-simultaneous submits can both pass the pre-check
+    // above before either writes. Immediately after writing, reconcile — if more than
+    // one ACTIVE record now exists for this candidate on this position, keep only the
+    // earliest and delete the rest. Every racer runs the same logic and converges on
+    // the same survivor, so no duplicate is left. If OURS wasn't the survivor, we tell
+    // the recruiter it was already submitted.
+    try {
+      const { db } = require('../router/firebase_ad');
+      const emailLc = (emails || '').trim().toLowerCase();
+      const phoneD = (mob || '').toString().replace(/\D/g, '');
+      const nameLc = (candidate || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+      const recLc = (news.email || '').toString().toLowerCase().trim();
+      const hasIdentity = !!(emailLc || phoneD);
+      const snap = await db.collection('candidate_db').where('pos_id', '==', pos_id).get();
+      const active = snap.docs.filter(d => {
+        const c = d.data();
+        if (c.source === 'clientspoc_bulk') return false;
+        if (CANDIDATE_REJECTED_STATUSES.has((c.statusa || '').toLowerCase().trim())) return false;
+        const e = (c.emails || '').trim().toLowerCase();
+        const p = (c.mob || '').toString().replace(/\D/g, '');
+        if (hasIdentity) return (emailLc && e === emailLc) || (phoneD && p && p === phoneD);
+        const cn = (c.candidate || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+        return nameLc && cn === nameLc && recLc && (c.recEmail || '').toString().toLowerCase().trim() === recLc;
+      });
+      if (active.length > 1) {
+        const ms = (d) => { const t = d.data().datePosted; return t?._seconds ? t._seconds * 1000 : (t ? new Date(t).getTime() : 0); };
+        active.sort((a, b) => ms(a) - ms(b) || a.id.localeCompare(b.id));   // deterministic across racers
+        const survivor = active[0].id;
+        for (const d of active.slice(1)) { try { await d.ref.delete(); } catch (_) {} }
+        if (survivor !== user.id) {
+          return res.status(409).json({ message: 'This candidate has already been submitted to this position and cannot be submitted again.' });
+        }
+      }
+    } catch (_) { /* reconciliation is best-effort */ }
 
     // 🔔 Push to the coach/expert who assigned this position to the submitting recruiter
     if (!isCoachOrExpert) {
@@ -2053,7 +2097,7 @@ router.post('/pos/:pos_id/submit-from-bank', isLoggedIn, async (req, res) => {
       }
 
       // A candidate already submitted to this position cannot be submitted again.
-      if (await alreadySubmittedToPosition(pos_id, emails, c.mob)) {
+      if (await alreadySubmittedToPosition(pos_id, emails, c.mob, c.candidate, news.email)) {
         skipped.push({ id, candidate: c.candidate || emails, reason: 'already submitted to this position' });
         continue;
       }
