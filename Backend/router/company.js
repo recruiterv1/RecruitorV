@@ -449,9 +449,10 @@ router.get('/spoc/pending', spocAuth, async (req, res) => {
     ]);
     const byId = {};
     [...byPrimary.docs, ...byArray.docs].forEach(d => { byId[d.id] = { id: d.id, ...d.data() }; });
+    // Return the FULL position so the SPOC's edit form can pre-fill every field.
     const list = Object.values(byId)
       .filter(p => (p.postedByCompany || p.postedByFirm) && lc(p.status) === 'pending')
-      .map(p => ({ id: p.id, pos_id: p.pos_id, position: p.position, companyName: p.companyName || p.consultingFirmName || p.client, skill_category: p.skill_category, location: p.location, state: p.state, datePosted: p.datePosted || null }));
+      .map(p => ({ ...p, companyName: p.companyName || p.consultingFirmName || p.client }));
     res.json({ success: true, positions: list });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });

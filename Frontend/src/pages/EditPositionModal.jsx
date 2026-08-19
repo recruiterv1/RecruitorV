@@ -66,6 +66,7 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
 
   const [form, setForm] = useState({
     hr_name: position.hr_name || '',
+    ripplehire_job_id: position.ripplehire_job_id || '',
     ctcStart: position.ctcStart || '',
     ctcEnd: position.ctcEnd || '',
     location: Array.isArray(position.location)
@@ -576,6 +577,17 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
                   <input type="text" name="hr_name" value={form.hr_name} onChange={handleChange}
                     placeholder="HR Contact Person" required
                     className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" />
+                </div>
+
+                {/* RippleHire JR / Job ID — drives the duplicacy-check deep link */}
+                <div className="flex flex-col">
+                  <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">
+                    JR / RippleHire Job ID <span className="font-normal text-gray-400">(optional)</span>
+                  </label>
+                  <input type="text" name="ripplehire_job_id" value={form.ripplehire_job_id} onChange={handleChange}
+                    placeholder="e.g. 886183"
+                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" />
+                  <span className="text-[11px] text-gray-400 mt-1">Used to open this job directly in RippleHire for the duplicacy check.</span>
                 </div>
 
                 <div className="flex flex-col">

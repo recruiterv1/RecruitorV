@@ -2273,7 +2273,11 @@ router.put('/pos/modify/:id', authMiddleware, async (req, res) => {
     // Check permission
     const userEmail = (req.user.email || "").toLowerCase();
     const positionCreatorEmail = (position.clientspoc || "").toLowerCase();
-    const isOwner = positionCreatorEmail === userEmail;
+    // A company position can carry several assigned SPOCs — any of them may edit it.
+    const coSpocs = Array.isArray(position.clientspocs)
+      ? position.clientspocs.map(x => (x || "").toString().toLowerCase())
+      : [];
+    const isOwner = positionCreatorEmail === userEmail || coSpocs.includes(userEmail);
     const isAdmin = userType === 'admin';
 
     if (!isOwner && !isAdmin) {
