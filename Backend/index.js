@@ -378,38 +378,6 @@ if (!process.env.K_SERVICE) {
 }
 
 
-// ---- Dedicated function: RippleHire duplicate check (headless Chromium) ----
-// Isolated from `api` on purpose: Chromium is memory-hungry, so it gets its own
-// instance, a bigger memory limit and low concurrency. An OOM here can never take
-// the main API down.
-const rhApp = express();
-rhApp.use(cors({ origin: true, credentials: true }));
-rhApp.use(express.json({ limit: '2mb' }));
-rhApp.use(cookieParser());
-rhApp.use((req, _res, next) => {
-  if (!req.cookies) req.cookies = {};
-  if (!req.cookies.__session) {
-    const auth = req.headers.authorization || req.headers.Authorization;
-    if (auth && /^Bearer\s+/i.test(auth)) req.cookies.__session = auth.replace(/^Bearer\s+/i, '').trim();
-  }
-  next();
-});
-rhApp.use("/api/ripplehire", require("./router/ripplehire.js"));
-
-exports.ripplehire = functions.https.onRequest(
-  {
-    secrets: SECRETS.map(s => s.secret),
-    region: 'us-central1',
-    invoker: 'public',
-    timeoutSeconds: 120,
-    memory: '2GiB',
-    concurrency: 4,
-  },
-  (req, res) => {
-    loadSecretsIntoProcessEnv();
-    rhApp(req, res);
-  }
-);
 
 // ---- FINAL EXPORT (CommonJS, working) ----
 exports.api = functions.https.onRequest(

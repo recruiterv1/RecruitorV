@@ -43,10 +43,6 @@
         "function": "api"
       },
       {
-        "source": "/api/ripplehire/**",
-        "function": "ripplehire"
-      },
-      {
         "source": "/api/**",
         "function": "api"
       },
