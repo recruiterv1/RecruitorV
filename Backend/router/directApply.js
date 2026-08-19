@@ -663,7 +663,10 @@ router.post('/submit', async (req, res) => {
       highest_education: highest_education || '',
       cv_data: cv_url || '',
       client_answers: clientAnswers,   // candidate's answers to client-requirement questions
-      statusa: rec ? 'Applied' : 'Submitted',  // 'Applied' when from recruiter share link
+      // Every direct applicant enters as 'Applied', whoever shared the link
+      // (recruiter, coach, expert or ClientSPOC). They only become 'Submitted'
+      // once the owner of that share link reviews and submits them.
+      statusa: 'Applied',
       jr_number: '',
       pan_number: pan_number || '',
       photo_url: photo_url || '',
