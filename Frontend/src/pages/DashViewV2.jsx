@@ -2264,7 +2264,12 @@ function DashViewV2Inner() {
 
                 {job?.ripplehire_job_id ? (
                   <button type="button"
-                    onClick={() => window.open(`https://ltimindtreeapp.ripplehire.com/vendor/agency#apply/job/${encodeURIComponent(job.ripplehire_job_id)}`, 'ripplehire')}
+                    /* A hash-only change won't re-route their SPA (it reads the hash at
+                       boot), which is why it stayed on #list. The cache-busting query
+                       forces a real navigation so it boots straight onto the job. */
+                    onClick={() => window.open(
+                      `https://ltimindtreeapp.ripplehire.com/vendor/agency?rv=${Date.now()}#apply/job/${encodeURIComponent(job.ripplehire_job_id)}`,
+                      'ripplehire')}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 13, borderRadius: 10, padding: '10px 16px', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                     <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, flexShrink: 0 }}>2</span>
                     Go to Job #{job.ripplehire_job_id}
@@ -2275,7 +2280,9 @@ function DashViewV2Inner() {
                   </div>
                 )}
                 <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                  Step 2 reuses the same RippleHire tab, so the job opens directly once you're signed in.
+                  Sign in once with <b>Remember me</b> ticked — after that, Step&nbsp;2 lands
+                  straight on the job. (RippleHire drops the job link when it sends you
+                  through login, so sign in first, then click Step&nbsp;2.)
                 </span>
               </div>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 16, fontSize: 13, color: '#0f172a', cursor: 'pointer' }}>
