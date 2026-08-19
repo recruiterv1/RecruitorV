@@ -795,18 +795,21 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 
-                <div className="flex flex-col">
-                  <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
-                    Position ID <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="pos_id"
-                    value={form.pos_id}
-                    disabled
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 bg-gray-100 text-gray-500 font-mono text-sm"
-                  />
-                </div>
+                {/* Position ID is internal — hidden on the public employer page. */}
+                {!publicMode && (
+                  <div className="flex flex-col">
+                    <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
+                      Position ID <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="pos_id"
+                      value={form.pos_id}
+                      disabled
+                      className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 bg-gray-100 text-gray-500 font-mono text-sm"
+                    />
+                  </div>
+                )}
 
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
@@ -1069,7 +1072,8 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                   </label>
                 )}
 
-                {/* Add Coach - Optional Field */}
+                {/* Add Coach - Optional Field (internal only; hidden on the public employer page) */}
+                {!publicMode && (
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     Add Coach <span className="text-gray-400">(Optional)</span>
@@ -1145,6 +1149,7 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                     Search by name or specialization. Select multiple coaches.
                   </p>
                 </div>
+                )}
 
               </div>
             </div>
@@ -1232,6 +1237,26 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                     {form.position_tier && !overviewLoading && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-normal">From tier: {form.position_tier}</span>}
                     {!form.position_tier && overviewAutoFilled && !overviewLoading && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-normal">Auto-filled</span>}
                   </label>
+                  {publicMode ? (
+                    /* Public employer page: fixed set of percentage slabs, saved as tier T1. */
+                    <select
+                      name="commison"
+                      value={form.commison}
+                      onChange={(e) => setForm(prev => ({
+                        ...prev,
+                        commison: e.target.value,
+                        commission_type: 'percentage',
+                        position_tier: 'T1',
+                      }))}
+                      className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm"
+                      required
+                    >
+                      <option value="">Select commission</option>
+                      {['8.33', '10', '12', '15', '20'].map(v => (
+                        <option key={v} value={v}>{v}%</option>
+                      ))}
+                    </select>
+                  ) : (
                   <div className="relative">
                     {form.commission_type === 'fixed' && (
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-semibold">Rs.</span>
@@ -1250,6 +1275,7 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-semibold">%</span>
                     )}
                   </div>
+                  )}
                 </div>
 
               </div>
@@ -1336,7 +1362,8 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                   />
                 </div>
 
-                {/* Add Expert - Optional Field */}
+                {/* Add Expert - Optional Field (internal only; hidden on the public employer page) */}
+                {!publicMode && (
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     Add Expert <span className="text-gray-400">(Optional)</span>
@@ -1412,6 +1439,7 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
                     Search by name or specialization. Select multiple experts.
                   </p>
                 </div>
+                )}
               </div>
             </div>
 

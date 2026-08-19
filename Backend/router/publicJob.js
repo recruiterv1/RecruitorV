@@ -181,17 +181,32 @@ router.post('/admin/approve/:id', managerAuth, async (req, res) => {
       return res.status(409).json({ success: false, message: 'That login email is already used by another company.' });
     }
 
+    // Carry the employer's commission (as tier T1) and company overview onto the
+    // company record so future positions inherit them.
+    const commissionFields = pos.commison ? {
+      commisson: String(pos.commison),
+      commissionType: pos.commission_type || 'percentage',
+      commissionTiers: [{ type: pos.commission_type || 'percentage', tier: 'T1', value: String(pos.commison) }],
+    } : {};
+    const overviewField = pos.comp_view ? { overview: String(pos.comp_view) } : {};
+
     // Create the company if it doesn't exist yet.
     if (!company) {
       const ref = COMPANY.doc();
       await ref.set({
         name: companyName, lower: lc(companyName),
         questions: Array.isArray(pos.client_questions) ? pos.client_questions : [],
+        ...commissionFields, ...overviewField,
         createdAt: new Date(), createdFromPublicPost: true,
       });
       company = { id: ref.id, name: companyName };
-    } else if ((!company.questions || !company.questions.length) && Array.isArray(pos.client_questions) && pos.client_questions.length) {
-      await companyF.updateCompany(company.id, { questions: pos.client_questions });
+    } else {
+      const patch = {};
+      if ((!company.questions || !company.questions.length) && Array.isArray(pos.client_questions) && pos.client_questions.length) patch.questions = pos.client_questions;
+      // Only fill blanks on an existing company — never overwrite what's already set.
+      if (!company.commisson && commissionFields.commisson) Object.assign(patch, commissionFields);
+      if (!company.overview && overviewField.overview) Object.assign(patch, overviewField);
+      if (Object.keys(patch).length) await companyF.updateCompany(company.id, patch);
     }
 
     // Set the portal login + assign the SPOC(s).
