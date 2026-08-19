@@ -1,0 +1,25 @@
+# Change Leaders — clean (extensionless) URLs + old-URL compatibility
+Options -MultiViews
+DirectoryIndex index.html
+
+RewriteEngine On
+
+# 1) Redirect any direct ".html" request to its clean URL (keeps any /subfolder prefix)
+RewriteCond %{THE_REQUEST} \s([^?]*)\.html[\s?] [NC]
+RewriteRule ^ %1 [R=301,NE,L]
+
+# 2) Old live-site slugs -> new pages (kept working, content served in place)
+RewriteRule ^high-paying-banking-jobs/?$                    banking.html      [L]
+RewriteRule ^training-comprehensive-job-training-courses/?$ training.html     [L]
+RewriteRule ^startup-hr-solutions/?$                        startup-hr.html   [L]
+RewriteRule ^current-openings-2/?$                          openings.html     [L]
+RewriteRule ^current-openings/?$                            openings.html     [L]
+RewriteRule ^sub-vendors/?$                                 sub-vendorship.html [L]
+RewriteRule ^campus/?$                                      b-school.html     [L]
+RewriteRule ^campus1/?$                                     b-school.html     [L]
+RewriteRule ^podcast/?$                                     events.html       [L]
+
+# 3) Clean URL -> .html (handles with/without trailing slash; real files/dirs untouched)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-z0-9-]+)/?$ $1.html [L]
