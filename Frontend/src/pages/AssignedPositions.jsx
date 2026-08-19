@@ -72,32 +72,12 @@ const AssignedPositions = () => {
     return st === '' || st.includes('active');
   };
 
-  // Open the Submit Candidate modal — same flow as clicking in dash_view.
-  // Fetch full position detail to get clientspoc / hr_name for the form.
-  const handleSubmitCandidate = async (e, position) => {
+  // Submit Candidate → open the live position page (v2) with the form already open,
+  // instead of the old in-page modal.
+  const handleSubmitCandidate = (e, position) => {
     e.stopPropagation();
-    if (loadingApplyId) return;
-    if (!isPositionActive(position)) return; // never open the modal for inactive positions
-    setLoadingApplyId(position.pos_id);
-    try {
-      let full = position;
-      try {
-        const res = await axios.get(`/candidate/position/${position.pos_id}`);
-        if (res.data) full = { ...position, ...res.data };
-      } catch {
-        // fall back to the data we already have
-      }
-      setApplyPos({
-        pos_id: position.pos_id,
-        client: full.client || position.client || '',
-        clientspoc: full.clientspoc || '',
-        pos_name: full.position || position.position || '',
-        hr_name: full.hr_name || position.hr_name || '',
-      });
-      setIsApplyOpen(true);
-    } finally {
-      setLoadingApplyId(null);
-    }
+    if (!isPositionActive(position)) return;   // never for inactive/paused positions
+    navigate(`/dash_view/${position.pos_id}?submit=1`);
   };
 
   const closeApplyModal = () => {
@@ -638,21 +618,6 @@ const AssignedPositions = () => {
         </div>
       </div>
 
-      {/* Submit Candidate Modal — same flow as dash_view */}
-      {applyPos && (
-        <ApplyModal isOpen={isApplyOpen} onClose={closeApplyModal}>
-          <SubmitCandidateTabs
-            pos_id={applyPos.pos_id}
-            client={applyPos.client}
-            clientspoc={applyPos.clientspoc}
-            pos_name={applyPos.pos_name}
-            hr_name={applyPos.hr_name}
-            prefill={useResumeCand}
-            onClose={closeApplyModal}
-            onSubmitted={() => { clearUseResume(); fetchAssignedPositions(); }}
-          />
-        </ApplyModal>
-      )}
     </div>
   );
 };
