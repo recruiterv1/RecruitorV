@@ -894,11 +894,16 @@ const Ad_Candi = ({ clientSpocView = false, recruiterView = false, directOnly = 
       // (recRole: 'Candidate'). When a recruiter's share link brings in a candidate,
       // source stays 'direct_apply' but recRole is 'Recruiter' — those belong in ad_panel.
       const isSelfApply = (c) => c.source === 'direct_apply' && c.recRole !== 'Recruiter';
+      // A direct applicant still sitting at 'Applied' has not been verified by whoever
+      // shared the link, so it must not reach the ClientSPOC's All Candidates yet — it
+      // appears there only once the recruiter/coach submits it.
+      const awaitingOwnerReview = (c) =>
+        c.source === 'direct_apply' && (c.statusa || '').toLowerCase().trim() === 'applied';
       // directOnly  → show ONLY pure self-applies (clientspoc-direct-applications)
-      // normal view → exclude self-applies and bulk uploads; recruiter-link direct-applies included
+      // normal view → exclude self-applies, unverified direct applicants and bulk uploads
       const data = directOnly
         ? (res.data || []).filter(isSelfApply)
-        : (res.data || []).filter(c => !isSelfApply(c) && c.source !== 'clientspoc_bulk');
+        : (res.data || []).filter(c => !isSelfApply(c) && !awaitingOwnerReview(c) && c.source !== 'clientspoc_bulk');
       setAll(data);
       return data;
     } catch (e) { console.error(e); return []; }
