@@ -894,11 +894,9 @@ const Ad_Candi = ({ clientSpocView = false, recruiterView = false, directOnly = 
       // (recRole: 'Candidate'). When a recruiter's share link brings in a candidate,
       // source stays 'direct_apply' but recRole is 'Recruiter' — those belong in ad_panel.
       const isSelfApply = (c) => c.source === 'direct_apply' && c.recRole !== 'Recruiter';
-      // A direct applicant still sitting at 'Applied' has not been verified by whoever
-      // shared the link, so it must not reach the ClientSPOC's All Candidates yet — it
-      // appears there only once the recruiter/coach submits it.
-      const awaitingOwnerReview = (c) =>
-        c.source === 'direct_apply' && (c.statusa || '').toLowerCase().trim() === 'applied';
+      // 'Applied' means nobody has verified the candidate yet — they belong on the
+      // share-link owner's Direct Applicants page, never in All Candidates.
+      const awaitingOwnerReview = (c) => (c.statusa || '').toLowerCase().trim() === 'applied';
       // directOnly  → show ONLY pure self-applies (clientspoc-direct-applications)
       // normal view → exclude self-applies, unverified direct applicants and bulk uploads
       const data = directOnly
@@ -989,6 +987,14 @@ const Ad_Candi = ({ clientSpocView = false, recruiterView = false, directOnly = 
     d.sort((a, b) => ts(b) - ts(a));
     return d;
   }, [all, filters, showAllStatuses, clientSpocView, directOnly, screen]);
+
+  // How many rows the default ClientSPOC filter is holding back, so the toggle to
+  // reveal them is discoverable instead of buried in the filter panel.
+  const hiddenInactiveCount = useMemo(() => (
+    (clientSpocView && !directOnly && !showAllStatuses)
+      ? all.filter(c => INACTIVE_STATUSES.has(c.statusa)).length
+      : 0
+  ), [all, clientSpocView, directOnly, showAllStatuses]);
 
   // Direct applications still at their initial (un-actioned) status
   const notUpdatedCount = useMemo(
@@ -1565,7 +1571,23 @@ const Ad_Candi = ({ clientSpocView = false, recruiterView = false, directOnly = 
             )}
           </div>
         ) : (
-          <MaterialReactTable table={table} />
+          <>
+            {hiddenInactiveCount > 0 && (
+              <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
+                background:'#fffbeb', border:'1px solid #fde68a', borderRadius:10,
+                padding:'9px 14px', marginBottom:10, fontSize:13, color:'#92400e' }}>
+                <span>
+                  <b>{hiddenInactiveCount}</b> rejected / on-hold candidate{hiddenInactiveCount === 1 ? ' is' : 's are'} hidden.
+                </span>
+                <button onClick={() => setShowAllStatuses(true)}
+                  style={{ background:'#b45309', color:'#fff', border:'none', borderRadius:7,
+                    padding:'4px 12px', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                  Show them
+                </button>
+              </div>
+            )}
+            <MaterialReactTable table={table} />
+          </>
         )}
       </div>
 

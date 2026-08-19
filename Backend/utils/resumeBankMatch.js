@@ -16,7 +16,12 @@ const STOP = new Set((
   'years year experience experienced work working knowledge skills skill ability ' +
   'strong good excellent using use used team role job position description new per ' +
   'responsibilities responsibility candidate candidates require required requirements ' +
-  'including include includes etc across within about also'
+  'including include includes etc across within about also ' +
+  'relevant hands understanding should worked end ends issue issues gathering ' +
+  'projects project teams global cross immediate hiring looking joining notice ' +
+  'excellent effective efficient strong proven demonstrated ability abilities ' +
+  'communication interpersonal stakeholder stakeholders environment environments ' +
+  'preferred plus added advantage mandatory desirable overall total minimum maximum'
 ).split(/\s+/));
 
 const lc = (s) => (s || '').toString().toLowerCase().trim();
@@ -39,6 +44,7 @@ const tokenize = (str) => {
     .toLowerCase()
     .replace(/[^a-z0-9\s.#+]/g, ' ')
     .split(/\s+/)
+    .map(w => w.replace(/\.+$/, ''))    // "projects." -> "projects" (keeps .net / node.js)
     .filter(w => w.length > 2 && !STOP.has(w))
     .filter(w => (seen.has(w) ? false : (seen.add(w), true)));
 };
