@@ -261,11 +261,8 @@ router.post('/register-recruiter', vendorAuth, async (req, res) => {
 
     // Send welcome email
     try {
-      const { sendEmailFull } = require('../utils/email');
-      await sendEmailFull({
-        to: email.toLowerCase().trim(),
-        subject: 'Your RecruiterV Recruiter Account is Ready',
-        htmlContent: `<!DOCTYPE html>
+      const { sendEmailFull, renderEmail } = require('../utils/email');
+      const _fallbackHtml = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 0;">
@@ -294,8 +291,13 @@ router.post('/register-recruiter', vendorAuth, async (req, res) => {
       </table>
     </td></tr>
   </table>
-</body></html>`
-      });
+</body></html>`;
+      const _v = await renderEmail('vendorWelcome', {
+        name, email: email.toLowerCase().trim(), password,
+        loginUrl: 'https://www.recruiterv.com/log_rec',
+        vendorName: req.vendor?.name || 'your vendor',
+      }, { subject: 'Your RecruiterV Recruiter Account is Ready', htmlContent: _fallbackHtml });
+      await sendEmailFull({ to: email.toLowerCase().trim(), subject: _v.subject, htmlContent: _v.htmlContent });
     } catch (emailErr) { console.error('Vendor register-recruiter email failed:', emailErr.message); }
 
     return res.json({ success: true, message: 'Recruiter registered successfully', data: { id: newRecruiter.id, name, email: email.toLowerCase().trim() } });

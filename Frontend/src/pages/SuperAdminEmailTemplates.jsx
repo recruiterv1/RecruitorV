@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperat
 import axios from 'axios';
 import {
   Mail, Loader2, Save, Send, RotateCcw, Search, CheckCircle2, Circle, Code2, Eye, Plus, Trash2,
-  Bold, Italic, Underline, List, ListOrdered, Link2, Heading, Eraser
+  Bold, Italic, Underline, List, ListOrdered, Link2, Heading, Eraser,
+  Image as ImageIcon, Upload
 } from 'lucide-react';
 
 const substitute = (str, vars = {}) =>
@@ -16,6 +17,7 @@ const detectVars = (...strs) => {
 // ── Rich text (WYSIWYG) editor with a raw-HTML toggle ────────────────────────
 const RichEditor = forwardRef(({ resetToken, initialHtml, onChange }, ref) => {
   const el = useRef(null);
+  const imgInput = useRef(null);
   const [source, setSource] = useState(false);
 
   useEffect(() => { if (el.current && !source) el.current.innerHTML = initialHtml || ''; /* eslint-disable-next-line */ }, [resetToken]);
@@ -45,6 +47,30 @@ const RichEditor = forwardRef(({ resetToken, initialHtml, onChange }, ref) => {
         <Btn title="Bulleted list" onClick={() => exec('insertUnorderedList')}><List size={15} /></Btn>
         <Btn title="Numbered list" onClick={() => exec('insertOrderedList')}><ListOrdered size={15} /></Btn>
         <Btn title="Link" onClick={() => { const u = window.prompt('Link URL'); if (u) exec('createLink', u); }}><Link2 size={15} /></Btn>
+        {/* Image / QR code. Email clients can't load local files, so an uploaded
+            image is embedded as a data URI and a pasted URL is used as-is. */}
+        <Btn title="Insert image by URL" onClick={() => {
+          const u = window.prompt('Image URL (QR code, logo, banner…)');
+          if (!u) return;
+          const w = window.prompt('Width in pixels (blank = original)', '160');
+          const width = w && /^\d+$/.test(w.trim()) ? ` width="${w.trim()}"` : '';
+          exec('insertHTML', `<img src="${u}"${width} style="max-width:100%;height:auto;" alt="" />`);
+        }}><ImageIcon size={15} /></Btn>
+        <Btn title="Upload image / QR (embedded in the email)" onClick={() => imgInput.current?.click()}><Upload size={15} /></Btn>
+        <input ref={imgInput} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={e => {
+            const f = e.target.files?.[0]; if (!f) return;
+            if (f.size > 200 * 1024) {
+              alert('Please use an image under 200 KB — larger images get clipped by email clients (Gmail clips messages over ~102 KB of HTML).');
+              e.target.value = ''; return;
+            }
+            const r = new FileReader();
+            r.onload = () => {
+              exec('insertHTML', `<img src="${r.result}" width="160" style="max-width:100%;height:auto;" alt="" />`);
+              e.target.value = '';
+            };
+            r.readAsDataURL(f);
+          }} />
         <Btn title="Clear formatting" onClick={() => exec('removeFormat')}><Eraser size={15} /></Btn>
         <button type="button" onClick={() => { if (source) { /* leaving source: re-render handled by parent reset */ } setSource(s => !s); }}
           className={`ml-auto text-xs font-semibold px-2 py-1 rounded ${source ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>

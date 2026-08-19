@@ -100,19 +100,19 @@ router.post('/submit', async (req, res) => {
     // Confirmation email to the employer who posted (fire-and-forget).
     try {
       if (data.posterEmail) {
-        const { sendEmailFull } = require('../utils/email');
-        await sendEmailFull({
-          to: data.posterEmail,
-          toName: data.posterName || 'there',
+        const { sendEmailFull, renderEmail } = require('../utils/email');
+        const vars = { posterName: data.posterName || 'there', positionTitle: data.position, companyName };
+        const _r = await renderEmail('employerSubmissionReceived', vars, {
           subject: 'We received your position — RecruiterV',
           htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
-            <p>Hi ${data.posterName || 'there'},</p>
+            <p>Hi ${vars.posterName},</p>
             <p>Thank you for posting <b>${data.position}</b> for <b>${companyName}</b> on RecruiterV.
             Your application has been <b>received</b> and is pending review by our team.</p>
             <p>Once it's <b>approved</b>, we'll email you the login details so you can manage this position and its candidates at recruiterv.com/company.</p>
             <p>Regards,<br/>Team RecruiterV</p>
           </div>`,
         });
+        await sendEmailFull({ to: data.posterEmail, toName: vars.posterName, subject: _r.subject, htmlContent: _r.htmlContent });
       }
     } catch (mailErr) { console.error('employer confirmation email failed:', mailErr.message); }
 
@@ -231,37 +231,43 @@ router.post('/admin/approve/:id', managerAuth, async (req, res) => {
 
     // Emails: company gets its login + all SPOC details; each SPOC gets the assignment.
     try {
-      const { sendEmailFull } = require('../utils/email');
+      const { sendEmailFull, renderEmail } = require('../utils/email');
       const spocLines = clientspocs.map(s => `${s.name || '—'} — ${s.email}${s.phone ? ' — ' + s.phone : ''}`).join('<br/>');
 
-      await sendEmailFull({
-        to: lc(companyEmail), toName: companyName,
-        subject: 'Your RecruiterV company account is approved',
-        htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
-          <p>Hello ${companyName},</p>
-          <p>Your position on RecruiterV has been <b>approved</b>. You can now log in to manage your positions and candidates.</p>
-          <p><b>Login:</b> https://www.recruiterv.com/company<br/>
-          <b>Email:</b> ${lc(companyEmail)}<br/>
-          <b>Password:</b> ${password}</p>
-          <p><b>Your Client SPOC${clientspocs.length > 1 ? 's' : ''}</b><br/>${spocLines}</p>
-          <p>Please change your password after your first login.</p>
-          <p>Regards,<br/>Team RecruiterV</p>
-        </div>`,
-      });
-
-      for (const s of clientspocs) {
-        await sendEmailFull({
-          to: s.email, toName: s.name || 'Client SPOC',
-          subject: `You've been assigned to ${companyName}`,
+      const loginUrl = 'https://www.recruiterv.com/company';
+      const _c = await renderEmail('companyApproved',
+        { companyName, email: lc(companyEmail), password, loginUrl, spocDetails: spocLines },
+        {
+          subject: 'Your RecruiterV company account is approved',
           htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
-            <p>Hi ${s.name || 'there'},</p>
-            <p>You've been assigned as a <b>Client SPOC</b> for <b>${companyName}</b>. A position they posted (<b>${pos.position}</b>) is now in your approval queue — review and make it live from your dashboard.</p>
-            <p><b>Company:</b> ${companyName}<br/>
-            <b>Company login email:</b> ${lc(companyEmail)}<br/>
-            <b>Posted by:</b> ${pos.posterName || '—'}${pos.posterPhone ? ' · ' + pos.posterPhone : ''}${pos.posterEmail ? ' · ' + pos.posterEmail : ''}</p>
+            <p>Hello ${companyName},</p>
+            <p>Your position on RecruiterV has been <b>approved</b>. You can now log in to manage your positions and candidates.</p>
+            <p><b>Login:</b> ${loginUrl}<br/>
+            <b>Email:</b> ${lc(companyEmail)}<br/>
+            <b>Password:</b> ${password}</p>
+            <p><b>Your Client SPOC${clientspocs.length > 1 ? 's' : ''}</b><br/>${spocLines}</p>
+            <p>Please change your password after your first login.</p>
             <p>Regards,<br/>Team RecruiterV</p>
           </div>`,
         });
+      await sendEmailFull({ to: lc(companyEmail), toName: companyName, subject: _c.subject, htmlContent: _c.htmlContent });
+
+      for (const s of clientspocs) {
+        const postedBy = `${pos.posterName || '—'}${pos.posterPhone ? ' · ' + pos.posterPhone : ''}${pos.posterEmail ? ' · ' + pos.posterEmail : ''}`;
+        const _s = await renderEmail('companySpocAssigned',
+          { spocName: s.name || 'there', companyName, positionTitle: pos.position, companyEmail: lc(companyEmail), postedBy },
+          {
+            subject: `You've been assigned to ${companyName}`,
+            htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
+              <p>Hi ${s.name || 'there'},</p>
+              <p>You've been assigned as a <b>Client SPOC</b> for <b>${companyName}</b>. A position they posted (<b>${pos.position}</b>) is now in your approval queue — review and make it live from your dashboard.</p>
+              <p><b>Company:</b> ${companyName}<br/>
+              <b>Company login email:</b> ${lc(companyEmail)}<br/>
+              <b>Posted by:</b> ${postedBy}</p>
+              <p>Regards,<br/>Team RecruiterV</p>
+            </div>`,
+          });
+        await sendEmailFull({ to: s.email, toName: s.name || 'Client SPOC', subject: _s.subject, htmlContent: _s.htmlContent });
       }
     } catch (mailErr) { console.error('approve emails failed:', mailErr.message); }
 
@@ -294,19 +300,20 @@ router.post('/admin/reject/:id', managerAuth, async (req, res) => {
     // Let the employer know, politely.
     try {
       if (pos.posterEmail) {
-        const { sendEmailFull } = require('../utils/email');
-        await sendEmailFull({
-          to: lc(pos.posterEmail), toName: pos.posterName || 'there',
+        const { sendEmailFull, renderEmail } = require('../utils/email');
+        const vars = { posterName: pos.posterName || 'there', positionTitle: pos.position, companyName: pos.companyName || pos.client, reason: reason || '' };
+        const _r = await renderEmail('employerSubmissionRejected', vars, {
           subject: 'Update on your position — RecruiterV',
           htmlContent: `<div style="font-family:Arial,sans-serif;font-size:14px;color:#1f2937;line-height:1.6">
-            <p>Hi ${pos.posterName || 'there'},</p>
-            <p>Thank you for your interest in RecruiterV and for submitting <b>${pos.position}</b> for <b>${pos.companyName || pos.client}</b>.</p>
+            <p>Hi ${vars.posterName},</p>
+            <p>Thank you for your interest in RecruiterV and for submitting <b>${pos.position}</b> for <b>${vars.companyName}</b>.</p>
             <p>We're sorry to let you know that we're unable to take this position forward at this time.</p>
             ${reason ? `<p><b>Note from our team:</b> ${reason}</p>` : ''}
             <p>You're welcome to reach out or submit again in the future — we'd be glad to help with your hiring needs.</p>
             <p>Regards,<br/>Team RecruiterV</p>
           </div>`,
         });
+        await sendEmailFull({ to: lc(pos.posterEmail), toName: vars.posterName, subject: _r.subject, htmlContent: _r.htmlContent });
       }
     } catch (mailErr) { console.error('rejection email failed:', mailErr.message); }
 

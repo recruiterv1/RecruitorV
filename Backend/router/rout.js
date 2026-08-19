@@ -455,11 +455,24 @@ router.post("/otp_verify", async (req, res) => {
     }
 
     // ---- SUCCESS ----
+    // Each user type gets its own editable template (registrationPendingRecruiter /
+    // …Coach / …Expert) so SuperAdmin can word them differently. If a role-specific
+    // template hasn't been published, this falls back to the shared one.
     const sendPendingEmail = async (name, role, toEmail) => {
       try {
-        const _r = await renderEmail('registrationPending',
-          { name, userType: role },
-          { subject: `We've received your RecruiterV registration — under review`, htmlContent: templates.registrationPending(name, role) });
+        const r = (role || '').toString().toLowerCase();
+        const roleKey = r.includes('coach') ? 'registrationPendingCoach'
+          : r.includes('expert') ? 'registrationPendingExpert'
+          : 'registrationPendingRecruiter';
+        const vars = { name, userType: role };
+        const fallback = {
+          subject: `We've received your RecruiterV registration — under review`,
+          htmlContent: templates.registrationPending(name, role),
+        };
+        // Role-specific first; if unpublished, renderEmail returns the fallback —
+        // in that case try the shared template before using the built-in HTML.
+        let _r = await renderEmail(roleKey, vars, { subject: '', htmlContent: '' });
+        if (!_r.htmlContent) _r = await renderEmail('registrationPending', vars, fallback);
         await sendEmailFull({ to: toEmail, subject: _r.subject, htmlContent: _r.htmlContent, fromEmail: 'noreply@recruiterv.com', fromName: 'RecruiterV' });
       } catch (err) { console.error('Registration pending email failed:', err); }
     };

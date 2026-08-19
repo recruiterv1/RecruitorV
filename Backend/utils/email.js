@@ -593,7 +593,7 @@ const templates = {
           <div style="background:#f8fafc;border-left:4px solid ${c.accent};border-radius:12px;padding:20px 24px;margin-bottom:24px;">
             <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#94a3b8;letter-spacing:0.8px;text-transform:uppercase;">Current Status</p>
             <p style="margin:0;font-size:15px;font-weight:700;color:#1f2937;">⏳ Under Review</p>
-            <p style="margin:6px 0 0;font-size:13px;color:#6b7280;line-height:1.6;">Our technical team is carefully reviewing your details. We will get back to you within <strong>24 hours</strong>.</p>
+            <p style="margin:6px 0 0;font-size:13px;color:#6b7280;line-height:1.6;">Our technical team is carefully reviewing your details.</p>
           </div>
 
           <!-- What happens next -->

@@ -62,6 +62,107 @@ const TEMPLATES = [
       <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
   },
   {
+    key: 'registrationPendingRecruiter', name: 'Registration received — Recruiter', recipient: 'Recruiter',
+    subject: "We've received your RecruiterV registration — under review",
+    variables: ['name', 'userType'],
+    sample: { name: 'Sanjay', userType: 'Recruiter' },
+    body: brandWrap(`
+      <p>Dear {{name}},</p>
+      <p>Thank you for registering on RecruiterV as a <strong>Recruiter</strong>. Your account is currently under review by our team.</p>
+      <p>Once approved you can start working on open positions and submitting candidates.</p>
+      <p>You'll receive another email as soon as your account is approved.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'registrationPendingCoach', name: 'Registration received — Coach', recipient: 'Coach',
+    subject: "We've received your RecruiterV registration — under review",
+    variables: ['name', 'userType'],
+    sample: { name: 'Sanjay', userType: 'Coach' },
+    body: brandWrap(`
+      <p>Dear {{name}},</p>
+      <p>Thank you for registering on RecruiterV as a <strong>Coach</strong>. Your account is currently under review by our team.</p>
+      <p>Once approved you can build your team of recruiters and guide them on live positions.</p>
+      <p>You'll receive another email as soon as your account is approved.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'registrationPendingExpert', name: 'Registration received — Expert', recipient: 'Expert',
+    subject: "We've received your RecruiterV registration — under review",
+    variables: ['name', 'userType'],
+    sample: { name: 'Sanjay', userType: 'Expert' },
+    body: brandWrap(`
+      <p>Dear {{name}},</p>
+      <p>Thank you for registering on RecruiterV as a <strong>Expert</strong>. Your account is currently under review by our team.</p>
+      <p>Once approved you can support recruiters with your domain expertise on live positions.</p>
+      <p>You'll receive another email as soon as your account is approved.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'vendorWelcome', name: 'Vendor welcome (account ready)', recipient: 'Vendor recruiter',
+    subject: 'Your RecruiterV Recruiter Account is Ready',
+    variables: ['name', 'email', 'password', 'loginUrl', 'vendorName'],
+    sample: { name: 'Sanjay', email: 'sanjay@acme.com', password: 'Temp@1234', loginUrl: 'https://www.recruiterv.com/log_rec', vendorName: 'Acme Staffing' },
+    body: brandWrap(`
+      <p>Dear {{name}},</p>
+      <p>Your RecruiterV account has been created by <strong>{{vendorName}}</strong> and is ready to use.</p>
+      <p><strong>Login:</strong> {{loginUrl}}<br/>
+      <strong>Email:</strong> {{email}}<br/>
+      <strong>Password:</strong> {{password}}</p>
+      <p>Please change your password after your first sign-in.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'companyApproved', name: 'Company approved (login + SPOC)', recipient: 'Company',
+    subject: 'Your RecruiterV company account is approved',
+    variables: ['companyName', 'email', 'password', 'loginUrl', 'spocDetails'],
+    sample: { companyName: 'Acme Technologies', email: 'hr@acme.com', password: 'Temp@1234', loginUrl: 'https://www.recruiterv.com/company', spocDetails: 'Chandan Dhami — chandan@changeleaders.in — 9876543210' },
+    body: brandWrap(`
+      <p>Hello {{companyName}},</p>
+      <p>Your position on RecruiterV has been <strong>approved</strong>. You can now sign in to manage your positions and candidates.</p>
+      <p><strong>Login:</strong> {{loginUrl}}<br/>
+      <strong>Email:</strong> {{email}}<br/>
+      <strong>Password:</strong> {{password}}</p>
+      <p><strong>Your Client SPOC(s)</strong><br/>{{spocDetails}}</p>
+      <p>Please change your password after your first sign-in.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'companySpocAssigned', name: 'ClientSPOC assigned to a company', recipient: 'ClientSPOC',
+    subject: "You've been assigned to {{companyName}}",
+    variables: ['spocName', 'companyName', 'positionTitle', 'companyEmail', 'postedBy'],
+    sample: { spocName: 'Chandan', companyName: 'Acme Technologies', positionTitle: 'Wealth Manager', companyEmail: 'hr@acme.com', postedBy: 'Priya — 9876543210 — priya@acme.com' },
+    body: brandWrap(`
+      <p>Hi {{spocName}},</p>
+      <p>You've been assigned as a <strong>Client SPOC</strong> for <strong>{{companyName}}</strong>. A position they posted (<strong>{{positionTitle}}</strong>) is now in your approval queue.</p>
+      <p><strong>Company login email:</strong> {{companyEmail}}<br/>
+      <strong>Posted by:</strong> {{postedBy}}</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'employerSubmissionReceived', name: 'Employer — position received', recipient: 'Employer',
+    subject: 'We received your position — RecruiterV',
+    variables: ['posterName', 'positionTitle', 'companyName'],
+    sample: { posterName: 'Priya', positionTitle: 'Wealth Manager', companyName: 'Acme Technologies' },
+    body: brandWrap(`
+      <p>Hi {{posterName}},</p>
+      <p>Thank you for posting <strong>{{positionTitle}}</strong> for <strong>{{companyName}}</strong> on RecruiterV. Your application has been <strong>received</strong> and is pending review by our team.</p>
+      <p>Once approved, we'll email you the login details so you can manage this position and its candidates.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'employerSubmissionRejected', name: 'Employer — position not taken forward', recipient: 'Employer',
+    subject: 'Update on your position — RecruiterV',
+    variables: ['posterName', 'positionTitle', 'companyName', 'reason'],
+    sample: { posterName: 'Priya', positionTitle: 'Wealth Manager', companyName: 'Acme Technologies', reason: 'Outside our current hiring focus.' },
+    body: brandWrap(`
+      <p>Hi {{posterName}},</p>
+      <p>Thank you for your interest in RecruiterV and for submitting <strong>{{positionTitle}}</strong> for <strong>{{companyName}}</strong>.</p>
+      <p>We're sorry to let you know that we're unable to take this position forward at this time.</p>
+      <p><strong>Note from our team:</strong> {{reason}}</p>
+      <p>You're welcome to submit again in the future.</p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
     key: 'accountApproved', name: 'Account approved', recipient: 'New user',
     subject: 'Your RecruiterV account is approved 🎉',
     variables: ['name', 'userType', 'loginUrl'],
