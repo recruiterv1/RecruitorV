@@ -932,6 +932,25 @@ async function getSubmitterPhoneDir(db) {
   return map;
 }
 
+// Fields the ClientSPOC candidates page never reads. Dropping them takes the
+// response from ~11.6MB to ~2.3MB — the raw docs carry resumeText (~4.9MB) and
+// matchTokens (~2.2MB), which was pushing the payload past the Cloud Functions
+// response limit and stopping the page from loading at all.
+const SPOC_LIST_OMIT = new Set([
+  'resumeText', 'matchTokens', 'skillsTextTokens', 'skillsText', 'skills',
+  'client_answers', 'referrerProfile', 'statusChangedAt', 'statusChangedByName',
+  'recId', 'matchEvaluatedAt', 'matchMethod',
+  'tech_category', 'tech_subcategory', 'tech_exp', 'skill_type',
+  'nontech_category', 'nontech_subcategory',
+  'referredAt', 'referredBy', 'referredById', 'referredByName', 'referredByPhone',
+  'referredByRole', 'referredByPlan', 'last_day', 'self_rate',
+]);
+const slimSpocCandidate = (data, id) => {
+  const out = { id };
+  for (const k in data) if (!SPOC_LIST_OMIT.has(k)) out[k] = data[k];
+  return out;
+};
+
 router.get('/show/clientspoc/candi', async (req, res) => {
   try {
     const token = req.cookies?.__session;
@@ -961,7 +980,7 @@ router.get('/show/clientspoc/candi', async (req, res) => {
         : Promise.resolve({ docs: [] }),
       getPositionsLite(db),
     ]);
-    spocSnap.docs.forEach(doc => { byId[doc.id] = { ...doc.data(), id: doc.id }; });
+    spocSnap.docs.forEach(doc => { byId[doc.id] = slimSpocCandidate(doc.data(), doc.id); });
 
     // 2) Plus all candidates on positions owned by this ClientSPOC (case-insensitive).
     const myPosIds = [...new Set(
@@ -973,7 +992,7 @@ router.get('/show/clientspoc/candi', async (req, res) => {
       if (batch.length) batchQueries.push(db.collection('candidate_db').where('pos_id', 'in', batch).get());
     }
     const batchSnaps = await Promise.all(batchQueries);
-    batchSnaps.forEach(snap => snap.docs.forEach(doc => { byId[doc.id] = byId[doc.id] || { ...doc.data(), id: doc.id }; }));
+    batchSnaps.forEach(snap => snap.docs.forEach(doc => { byId[doc.id] = byId[doc.id] || slimSpocCandidate(doc.data(), doc.id); }));
 
     const list = Object.values(byId);
 
