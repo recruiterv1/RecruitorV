@@ -1836,12 +1836,16 @@ router.get('/pos/clientspoc/my-positions', authMiddleware, async (req, res) => {
       const recruitersCount = Object.keys(recruiterGroups).length;
 
       return {
+        // Every stored field first (JR/RippleHire id, skill sub-category,
+        // specialization, education, experience band, employment type, work mode,
+        // openings, certifications, interview rounds …). Without this the edit form
+        // opens with those inputs blank and saving wipes them.
+        ...pos,
         id: pos.id,
         pos_id: posId,
         position: pos.position,
         client: pos.client || 'Confidential',
         hr_name: pos.hr_name || 'N/A',
-        // Include ALL fields from the database
         ctcStart: pos.ctcStart || '',
         ctcEnd: pos.ctcEnd || '',
         experience: pos.experience || '',
