@@ -789,7 +789,13 @@ function DashViewV2Inner() {
   // approved) or "Not approved", never "Assign Me".
   // A paused/held/closed position can't take new candidates.
   const positionClosed = ['paused', 'hold', 'on hold', 'closed', 'inactive', 'rejected'].includes((job?.status || '').toString().toLowerCase().trim());
-  const isLTIMindtree = /ltimindtree/i.test(job?.client || '');
+  // RippleHire duplicacy gate — LTIMindtree positions only, and (for now) limited to
+  // the pilot recruiter(s) below while the flow is being validated. Clear this list to
+  // roll it out to everyone.
+  const RH_PILOT_EMAILS = ['atulkumar@yopmail.com'];
+  const rhPilotAllowed = RH_PILOT_EMAILS.length === 0
+    || RH_PILOT_EMAILS.includes((teamUser?.email || '').toLowerCase().trim());
+  const isLTIMindtree = /ltimindtree/i.test(job?.client || '') && rhPilotAllowed;
   const [rhGateOpen, setRhGateOpen] = useState(false);
   const [rhChecked, setRhChecked] = useState(false);
   const [rhOpened, setRhOpened] = useState(false);   // step 1 (sign-in tab) done
