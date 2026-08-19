@@ -43,6 +43,10 @@
         "function": "api"
       },
       {
+        "source": "/api/ripplehire/**",
+        "function": "ripplehire"
+      },
+      {
         "source": "/api/**",
         "function": "api"
       },
@@ -124,7 +128,21 @@
       "source": "Backend",
       "codebase": "default",
       "runtime": "nodejs20",
-      "secrets": ["EMAIL","PASSW","SECKEY","LINKEDIN_CLIENT_ID","LINKEDIN_CLIENT_SECRET","LINKEDIN_REDIRECT_URI","BREVO_SMTP_HOST","BREVO_SMTP_PORT","BREVO_SMTP_USER","BREVO_SMTP_PASS","BREVO_API_KEY","FRONTURL","ANTHROPIC_API_KEY"],
+      "secrets": [
+        "EMAIL",
+        "PASSW",
+        "SECKEY",
+        "LINKEDIN_CLIENT_ID",
+        "LINKEDIN_CLIENT_SECRET",
+        "LINKEDIN_REDIRECT_URI",
+        "BREVO_SMTP_HOST",
+        "BREVO_SMTP_PORT",
+        "BREVO_SMTP_USER",
+        "BREVO_SMTP_PASS",
+        "BREVO_API_KEY",
+        "FRONTURL",
+        "ANTHROPIC_API_KEY"
+      ],
       "ignore": [
         "node_modules",
         "firebase-debug.log",
