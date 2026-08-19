@@ -296,6 +296,18 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
   const [editSaved, setEditSaved]   = useState(false);
   const [editError, setEditError]   = useState('');
 
+  // JD ↔ resume match score for this candidate's position (computed on open).
+  const [jdMatch, setJdMatch] = useState(null);   // null = loading, false = unavailable
+  useEffect(() => {
+    if (!candidate?.id) { setJdMatch(false); return; }
+    let live = true;
+    setJdMatch(null);
+    axios.get(`/addit/candidate/${candidate.id}/jd-match`, { withCredentials: true })
+      .then(r => { if (live) setJdMatch(r.data?.percent == null ? false : r.data); })
+      .catch(() => { if (live) setJdMatch(false); });
+    return () => { live = false; };
+  }, [candidate?.id]);
+
   useEffect(() => {
     setStatus(candidate?.statusa || '');
     setSaved(false);
@@ -464,6 +476,29 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
                 )}
               </div>
             </div>
+            {/* JD ↔ resume match, shown just before the status tag */}
+            {jdMatch !== false && (
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:2, marginRight:10 }}>
+                <span style={{ fontSize:9, fontWeight:700, letterSpacing:0.6, textTransform:'uppercase', color:'rgba(255,255,255,0.75)' }}>
+                  JD Match
+                </span>
+                {jdMatch === null ? (
+                  <span style={{ fontSize:12, fontWeight:700, color:'rgba(255,255,255,0.8)' }}>…</span>
+                ) : (
+                  <span
+                    title={[
+                      jdMatch.matched?.length ? `Matched: ${jdMatch.matched.join(', ')}` : '',
+                      jdMatch.missing?.length ? `Missing: ${jdMatch.missing.join(', ')}` : '',
+                      jdMatch.note || '',
+                    ].filter(Boolean).join('\n')}
+                    style={{ fontSize:13, fontWeight:800, padding:'3px 11px', borderRadius:9, whiteSpace:'nowrap',
+                      background: jdMatch.percent >= 70 ? '#dcfce7' : jdMatch.percent >= 50 ? '#fef9c3' : '#fee2e2',
+                      color:     jdMatch.percent >= 70 ? '#15803d' : jdMatch.percent >= 50 ? '#854d0e' : '#b91c1c' }}>
+                    {jdMatch.percent}%
+                  </span>
+                )}
+              </div>
+            )}
             <StatusBadge status={candidate.statusa} />
           </div>
         </div>

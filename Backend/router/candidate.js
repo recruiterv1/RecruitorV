@@ -1904,6 +1904,73 @@ router.post('/send/status-update', async (req, res) => {
 
 // GET /addit/bank-candidate/:id — full details of a matching/bank candidate
 // (for the "View details" modal).
+// GET /addit/candidate/:id/jd-match — how well this candidate's CV/skills match the
+// JD of the position they were submitted to. Uses the same deterministic matcher as
+// the resume-bank "Matching Candidates" tab (no AI cost), so it works for every
+// candidate — not just the ~9% with an AI matchPercent.
+router.get('/candidate/:id/jd-match', isLoggedIn, async (req, res) => {
+  try {
+    const { db } = require('../router/firebase_ad');
+    const doc = await db.collection('candidate_db').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Candidate not found' });
+    const c = doc.data();
+
+    // Prefer the stored AI score when the position can't be resolved.
+    if (!c.pos_id) {
+      return res.json({ success: true, percent: c.matchPercent ?? null, source: c.matchPercent != null ? 'ai' : null });
+    }
+    const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', String(c.pos_id)).limit(1).get();
+    if (posSnap.empty) {
+      return res.json({ success: true, percent: c.matchPercent ?? null, source: c.matchPercent != null ? 'ai' : null });
+    }
+
+    const { buildJd, scoreWithReason } = require('../utils/resumeBankMatch');
+    const jd = buildJd(posSnap.docs[0].data());
+    if (!jd.totalW) {
+      return res.json({ success: true, percent: c.matchPercent ?? null, source: c.matchPercent != null ? 'ai' : null, note: 'This position has no skill keywords to match against.' });
+    }
+
+    // Score against the WHOLE candidate: parsed resume text plus the structured
+    // profile fields (skills, employer, education, experience, location…), so the
+    // percentage reflects the full record rather than the skills list alone.
+    const asText = (v) => Array.isArray(v) ? v.join(' ')
+      : (v && typeof v === 'object') ? Object.values(v).join(' ')
+      : (v == null ? '' : String(v));
+    const profile = [
+      c.resumeText, c.matchTokens, c.skillsText,
+      asText(c.skills), asText(c.tech_skill), asText(c.nontech_skill),
+      c.skillCategory, c.tech_category, c.tech_subcategory,
+      c.candidate, c.curr_emp, c.highest_education, c.curr_loc, c.curr_state,
+      c.pref_loc, c.pref_state, c.total_exp, c.rel_exp, c.notice_period,
+    ].map(asText).filter(Boolean).join(' ').toLowerCase();
+    const tokens = new Set(profile.replace(/[^a-z0-9\s.#+]/g, ' ').split(/\s+/).filter(t => t.length > 2));
+
+    // Recruiter-submitted candidates often have no parsed resume text and an empty
+    // skills list. Scoring those would show a misleading 0% — which reads as a weak
+    // candidate rather than missing data — so report "not enough data" instead.
+    const hasSkillData = (Array.isArray(c.tech_skill) && c.tech_skill.length)
+      || (Array.isArray(c.skills) && c.skills.length)
+      || !!c.resumeText || !!c.matchTokens || !!c.skillsText;
+    if (!hasSkillData || tokens.size < 8) {
+      return res.json({
+        success: true, percent: c.matchPercent ?? null,
+        source: c.matchPercent != null ? 'ai' : null,
+        note: 'Not enough candidate data (no parsed resume or skills) to score against this JD.',
+      });
+    }
+
+    const { score, matched, missing } = scoreWithReason(jd, { text: profile, tokens });
+    return res.json({
+      success: true, percent: score, source: 'jd',
+      matched: matched.slice(0, 15), missing: missing.slice(0, 15),
+      aiPercent: c.matchPercent ?? null,
+    });
+  } catch (e) {
+    console.error('jd-match error:', e.message);
+    return res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 router.get('/bank-candidate/:id', isLoggedIn, async (req, res) => {
   try {
     const { db } = require('../router/firebase_ad');
