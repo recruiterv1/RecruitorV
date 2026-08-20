@@ -925,6 +925,15 @@ router.post('/assign-me', vendorAuth, async (req, res) => {
   }
 });
 
+// GET /vendor/position-access/:posId — does the vendor hold this position on
+// their own account? Drives Assign Me vs Submit Candidate on dash_view.
+router.get('/position-access/:posId', vendorAuth, async (req, res) => {
+  try {
+    const hasAccess = await vendorSelfAssigned(req.vendor.email, req.params.posId);
+    res.json({ success: true, hasAccess, status: hasAccess ? 'approved' : null });
+  } catch (e) { res.status(500).json({ success: false, hasAccess: false, message: e.message }); }
+});
+
 // ─── Positions: assigned to the vendor / their team, and vendor-added ────────
 
 // GET /vendor/assigned-positions — every position the vendor or one of their

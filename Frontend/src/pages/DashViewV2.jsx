@@ -432,7 +432,9 @@ function DashViewV2Inner() {
   const [teamProfileLoading, setTeamProfileLoading] = useState(false);
 
   // Coaches/Experts may see the Client SPOC's contact details; recruiters may not.
-  const roleSlug = (teamUser?.type || teamUser?.roleCategory || teamUser?.role || '')
+  // roleCategory comes first: a vendor's `type` is 'admin' (they live in admin_db),
+  // so reading `type` first made every vendor look like an admin here.
+  const roleSlug = (teamUser?.roleCategory || teamUser?.type || teamUser?.role || '')
     .toString().toLowerCase().replace(/\s/g, '');
   const isCoachExpert = ['coach', 'expert'].includes(roleSlug);
   const isVendor = roleSlug === 'vendor';
@@ -780,7 +782,11 @@ function DashViewV2Inner() {
   useEffect(() => {
     if (!pos_id) return;
     let live = true;
-    if (isCoachExpert) {
+    if (isVendor) {
+      axios.get(`/vendor/position-access/${pos_id}`, { withCredentials: true })
+        .then(r => { if (live) setAccess({ hasAccess: r.data?.hasAccess === true, status: r.data?.status }); })
+        .catch(() => { if (live) setAccess({ hasAccess: false }); });
+    } else if (isCoachExpert) {
       axios.get(`/api/coach-expert/position-access/${pos_id}`, { withCredentials: true })
         .then(r => { if (live) setAccess({ hasAccess: r.data?.hasAccess === true, status: r.data?.status }); })
         .catch(() => { if (live) setAccess({ hasAccess: false }); });
@@ -790,7 +796,7 @@ function DashViewV2Inner() {
         .catch(() => { if (live) setAccess({ hasAccess: false }); });
     }
     return () => { live = false; };
-  }, [pos_id, isCoachExpert]);
+  }, [pos_id, isCoachExpert, isVendor]);
 
   const hasAccess = access?.hasAccess === true;
   const isPendingAccess = !hasAccess && access?.status === 'pending';
