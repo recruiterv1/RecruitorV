@@ -268,10 +268,20 @@ const SpocActivityTab = () => {
   }, [from, to]);
   useEffect(() => { load(); }, [load]);
 
-  const spocNames = useMemo(
-    () => [...new Set((rows || []).map(r => r.clientspocName))].sort(), [rows]);
+  // Key the filter on the SPOC's email — it's unique. Filtering by display name
+  // duplicated anyone whose name is missing on some positions.
+  const spocOptions = useMemo(() => {
+    const byEmail = new Map();
+    (rows || []).forEach(r => {
+      if (!byEmail.has(r.clientspoc)) byEmail.set(r.clientspoc, r.clientspocName);
+      else if (r.clientspocName && !r.clientspocName.includes('@')) byEmail.set(r.clientspoc, r.clientspocName);
+    });
+    return [...byEmail.entries()]
+      .map(([email, name]) => ({ email, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
   const view = useMemo(
-    () => (rows || []).filter(r => !spocFilter || r.clientspocName === spocFilter), [rows, spocFilter]);
+    () => (rows || []).filter(r => !spocFilter || r.clientspoc === spocFilter), [rows, spocFilter]);
 
   const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 
@@ -318,7 +328,7 @@ const SpocActivityTab = () => {
           <select value={spocFilter} onChange={e => setSpocFilter(e.target.value)}
             className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500">
             <option value="">All ClientSPOCs</option>
-            {spocNames.map(n => <option key={n} value={n}>{n}</option>)}
+            {spocOptions.map(o => <option key={o.email} value={o.email}>{o.name}</option>)}
           </select>
         </label>
         {(from || to || spocFilter) && (

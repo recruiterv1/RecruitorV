@@ -252,9 +252,13 @@ router.get('/spoc-activity', managerAuth, async (req, res) => {
     const spocOf = {}, nameOf = {};
     posSnap.docs.forEach(d => {
       const p = d.data();
-      if (!p.pos_id) return;
-      spocOf[String(p.pos_id)] = lc(p.clientspoc);
-      if (p.clientspoc_name) nameOf[lc(p.clientspoc)] = p.clientspoc_name;
+      const email = lc(p.clientspoc);
+      if (p.pos_id) spocOf[String(p.pos_id)] = email;
+      // Positions often carry a blank clientspoc_name. Keep the first REAL name we
+      // see per email so one SPOC can't end up with two labels (their name on some
+      // rows, the email prefix on others) — which duplicated them in the filter.
+      const nm = (p.clientspoc_name || '').trim();
+      if (email && nm && !nameOf[email]) nameOf[email] = nm;
     });
 
     const candSnap = await db.collection('candidate_db')
