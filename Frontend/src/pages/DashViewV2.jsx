@@ -799,6 +799,17 @@ function DashViewV2Inner() {
     if (requesting) return;
     setRequesting(true);
     try {
+      if (isVendor) {
+        // Vendors take the position onto their own account (a self recruiter
+        // profile is created behind the scenes) so they can submit candidates.
+        const r = await axios.post('/vendor/assign-me', { pos_id }, { withCredentials: true });
+        const ok = r.data?.status === 'approved';
+        setAccess({ hasAccess: ok, status: r.data?.status });
+        setToast(r.data?.message || (ok ? '✓ Position assigned to you' : 'Request sent'));
+        setTimeout(() => setToast(''), 3500);
+        setRequesting(false);
+        return;
+      }
       if (isCoachExpert) {
         // Same route the Coach/Expert Open Positions page uses — auto-approved.
         await axios.post('/api/direct-coach-request',
