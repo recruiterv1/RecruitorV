@@ -167,6 +167,7 @@ const Sidebar = () => {
   const isCoach        = user?.roleCategory?.toLowerCase() === 'coach';
   const isExpert       = user?.roleCategory?.toLowerCase() === 'expert';
   const isCoachOrExpert = isCoach || isExpert;
+  const isVendor       = user?.roleCategory?.toLowerCase() === 'vendor';
   const isAdmin        = user?.type === 'admin';
   const isManager      = !!user?.isEmployee && (user?.designation || '').toLowerCase() === 'manager';
 
@@ -174,7 +175,7 @@ const Sidebar = () => {
   // Agreement gate ENABLED — but only ever true for accounts created BEFORE the
   // Terms & Conditions checkbox existed on the sign-up form. New sign-ups accept
   // the Terms at registration (agreementSigned = true) and are never locked.
-  const needsAgreement = user && !isAdmin && !isClientSpoc && !user?.agreementSigned;
+  const needsAgreement = user && !isAdmin && !isClientSpoc && !isVendor && !user?.agreementSigned;
   const agreementPath  = isCoach ? '/coach-agreement' : isExpert ? '/expert-agreement' : '/recruiter-agreement';
   const isGuardedRole  = (isCoachOrExpert || (!isClientSpoc && !isAdmin)) && !needsAgreement;
 
@@ -252,6 +253,17 @@ const Sidebar = () => {
 
   if (isCoachOrExpert) {
     menuItems = isCoach ? coachMenuItems : expertMenuItems;
+  } else if (isVendor) {
+    // Vendors have their own dashboard; without this they fell through to the
+    // recruiter menu and saw someone else's items on shared pages like dash_view.
+    menuItems = [
+      { icon: LayoutDashboard, label: 'Dashboard',         path: '/vendor-dashboard' },
+      { icon: UserPlus,        label: 'Register Recruiter', path: '/vendor-dashboard#register' },
+      { icon: Users,           label: 'My Recruiters',      path: '/vendor-dashboard#recruiters' },
+      { icon: FileText,        label: 'All Candidates',     path: '/vendor-dashboard#candidates' },
+      { icon: Briefcase,       label: 'Open Positions',     path: '/vendor-dashboard#positions' },
+      { icon: BarChart3,       label: 'Reports',            path: '/vendor-dashboard#reports' },
+    ];
   } else if (isClientSpoc) {
     menuItems = [
       { icon: LayoutDashboard, label: 'Dashboard', path: '/ad_panel#dashboard' },

@@ -1409,7 +1409,18 @@ const VendorDashboard = () => {
   const dispatch = useContext(UserDispatchContext);
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState('register');
+  // Honour a #hash so the sidebar (and deep links) can open a specific tab.
+  const VALID_TABS = ['register', 'recruiters', 'candidates', 'positions', 'messages', 'inbox', 'reports'];
+  const tabFromHash = () => {
+    const h = (window.location.hash || '').replace('#', '').trim();
+    return VALID_TABS.includes(h) ? h : 'register';
+  };
+  const [activeTab, setActiveTab] = useState(tabFromHash);
+  useEffect(() => {
+    const onHash = () => setActiveTab(tabFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
