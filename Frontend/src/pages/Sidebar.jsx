@@ -15,6 +15,7 @@ import {
   User,
   TrendingUp,
   ClipboardList,
+  PlusCircle,
   DollarSign,
   BarChart3,
   HelpCircle,
@@ -256,13 +257,32 @@ const Sidebar = () => {
   } else if (isVendor) {
     // Vendors have their own dashboard; without this they fell through to the
     // recruiter menu and saw someone else's items on shared pages like dash_view.
+    // Mirrors the vendor dashboard's own nav so the sidebar looks the same on
+    // shared pages like dash_view. Messages/Inbox stay out — they're the floating
+    // buttons bottom-right.
     menuItems = [
-      { icon: LayoutDashboard, label: 'Dashboard',         path: '/vendor-dashboard' },
-      { icon: UserPlus,        label: 'Register Recruiter', path: '/vendor-dashboard#register' },
-      { icon: Users,           label: 'My Recruiters',      path: '/vendor-dashboard#recruiters' },
-      { icon: FileText,        label: 'All Candidates',     path: '/vendor-dashboard#candidates' },
-      { icon: Briefcase,       label: 'Open Positions',     path: '/vendor-dashboard#positions' },
-      { icon: BarChart3,       label: 'Reports',            path: '/vendor-dashboard#reports' },
+      { icon: UserPlus, label: 'Register Recruiter', path: '/vendor-dashboard#register' },
+      { icon: Users,    label: 'My Recruiters',      path: '/vendor-dashboard#recruiters' },
+      {
+        icon: FileText,
+        label: 'Candidates',
+        children: [
+          { icon: FileText,  label: 'All Candidates',    path: '/vendor-dashboard#candidates' },
+          { icon: UserCheck, label: 'Direct Applicants', path: '/vendor-dashboard#direct-applicants' },
+        ],
+      },
+      {
+        icon: Briefcase,
+        label: 'Positions',
+        children: [
+          { icon: Briefcase,     label: 'Open Positions',     path: '/vendor-dashboard#positions' },
+          { icon: ClipboardList, label: 'Assigned Positions', path: '/vendor-dashboard#assigned-positions' },
+          { icon: PlusCircle,    label: 'Add Position',       path: '/vendor-dashboard#add-position' },
+          { icon: FolderOpen,    label: 'Added Positions',    path: '/vendor-dashboard#added-positions' },
+          { icon: Building2,     label: 'Companies',          path: '/vendor-dashboard#companies' },
+        ],
+      },
+      { icon: BarChart3, label: 'Reports', path: '/vendor-dashboard#reports' },
     ];
   } else if (isClientSpoc) {
     menuItems = [

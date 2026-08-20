@@ -231,6 +231,19 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
   // Fetch client list from Company_Overview collection (or firm-scoped list).
   useEffect(() => {
     if (firmMode) { setClientList(firmMode.companies || []); return; }
+    if (vendorMode) {
+      // Approved companies only — anything the vendor added is unusable until a
+      // SuperAdmin approves it.
+      Promise.all([
+        axios.get('/addit/clients').catch(() => ({ data: [] })),
+        axios.get('/vendor/companies', { withCredentials: true }).catch(() => ({ data: {} })),
+      ]).then(([globalRes, mineRes]) => {
+        const global = Array.isArray(globalRes.data) ? globalRes.data : (globalRes.data?.clients || []);
+        const mineApproved = (mineRes.data?.companies || []).filter(c => c.approved).map(c => c.name);
+        setClientList([...new Set([...global, ...mineApproved])].sort());
+      });
+      return;
+    }
     setClientsLoading(true);
     axios.get('/clientspoc/companies')
       .then(res => { if (res.data.success) setClientList(res.data.companies); })
@@ -294,6 +307,14 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
   // Fetch all SPOCs for dropdown (or firm-scoped list).
   useEffect(() => {
     if (firmMode) { setSpocs(firmMode.spocs || []); return; }
+    // A vendor may only route a position to the ClientSPOCs a SuperAdmin attached
+    // to their account — that SPOC is the one who can publish it.
+    if (vendorMode) {
+      axios.get('/vendor/my-clientspocs', { withCredentials: true })
+        .then(r => setSpocs((r.data?.clientspocs || []).map(x => ({ email: x.email, name: x.name || x.email }))))
+        .catch(() => setSpocs([]));
+      return;
+    }
     async function fetchSpocs() {
       try {
         setSpocsLoading(true);

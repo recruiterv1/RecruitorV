@@ -894,13 +894,17 @@ function DashViewV2Inner() {
   const [briefingAuthor, setBriefingAuthor] = useState('');   // coach/vendor who wrote it
   const [briefingModalOpen, setBriefingModalOpen] = useState(false);
   const [briefingSaving, setBriefingSaving] = useState(false);
+  // A vendor may write notes on a position their team already holds, even before
+  // they take it onto their own account — the server decides and reports canEdit.
+  const [briefingCanEdit, setBriefingCanEdit] = useState(false);
 
   useEffect(() => {
-    if (!pos_id || !hasAccess) { setBriefingFound(false); setBriefing(EMPTY_BRIEFING); return; }
+    if (!pos_id || (!hasAccess && !isTeamLead)) { setBriefingFound(false); setBriefing(EMPTY_BRIEFING); setBriefingCanEdit(false); return; }
     let live = true;
     axios.get(isVendor ? `/vendor/position-briefing/${pos_id}` : `/api/coach-expert/position-briefing/${pos_id}`, { withCredentials: true })
       .then(r => {
         if (!live) return;
+        setBriefingCanEdit(r.data?.canEdit === true || r.data?.editable === true || hasAccess);
         if (r.data?.found && r.data.briefing) {
           const b = r.data.briefing;
           setBriefing(Object.fromEntries(BRIEFING_QS.map(q => [q.key, b[q.key] || ''])));
@@ -910,7 +914,7 @@ function DashViewV2Inner() {
       })
       .catch(() => {});
     return () => { live = false; };
-  }, [pos_id, hasAccess, isVendor]);
+  }, [pos_id, hasAccess, isVendor, isTeamLead]);
 
   const saveBriefing = async () => {
     setBriefingSaving(true);
@@ -1432,7 +1436,7 @@ function DashViewV2Inner() {
           <div className="jd-header">
             <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
               {/* Coach/expert: author the position briefing */}
-              {isTeamLead && hasAccess && (
+              {isTeamLead && (hasAccess || briefingCanEdit) && (
                 <button onClick={() => setBriefingModalOpen(true)} title="Add/edit the position briefing for your team"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)', color: '#fff',
                     border: '1px solid rgba(255,255,255,0.35)', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
@@ -1693,13 +1697,19 @@ function DashViewV2Inner() {
             <div className="card">
               <h2>Assign this position to your team</h2>
               <p className="card-sub">Only recruiters in your team are shown. Select up to <b>2</b> and assign — they'll be notified by email.</p>
+              {isVendor && !hasAccess && (
+                <div className="side-block" style={{ background: '#fef3c7', border: '1px solid #fde68a', color: '#92400e' }}>
+                  Take this position onto your own account first — use <b>Assign Me</b> above. Once it's yours you can
+                  put your recruiters on it and write notes for them.
+                </div>
+              )}
               {assignMsg && (
                 <div style={{ margin: '10px 0', padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600,
                   background: assignMsg.startsWith('✓') ? '#dcfce7' : '#fee2e2', color: assignMsg.startsWith('✓') ? '#166534' : '#991b1b' }}>
                   {assignMsg}
                 </div>
               )}
-              {teamRecruiters.length === 0 ? (
+              {isVendor && !hasAccess ? null : teamRecruiters.length === 0 ? (
                 <div className="side-block">No recruiters in your team yet. Build your team from the Join Team page, then assign positions here.</div>
               ) : (
                 <>

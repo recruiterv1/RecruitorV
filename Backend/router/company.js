@@ -451,7 +451,7 @@ router.get('/spoc/pending', spocAuth, async (req, res) => {
     [...byPrimary.docs, ...byArray.docs].forEach(d => { byId[d.id] = { id: d.id, ...d.data() }; });
     // Return the FULL position so the SPOC's edit form can pre-fill every field.
     const list = Object.values(byId)
-      .filter(p => (p.postedByCompany || p.postedByFirm) && lc(p.status) === 'pending')
+      .filter(p => (p.postedByCompany || p.postedByFirm || p.postedByVendor) && lc(p.status) === 'pending')
       .map(p => ({ ...p, companyName: p.companyName || p.consultingFirmName || p.client }));
     res.json({ success: true, positions: list });
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -462,7 +462,7 @@ const spocOwns = (p, spocEmail) => lc(p.clientspoc) === spocEmail || (Array.isAr
 router.post('/spoc/positions/:id/golive', spocAuth, async (req, res) => {
   try {
     const doc = await POS.doc(req.params.id).get();
-    if (!doc.exists || !spocOwns(doc.data(), req.spocEmail) || !(doc.data().postedByCompany || doc.data().postedByFirm)) {
+    if (!doc.exists || !spocOwns(doc.data(), req.spocEmail) || !(doc.data().postedByCompany || doc.data().postedByFirm || doc.data().postedByVendor)) {
       return res.status(404).json({ message: 'Position not found.' });
     }
     await POS.doc(req.params.id).update({ status: 'active', wentLiveAt: new Date(), approvedBy: req.spocEmail });
@@ -481,7 +481,7 @@ router.post('/spoc/positions/:id/reject', spocAuth, async (req, res) => {
     const reason = (req.body?.reason || '').toString().trim();
     if (!reason) return res.status(400).json({ message: 'A reason is required to reject a position.' });
     const doc = await POS.doc(req.params.id).get();
-    if (!doc.exists || !spocOwns(doc.data(), req.spocEmail) || !(doc.data().postedByCompany || doc.data().postedByFirm)) {
+    if (!doc.exists || !spocOwns(doc.data(), req.spocEmail) || !(doc.data().postedByCompany || doc.data().postedByFirm || doc.data().postedByVendor)) {
       return res.status(404).json({ message: 'Position not found.' });
     }
     await POS.doc(req.params.id).update({ status: 'rejected', rejectReason: reason, rejectedBy: req.spocEmail, rejectedAt: new Date() });

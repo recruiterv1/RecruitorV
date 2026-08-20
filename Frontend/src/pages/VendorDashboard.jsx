@@ -7,7 +7,7 @@ import {
   PlusCircle, FolderOpen, ClipboardList,
   ChevronDown, ChevronRight, ChevronLeft, AlertCircle, Building,
   Briefcase, Download, X, Hash, Store, Menu, Clock, MapPin,
-  IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox
+  IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox, Building2
 } from 'lucide-react';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import Ad_Candi from './Ad_Candi';
@@ -1123,7 +1123,10 @@ const VendorAssignedPositionsTab = () => {
 
   return (
     <div>
-      <p className="text-sm text-gray-500 mb-4">Positions you or your recruiters are working on. Open one to submit a candidate yourself.</p>
+      <p className="text-sm text-gray-500 mb-4">
+        Positions you or your recruiters are working on. You can only submit candidates against a
+        position that is assigned to you — take it onto your own account first.
+      </p>
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {rows.map(p => (
           <div key={p.pos_id} className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col">
@@ -1149,10 +1152,17 @@ const VendorAssignedPositionsTab = () => {
               ))}
             </div>
 
-            <button onClick={() => navigate(`/dash_view/${p.pos_id}?submit=1`)}
-              className="mt-4 w-full py-2 bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white text-xs font-bold rounded-xl">
-              Submit Candidate
-            </button>
+            {p.selfAssigned ? (
+              <button onClick={() => navigate(`/dash_view/${p.pos_id}?submit=1`)}
+                className="mt-4 w-full py-2 bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white text-xs font-bold rounded-xl">
+                Submit Candidate
+              </button>
+            ) : (
+              <button onClick={() => navigate(`/dash_view/${p.pos_id}`)}
+                className="mt-4 w-full py-2 border border-purple-300 text-purple-700 hover:bg-purple-50 text-xs font-bold rounded-xl">
+                Assign to me to submit
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -1161,6 +1171,98 @@ const VendorAssignedPositionsTab = () => {
 };
 
 // ── Positions the vendor posted (editable until the ClientSPOC approves) ────
+
+// Companies a vendor adds themselves. A SuperAdmin must approve one before any
+// position can be posted against it.
+const VendorCompaniesTab = () => {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState('');
+  const [overview, setOverview] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);   // { type, text }
+
+  const load = () => axios.get('/vendor/companies', { withCredentials: true })
+    .then(r => setRows(r.data?.companies || []))
+    .catch(() => setRows([]))
+    .finally(() => setLoading(false));
+
+  useEffect(() => { load(); }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true); setMsg(null);
+    try {
+      const r = await axios.post('/vendor/companies', { name: name.trim(), overview }, { withCredentials: true });
+      setMsg({ type: 'ok', text: r.data?.message || 'Company submitted for approval.' });
+      setName(''); setOverview('');
+      load();
+    } catch (e2) {
+      setMsg({ type: 'err', text: e2.response?.data?.message || 'Could not add the company.' });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-800">Companies</h2>
+        <p className="text-sm text-gray-500">
+          Add a company here, then a SuperAdmin approves it. Only approved companies can be selected when you add a position.
+        </p>
+      </div>
+
+      <form onSubmit={submit} className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 space-y-3">
+        {msg && (
+          <div className={`text-sm rounded-lg px-3 py-2 border ${msg.type === 'ok'
+            ? 'bg-green-50 border-green-200 text-green-700'
+            : 'bg-red-50 border-red-200 text-red-600'}`}>{msg.text}</div>
+        )}
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Company name *</label>
+          <input value={name} onChange={e => setName(e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+            placeholder="e.g. Acme Technologies Pvt Ltd" />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Overview</label>
+          <textarea value={overview} onChange={e => setOverview(e.target.value)} rows={3}
+            className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+            placeholder="What the company does, size, locations…" />
+        </div>
+        <button type="submit" disabled={saving || !name.trim()}
+          className="px-5 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl disabled:opacity-60">
+          {saving ? 'Submitting…' : 'Submit for approval'}
+        </button>
+      </form>
+
+      {loading ? (
+        <div className="py-12 text-center text-gray-400 text-sm">Loading…</div>
+      ) : !rows.length ? (
+        <div className="py-12 text-center text-gray-400 text-sm">You haven't added any company yet.</div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map(c => (
+            <div key={c.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex items-center justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <p className="font-semibold text-gray-800 truncate">{c.name}</p>
+                {!c.approved && c.rejectedReason && (
+                  <p className="text-xs text-red-600 mt-0.5">Rejected: {c.rejectedReason}</p>
+                )}
+              </div>
+              <span className={`text-xs font-semibold px-3 py-1 rounded-full ${c.approved
+                ? 'bg-green-100 text-green-700'
+                : c.rejectedReason ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                {c.approved ? 'Approved' : c.rejectedReason ? 'Rejected' : 'Pending approval'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const VendorAddedPositionsTab = () => {
   const [rows, setRows] = useState(null);
   const [editPos, setEditPos] = useState(null);
@@ -1626,6 +1728,7 @@ const VendorDashboard = () => {
         { id: 'assigned-positions', icon: ClipboardList, label: 'Assigned Positions' },
         { id: 'add-position', icon: PlusCircle, label: 'Add Position' },
         { id: 'added-positions', icon: FolderOpen, label: 'Added Positions' },
+        { id: 'companies', icon: Building2, label: 'Companies' },
       ],
     },
     // Messages and Inbox are reachable from the floating buttons bottom-right,
@@ -1717,6 +1820,7 @@ const VendorDashboard = () => {
     'assigned-positions': <VendorAssignedPositionsTab />,
     'add-position': <Ad_Pos vendorMode={{ onPosted: () => setActiveTab('added-positions') }} />,
     'added-positions': <VendorAddedPositionsTab />,
+    'companies': <VendorCompaniesTab />,
     messages: <div className="h-[calc(100vh-160px)] min-h-[520px] bg-white rounded-xl border border-gray-200 overflow-hidden"><ChatPanel /></div>,
     inbox: <div className="h-[calc(100vh-160px)] min-h-[520px] bg-white rounded-xl border border-gray-200 overflow-hidden"><InboxPage title="Inbox" embedded /></div>,
     reports: <ReportsTab />,

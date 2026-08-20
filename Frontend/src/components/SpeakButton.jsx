@@ -23,16 +23,40 @@ const LANGS = [
 // English uses the browser's own voice (instant, always available).
 const SERVER_TTS = new Set(['hi', 'bn', 'ta', 'te', 'mr', 'gu', 'kn', 'ml', 'pa', 'ur']);
 
+// Voices are named inconsistently across platforms, so a female voice is spotted
+// by the common markers: an explicit gender hint, or one of the female names the
+// major engines ship (Google/Apple/Microsoft).
+const FEMALE_HINT = /\b(female|woman)\b|\bf\)|(samantha|karen|moira|tessa|fiona|victoria|allison|ava|susan|zira|hazel|heera|kalpana|veena|lekha|rishi|nicky|joanna|salli|kendra|kimberly|aria|jenny|michelle|sonia|neerja|swara|pallavi|shruti|priya)/i;
+const MALE_HINT = /\b(male|man)\b|\bm\)|(alex|daniel|fred|thomas|david|mark|george|oliver|ravi|hemant|rishi_m|gordon|aaron|arthur|guy|prabhat|madhur)/i;
+
+const isFemale = (v) => {
+  const n = (v?.name || '') + ' ' + (v?.voiceURI || '');
+  if (FEMALE_HINT.test(n)) return true;
+  if (MALE_HINT.test(n)) return false;
+  return null;   // unknown
+};
+
 // Pick the best installed voice for a BCP-47 tag: exact match first, then the
-// same language prefix (e.g. 'hi' matches 'hi-IN' or 'hi').
+// same language prefix (e.g. 'hi' matches 'hi-IN' or 'hi'). Within each tier a
+// female voice wins, then an unlabelled one — a male voice is the last resort.
 const pickVoice = (voices, tag) => {
   if (!voices.length) return null;
   const t = tag.toLowerCase();
   const prefix = t.split('-')[0];
-  return voices.find(v => v.lang?.toLowerCase() === t)
-    || voices.find(v => v.lang?.toLowerCase().startsWith(prefix + '-'))
-    || voices.find(v => v.lang?.toLowerCase() === prefix)
-    || null;
+  const tiers = [
+    voices.filter(v => v.lang?.toLowerCase() === t),
+    voices.filter(v => v.lang?.toLowerCase().startsWith(prefix + '-')),
+    voices.filter(v => v.lang?.toLowerCase() === prefix),
+  ];
+  for (const tier of tiers) {
+    if (!tier.length) continue;
+    const female = tier.find(v => isFemale(v) === true);
+    if (female) return female;
+    const neutral = tier.find(v => isFemale(v) === null);
+    if (neutral) return neutral;
+    return tier[0];
+  }
+  return null;
 };
 
 /**

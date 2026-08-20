@@ -589,6 +589,18 @@ router.get('/open-positions', vendorAuth, async (req, res) => {
 });
 
 // POST /vendor/assign-recruiter — assign one of vendor's recruiters to a position
+
+// The vendor must hold the position on their own account before they can put a
+// recruiter on it or write notes for the team. Self-assignment is the gate.
+async function vendorSelfAssigned(vendorEmail, posId) {
+  const email = (vendorEmail || '').toLowerCase();
+  try {
+    const positionAccess = require('../model_fire/positionAccessF');
+    const reqs = await positionAccess.getRecruiterAssignments(email);
+    return (reqs || []).some(r => String(r.positionId) === String(posId));
+  } catch (_) { return false; }
+}
+
 router.post('/assign-recruiter', vendorAuth, async (req, res) => {
   try {
     const { pos_id, recruiterId } = req.body;
@@ -607,6 +619,14 @@ router.post('/assign-recruiter', vendorAuth, async (req, res) => {
     // Verify position exists
     const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', pos_id).limit(1).get();
     if (posSnap.empty) return res.status(404).json({ success: false, message: 'Position not found' });
+
+    // A vendor has to take the position onto their own account first.
+    if (!await vendorSelfAssigned(req.vendor.email, pos_id)) {
+      return res.status(403).json({
+        success: false, needsSelfAssign: true,
+        message: 'Assign this position to yourself first — then you can put your recruiters on it.',
+      });
+    }
 
     // Use positionAccess model to create the assign request
     const positionAccess = require('../model_fire/positionAccessF');
@@ -773,24 +793,31 @@ const VENDOR_BRIEFING_FIELDS = [
   'headhuntingTarget', 'assessmentQuestions', 'engagementPostSubmission',
 ];
 
-// Is any recruiter of this vendor assigned to the position? That is what gives the
-// vendor the right to write notes on it.
+
+
+// Is any recruiter of this vendor already on the position? Positions assigned to
+// the team before the self-assign-first rule existed still need notes, so this
+// keeps that path open for writing notes (never for assigning more recruiters).
 async function vendorTeamOnPosition(vendorEmail, posId) {
   const recSnap = await db.collection('recruiter_db')
     .where('vendorEmail', '==', (vendorEmail || '').toLowerCase()).get();
   const emails = recSnap.docs.map(d => (d.data().email || '').toLowerCase()).filter(Boolean);
-  if (!emails.length) return { allowed: false, teamEmails: [] };
-
+  if (!emails.length) return false;
   const positionAccess = require('../model_fire/positionAccessF');
   for (const email of emails) {
     try {
       const reqs = await positionAccess.getRecruiterAssignments(email);
-      if ((reqs || []).some(r => String(r.positionId) === String(posId))) {
-        return { allowed: true, teamEmails: emails };
-      }
+      if ((reqs || []).some(r => String(r.positionId) === String(posId))) return true;
     } catch (_) { /* keep checking the rest of the team */ }
   }
-  return { allowed: false, teamEmails: emails };
+  return false;
+}
+
+// A vendor may write notes once the position is on their own account, or on a
+// position their team already holds.
+async function vendorCanWriteNotes(vendorEmail, posId) {
+  if (await vendorSelfAssigned(vendorEmail, posId)) return true;
+  return vendorTeamOnPosition(vendorEmail, posId);
 }
 
 // POST /vendor/position-briefing  { positionId, ...answers }
@@ -800,9 +827,11 @@ router.post('/position-briefing', vendorAuth, async (req, res) => {
     const positionId = String(req.body?.positionId || '');
     if (!positionId) return res.status(400).json({ success: false, message: 'positionId is required' });
 
-    const { allowed } = await vendorTeamOnPosition(vendorEmail, positionId);
-    if (!allowed) {
-      return res.status(403).json({ success: false, message: 'None of your recruiters are assigned to this position yet.' });
+    if (!await vendorCanWriteNotes(vendorEmail, positionId)) {
+      return res.status(403).json({
+        success: false, needsSelfAssign: true,
+        message: 'Assign this position to yourself first — then you can write notes for your team.',
+      });
     }
 
     const patch = {
@@ -827,7 +856,7 @@ router.get('/position-briefing/:posId', vendorAuth, async (req, res) => {
     const vendorEmail = (req.vendor.email || '').toLowerCase();
     const doc = await db.collection('position_coach_briefing')
       .doc(`${String(req.params.posId)}__${vendorEmail}`).get();
-    const { allowed } = await vendorTeamOnPosition(vendorEmail, req.params.posId);
+    const allowed = await vendorCanWriteNotes(vendorEmail, req.params.posId);
     return res.json({
       success: true, canEdit: allowed,
       found: doc.exists, briefing: doc.exists ? doc.data() : null,
@@ -945,6 +974,7 @@ router.get('/assigned-positions', vendorAuth, async (req, res) => {
           experience: p.experience || '', status: p.status || 'active',
           datePosted: p.datePosted || null,
           assignedTo: [...byPos[String(p.pos_id)]].sort(),
+          selfAssigned: byPos[String(p.pos_id)].has('Self'),
         });
       });
     }
@@ -980,10 +1010,34 @@ router.post('/positions', vendorAuth, async (req, res) => {
     if (!(body.position || '').toString().trim()) return res.status(400).json({ success: false, message: 'Position title is required.' });
     if (!(body.client || '').toString().trim()) return res.status(400).json({ success: false, message: 'Client is required.' });
 
+    // The position must be routed to one of the ClientSPOCs the SuperAdmin attached
+    // to this vendor — that SPOC is the only one who can make it live.
+    const mySpocs = Array.isArray(req.vendor.clientspocs) ? req.vendor.clientspocs : [];
+    if (!mySpocs.length) {
+      return res.status(400).json({ success: false, message: 'No ClientSPOC is attached to your vendor account yet. Please contact the administrator.' });
+    }
+    const chosen = (body.clientspoc || '').toString().toLowerCase().trim();
+    const spoc = mySpocs.find(x => (x.email || '').toLowerCase() === chosen);
+    if (!spoc) {
+      return res.status(400).json({ success: false, message: 'Select one of the ClientSPOCs attached to your account.' });
+    }
+
+    // A company the vendor added themselves can only be used once approved.
+    const clientName = (body.client || '').toString().trim();
+    const compSnap = await db.collection('Company_Overview').where('lower', '==', clientName.toLowerCase()).limit(1).get();
+    if (!compSnap.empty) {
+      const c = compSnap.docs[0].data();
+      if (c.addedByVendor && c.vendorApproved !== true) {
+        return res.status(403).json({ success: false, message: 'This company is still awaiting SuperAdmin approval — you can post positions against it once approved.' });
+      }
+    }
+
     const adminF = require('../model_fire/adminF');
     const created = await adminF.CreatePosition({
       ...body,
-      status: 'pending',                       // hidden from recruiters until approved
+      clientspoc: spoc.email,
+      clientspoc_name: spoc.name || '',
+      status: 'pending',                       // hidden from recruiters until the SPOC publishes
       postedByVendor: (req.vendor.email || '').toLowerCase(),
       vendorName: req.vendor.name || '',
     });
@@ -1033,6 +1087,123 @@ router.post('/positions/:id/hold', vendorAuth, async (req, res) => {
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
+});
+
+// ─── SuperAdmin: attach ClientSPOC(s) to a vendor ───────────────────────────
+// A vendor can have several SPOCs; when they post a position they pick one, and
+// only that SPOC can make it live.
+const managerGate = async (req, res, next) => {
+  const token = req.cookies?.__session;
+  if (!token) return res.status(401).json({ success: false, message: 'Unauthorized' });
+  let decoded;
+  try { decoded = jwt.verify(token, process.env.SECKEY); }
+  catch { return res.status(403).json({ success: false, message: 'Invalid token' }); }
+  try {
+    const r = await adminVerify.checkData(decoded.email);
+    if (r.success) { req.managerEmail = decoded.email; return next(); }
+    const recruiterF = require('../model_fire/recruiterF');
+    const rec = await recruiterF.findRecruiterByEmail(decoded.email);
+    if (rec && (rec.role === 'Super Admin' || rec.roleCategory === 'SuperAdmin')) {
+      req.managerEmail = decoded.email; return next();
+    }
+    return res.status(403).json({ success: false, message: 'SuperAdmin access required' });
+  } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
+};
+
+// GET /vendor/admin/:vendorId/clientspocs — current attachments + all SPOCs to pick from
+router.get('/admin/:vendorId/clientspocs', managerGate, async (req, res) => {
+  try {
+    const vDoc = await db.collection('admin_db').doc(req.params.vendorId).get();
+    if (!vDoc.exists) return res.status(404).json({ success: false, message: 'Vendor not found' });
+    const all = await db.collection('admin_db').get();
+    const clientspocs = all.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(x => ['clientspoc'].includes((x.roleCategory || x.role || '').toLowerCase().replace(/\s/g, '')))
+      .map(x => ({ email: (x.email || '').toLowerCase(), name: x.name || (x.email || '').split('@')[0] }))
+      .filter(x => x.email)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({
+      success: true,
+      assigned: Array.isArray(vDoc.data().clientspocs) ? vDoc.data().clientspocs : [],
+      clientspocs,
+    });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// POST /vendor/admin/:vendorId/clientspocs  { clientspocs: [{email,name}] }
+router.post('/admin/:vendorId/clientspocs', managerGate, async (req, res) => {
+  try {
+    const list = Array.isArray(req.body?.clientspocs) ? req.body.clientspocs : [];
+    const seen = new Set();
+    const clean = list
+      .map(x => ({ email: (x.email || '').toLowerCase().trim(), name: (x.name || '').trim() }))
+      .filter(x => x.email && !seen.has(x.email) && seen.add(x.email));
+    await db.collection('admin_db').doc(req.params.vendorId)
+      .set({ clientspocs: clean, clientspocsUpdatedAt: new Date(), clientspocsUpdatedBy: req.managerEmail }, { merge: true });
+    res.json({ success: true, assigned: clean });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// GET /vendor/my-clientspocs — the SPOCs a vendor may route positions to.
+router.get('/my-clientspocs', vendorAuth, async (req, res) => {
+  try {
+    const list = Array.isArray(req.vendor.clientspocs) ? req.vendor.clientspocs : [];
+    res.json({ success: true, clientspocs: list });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ─── Vendor companies (SuperAdmin approves before they can be used) ─────────
+router.get('/companies', vendorAuth, async (req, res) => {
+  try {
+    const email = (req.vendor.email || '').toLowerCase();
+    const snap = await db.collection('Company_Overview').where('addedByVendor', '==', email).get();
+    const mine = snap.docs.map(d => ({ id: d.id, name: d.data().name, approved: d.data().vendorApproved === true,
+      rejectedReason: d.data().vendorRejectReason || '' }));
+    res.json({ success: true, companies: mine.sort((a, b) => a.name.localeCompare(b.name)) });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// POST /vendor/companies { name, overview } — created unapproved.
+router.post('/companies', vendorAuth, async (req, res) => {
+  try {
+    const email = (req.vendor.email || '').toLowerCase();
+    const name = (req.body?.name || '').toString().trim();
+    if (!name) return res.status(400).json({ success: false, message: 'Company name is required.' });
+    const dup = await db.collection('Company_Overview').where('lower', '==', name.toLowerCase()).limit(1).get();
+    if (!dup.empty) return res.status(409).json({ success: false, message: 'A company with that name already exists.' });
+    const ref = await db.collection('Company_Overview').add({
+      name, lower: name.toLowerCase(),
+      overview: (req.body?.overview || '').toString(),
+      addedByVendor: email, vendorName: req.vendor.name || '',
+      vendorApproved: false,                    // SuperAdmin must approve
+      createdAt: new Date(),
+    });
+    res.json({ success: true, id: ref.id, message: 'Company submitted — positions can be posted against it once a SuperAdmin approves.' });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// SuperAdmin: list + approve/reject vendor-added companies.
+router.get('/admin/companies', managerGate, async (req, res) => {
+  try {
+    const snap = await db.collection('Company_Overview').where('addedByVendor', '!=', null).get();
+    const rows = snap.docs.map(d => {
+      const c = d.data();
+      return { id: d.id, name: c.name, overview: c.overview || '', addedByVendor: c.addedByVendor,
+        vendorName: c.vendorName || '', approved: c.vendorApproved === true, createdAt: c.createdAt || null };
+    }).sort((a, b) => Number(a.approved) - Number(b.approved) || a.name.localeCompare(b.name));
+    res.json({ success: true, companies: rows });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.post('/admin/companies/:id/decision', managerGate, async (req, res) => {
+  try {
+    const approve = req.body?.approve === true;
+    await db.collection('Company_Overview').doc(req.params.id).set({
+      vendorApproved: approve,
+      vendorRejectReason: approve ? '' : (req.body?.reason || '').toString(),
+      vendorDecisionBy: req.managerEmail, vendorDecisionAt: new Date(),
+    }, { merge: true });
+    res.json({ success: true, message: approve ? 'Company approved.' : 'Company rejected.' });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 module.exports = router;
