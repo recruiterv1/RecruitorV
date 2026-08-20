@@ -695,6 +695,38 @@ router.get('/recruiter-detail', vendorAuth, async (req, res) => {
 
     const positions = Object.values(posMap).sort((a, b) => b.candidates.length - a.candidates.length);
 
+    // For each position, has this recruiter actually listened to the notes this
+    // vendor wrote? Drives the green/red indicator in the recruiter modal.
+    try {
+      const vendorEmail = (req.vendor.email || '').toLowerCase();
+      const listenerEmail = (recData.email || '').toLowerCase();
+      const NOTE_KEYS = ['exactPosition', 'sourcingTips', 'challenges',
+        'headhuntingTarget', 'assessmentQuestions', 'engagementPostSubmission'];
+      const LABELS = {
+        exactPosition: 'Understanding the Position',
+        sourcingTips: 'Sourcing Strategy',
+        challenges: 'Hiring Challenges',
+        headhuntingTarget: 'Head-hunting Strategy',
+        assessmentQuestions: 'Assessment Call',
+        engagementPostSubmission: 'Post-Submission Engagement',
+      };
+      await Promise.all(positions.map(async (p) => {
+        const pid = String(p.pos_id);
+        const [noteDoc, listenDoc] = await Promise.all([
+          db.collection('position_coach_briefing').doc(`${pid}__${vendorEmail}`).get(),
+          db.collection('briefing_listens').doc(`${pid}__${vendorEmail}__${listenerEmail}`).get(),
+        ]);
+        p.hasNotes = noteDoc.exists && NOTE_KEYS.some(k => (noteDoc.data()[k] || '').trim());
+        p.notesListened = listenDoc.exists;
+        p.notesListenedAt = listenDoc.exists
+          ? (listenDoc.data().lastListenedAt?.toDate?.()?.toISOString() || null) : null;
+        p.notes = p.hasNotes
+          ? NOTE_KEYS.filter(k => (noteDoc.data()[k] || '').trim())
+              .map(k => ({ label: LABELS[k], text: String(noteDoc.data()[k]).trim() }))
+          : [];
+      }));
+    } catch (e) { console.error('notes/listen enrich failed:', e.message); }
+
     return res.json({
       success: true,
       recruiter: {

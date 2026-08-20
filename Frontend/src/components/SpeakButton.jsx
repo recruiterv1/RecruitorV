@@ -43,7 +43,7 @@ const pickVoice = (voices, tag) => {
  * Props: text (string), title (tooltip/aria label), compact (smaller icon-only),
  *        className (extra classes on the button).
  */
-export default function SpeakButton({ text, title = 'Play audio', compact = false, className = '', tone = 'blue' }) {
+export default function SpeakButton({ text, title = 'Play audio', compact = false, className = '', tone = 'blue', onPlay }) {
   const [lang, setLang] = useState('en');
   const [busy, setBusy] = useState(false);      // translating
   const [speaking, setSpeaking] = useState(false);
@@ -114,6 +114,7 @@ export default function SpeakButton({ text, title = 'Play audio', compact = fals
     u.onend = () => setSpeaking(false);
     u.onerror = () => setSpeaking(false);
     setSpeaking(true);
+    try { onPlay && onPlay(); } catch (_) {}
     window.speechSynthesis.speak(u);
   };
 
@@ -141,6 +142,7 @@ export default function SpeakButton({ text, title = 'Play audio', compact = fals
         audio.onended = () => { setSpeaking(false); stopAudio(); };
         audio.onerror = () => { setSpeaking(false); stopAudio(); };
         setSpeaking(true);
+        try { onPlay && onPlay(); } catch (_) {}
         await audio.play();
         return;
       } catch (_) {

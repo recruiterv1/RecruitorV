@@ -540,6 +540,7 @@ const RecruiterDetailModal = ({ recruiterId, recruiterName, accountStatus, onAcc
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                      <NotesLight pos={pos} />
                       <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-full">
                         {pos.candidates.length} candidate{pos.candidates.length !== 1 ? 's' : ''}
                       </span>
@@ -970,6 +971,44 @@ const ReportsTab = () => {
 
 // ── Open Positions ─────────────────────────────────────────────
 
+
+// ── Notes indicator: has this recruiter listened to the vendor's notes? ──────
+//  green glow  → listened
+//  red glow    → notes exist, not listened yet
+//  red + cross → no notes written for this position yet
+const NotesLight = ({ pos }) => {
+  const listened = !!pos.notesListened;
+  const hasNotes = !!pos.hasNotes;
+  const colour = listened ? '#22c55e' : '#ef4444';
+
+  const tip = !hasNotes
+    ? 'No notes added for this position yet — add them from the position page.'
+    : (listened
+        ? `Listened${pos.notesListenedAt ? ' on ' + new Date(pos.notesListenedAt).toLocaleString('en-IN') : ''}\n\n`
+        : 'Not listened yet.\n\n') +
+      (pos.notes || []).map(n => `${n.label}: ${n.text}`).join('\n\n');
+
+  return (
+    <span title={tip} className="relative inline-flex items-center justify-center flex-shrink-0" style={{ width: 16, height: 16 }}>
+      <span
+        style={{
+          width: 11, height: 11, borderRadius: '50%', background: colour,
+          boxShadow: `0 0 6px 2px ${colour}99`,
+          animation: 'notesPulse 1.6s ease-in-out infinite',
+        }}
+      />
+      {!hasNotes && (
+        // cross over the light when the vendor hasn't written any notes
+        <svg viewBox="0 0 16 16" width="16" height="16" style={{ position: 'absolute', inset: 0 }}>
+          <line x1="3" y1="3" x2="13" y2="13" stroke="#7f1d1d" strokeWidth="2.2" strokeLinecap="round" />
+          <line x1="13" y1="3" x2="3" y2="13" stroke="#7f1d1d" strokeWidth="2.2" strokeLinecap="round" />
+        </svg>
+      )}
+      <style>{`@keyframes notesPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
+    </span>
+  );
+};
+
 // ── Vendor position notes (visible to that vendor's assigned recruiters) ─────
 const VENDOR_NOTE_QS = [
   { key: 'exactPosition', label: 'Understanding the Position', desc: 'What exactly are we hiring for?' },
@@ -1187,13 +1226,6 @@ const OpenPositionsTab = ({ recruiters }) => {
                   className="flex-1 py-2 border-2 border-blue-200 text-blue-600 hover:bg-blue-50 text-xs font-bold rounded-xl transition-colors"
                 >
                   View Details
-                </button>
-                <button
-                  onClick={() => setNotesPos(pos)}
-                  title="Add notes for your team on this position"
-                  className="flex-1 py-2 border-2 border-purple-200 text-purple-700 hover:bg-purple-50 text-xs font-bold rounded-xl transition-colors"
-                >
-                  📝 Notes
                 </button>
                 <button
                   onClick={() => openAssign(pos)}

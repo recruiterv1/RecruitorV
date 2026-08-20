@@ -3197,6 +3197,33 @@ router.get('/position-briefing/:posId', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/coach-expert/position-briefing/:posId/listened
+// Called when a recruiter plays the briefing audio. One row per
+// position + listener + author, so a vendor/coach can see who has actually heard
+// the notes they wrote. Idempotent: repeat plays just bump the counters.
+router.post('/position-briefing/:posId/listened', authMiddleware, async (req, res) => {
+  try {
+    const listener = (req.user.email || '').toLowerCase();
+    const posId = String(req.params.posId);
+    const author = (req.body?.author || '').toString().toLowerCase();
+    if (!author) return res.status(400).json({ success: false, message: 'author is required' });
+
+    const { FieldValue } = require('firebase-admin/firestore');
+    const ref = db.collection('briefing_listens').doc(`${posId}__${author}__${listener}`);
+    const existing = await ref.get();
+    await ref.set({
+      positionId: posId, authorEmail: author, listenerEmail: listener,
+      lastListenedAt: new Date(),
+      ...(existing.exists ? {} : { firstListenedAt: new Date() }),
+      plays: FieldValue.increment(1),
+    }, { merge: true });
+    return res.json({ success: true });
+  } catch (e) {
+    console.error('briefing listened error:', e.message);
+    return res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // ─── Coach → Recruiter daily Follow-ups ───────────────────────────────────────
 // A coach logs a daily follow-up (5-parameter rating + remarks) against a
 // recruiter they assigned a position to. Allowed only for TODAY, and only while

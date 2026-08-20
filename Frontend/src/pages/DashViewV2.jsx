@@ -405,9 +405,12 @@ function DashViewV2Inner() {
   const [teamProfileLoading, setTeamProfileLoading] = useState(false);
 
   // Coaches/Experts may see the Client SPOC's contact details; recruiters may not.
-  const isCoachExpert = ['coach', 'expert'].includes(
-    (teamUser?.type || teamUser?.roleCategory || teamUser?.role || '').toString().toLowerCase().replace(/\s/g, '')
-  );
+  const roleSlug = (teamUser?.type || teamUser?.roleCategory || teamUser?.role || '')
+    .toString().toLowerCase().replace(/\s/g, '');
+  const isCoachExpert = ['coach', 'expert'].includes(roleSlug);
+  const isVendor = roleSlug === 'vendor';
+  // Coaches, experts and vendors all brief and assign their own team.
+  const isTeamLead = isCoachExpert || isVendor;
   const [spocDetails, setSpocDetails] = useState(null);   // { name, email, mobile } — coach/expert only
   useEffect(() => {
     const spocEmail = job?.clientspoc;
@@ -426,10 +429,10 @@ function DashViewV2Inner() {
   const [assignBusy, setAssignBusy] = useState(false);
   const [assignMsg, setAssignMsg] = useState('');
   useEffect(() => {
-    if (!isCoachExpert) { setTeamRecruiters([]); return; }
+    if (!isTeamLead) { setTeamRecruiters([]); return; }
     let live = true;
-    axios.get('/api/coach-expert/team/my-team-members', { withCredentials: true })
-      .then(r => { if (live) setTeamRecruiters(r.data?.recruiters || []); })
+    axios.get(isVendor ? '/vendor/recruiters' : '/api/coach-expert/team/my-team-members', { withCredentials: true })
+      .then(r => { if (live) setTeamRecruiters(isVendor ? (r.data?.data || []) : (r.data?.recruiters || [])); })
       .catch(() => { if (live) setTeamRecruiters([]); });
     // Which of my team are already assigned to this position (so we can mark them).
     axios.get('/api/coach-expert/my-recruiter-assignments', { withCredentials: true })
@@ -441,7 +444,7 @@ function DashViewV2Inner() {
       } })
       .catch(() => {});
     return () => { live = false; };
-  }, [isCoachExpert, pos_id]);
+  }, [isTeamLead, isVendor, pos_id]);
 
   // Copy a shareable public link for this position (same format as dash_view).
   const [shareInfoOpen, setShareInfoOpen] = useState(false);
@@ -523,7 +526,8 @@ function DashViewV2Inner() {
     let ok = 0; const fails = [];
     for (const rid of assignSel) {
       try {
-        await axios.post('/api/coach-expert/recruiter-assignment', { recruiterId: rid, positionId: pos_id }, { withCredentials: true });
+        if (isVendor) await axios.post('/vendor/assign-recruiter', { pos_id, recruiterId: rid }, { withCredentials: true });
+        else await axios.post('/api/coach-expert/recruiter-assignment', { recruiterId: rid, positionId: pos_id }, { withCredentials: true });
         ok++; setAssignedIds(a => [...new Set([...a, rid])]);
       } catch (e) { fails.push(e.response?.data?.message || 'failed'); }
     }
@@ -842,29 +846,32 @@ function DashViewV2Inner() {
   const EMPTY_BRIEFING = { exactPosition: '', sourcingTips: '', challenges: '', headhuntingTarget: '', assessmentQuestions: '', engagementPostSubmission: '' };
   const [briefing, setBriefing] = useState(EMPTY_BRIEFING);
   const [briefingFound, setBriefingFound] = useState(false);
+  const [briefingAuthor, setBriefingAuthor] = useState('');   // coach/vendor who wrote it
   const [briefingModalOpen, setBriefingModalOpen] = useState(false);
   const [briefingSaving, setBriefingSaving] = useState(false);
 
   useEffect(() => {
     if (!pos_id || !hasAccess) { setBriefingFound(false); setBriefing(EMPTY_BRIEFING); return; }
     let live = true;
-    axios.get(`/api/coach-expert/position-briefing/${pos_id}`, { withCredentials: true })
+    axios.get(isVendor ? `/vendor/position-briefing/${pos_id}` : `/api/coach-expert/position-briefing/${pos_id}`, { withCredentials: true })
       .then(r => {
         if (!live) return;
         if (r.data?.found && r.data.briefing) {
           const b = r.data.briefing;
           setBriefing(Object.fromEntries(BRIEFING_QS.map(q => [q.key, b[q.key] || ''])));
+          setBriefingAuthor((b.coachEmail || b.vendorEmail || '').toLowerCase());
           setBriefingFound(true);
         } else { setBriefing(EMPTY_BRIEFING); setBriefingFound(false); }
       })
       .catch(() => {});
     return () => { live = false; };
-  }, [pos_id, hasAccess]);
+  }, [pos_id, hasAccess, isVendor]);
 
   const saveBriefing = async () => {
     setBriefingSaving(true);
     try {
-      await axios.post('/api/coach-expert/position-briefing', { positionId: pos_id, ...briefing }, { withCredentials: true });
+      await axios.post(isVendor ? '/vendor/position-briefing' : '/api/coach-expert/position-briefing',
+        { positionId: pos_id, ...briefing }, { withCredentials: true });
       setBriefingFound(true);
       setBriefingModalOpen(false);
       setToast('✓ Position briefing saved');
@@ -876,6 +883,16 @@ function DashViewV2Inner() {
   };
 
   // Spoken script the recruiter hears (only non-empty answers).
+  // Tell the author (coach/vendor) that this recruiter actually heard the notes —
+  // once per page visit is enough; the server keeps the first/last timestamps.
+  const listenReported = useRef(false);
+  const markBriefingListened = () => {
+    if (listenReported.current || !briefingAuthor || !pos_id) return;
+    listenReported.current = true;
+    axios.post(`/api/coach-expert/position-briefing/${pos_id}/listened`,
+      { author: briefingAuthor }, { withCredentials: true }).catch(() => {});
+  };
+
   const briefingScript = BRIEFING_QS
     .filter(q => (briefing[q.key] || '').trim())
     .map(q => `${q.label}. ${briefing[q.key].trim()}.`)
@@ -1344,7 +1361,7 @@ function DashViewV2Inner() {
             <button className={`tab-btn${view === 'form' ? ' active' : ''}`}
               style={isPendingAccess ? { opacity: 0.6, cursor: 'default' } : undefined}
               onClick={handleSubmitEntry}>{submitLabel}</button>
-            {isCoachExpert && (
+            {isTeamLead && (
               <button className={`tab-btn${view === 'assign' ? ' active' : ''}`}
                 onClick={() => { setView('assign'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Assign Recruiter</button>
             )}
@@ -1369,7 +1386,7 @@ function DashViewV2Inner() {
           <div className="jd-header">
             <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
               {/* Coach/expert: author the position briefing */}
-              {isCoachExpert && hasAccess && (
+              {isTeamLead && hasAccess && (
                 <button onClick={() => setBriefingModalOpen(true)} title="Add/edit the position briefing for your team"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)', color: '#fff',
                     border: '1px solid rgba(255,255,255,0.35)', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
@@ -1430,7 +1447,8 @@ function DashViewV2Inner() {
                       <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{i + 1}. {q.label}</div>
                       {q.desc && <div style={{ fontSize: 12, color: '#64748b' }}>{q.desc}</div>}
                     </div>
-                    <SpeakButton text={`${q.label}. ${briefing[q.key].trim()}.`} title={`Play: ${q.label}`} tone="green" compact />
+                    <SpeakButton text={`${q.label}. ${briefing[q.key].trim()}.`} title={`Play: ${q.label}`} tone="green" compact
+                      onPlay={markBriefingListened} />
                   </div>
                 ))}
               </div>
@@ -1624,7 +1642,7 @@ function DashViewV2Inner() {
         </div>
 
         {/* ===================== ASSIGN RECRUITER VIEW (coach/expert) ===================== */}
-        {isCoachExpert && (
+        {isTeamLead && (
           <div className={`view${view === 'assign' ? ' active' : ''}`}>
             <div className="card">
               <h2>Assign this position to your team</h2>
