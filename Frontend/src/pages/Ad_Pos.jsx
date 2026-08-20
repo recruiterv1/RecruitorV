@@ -8,44 +8,10 @@ import RichTextEditor, { isHtmlEmpty } from '../components/RichTextEditor';
 import { TagInput, ListInput, LimitedTextarea, EducationSelect } from '../components/PositionFieldInputs';
 import QuestionsEditor, { QuestionsList, validateQuestions } from '../components/QuestionsEditor';
 
-export const indiaStatesAndCities = {
-  "Andhra Pradesh": ["Visakhapatnam", "Vijayawada", "Guntur", "Nellore", "Kurnool", "Tirupati"],
-  "Arunachal Pradesh": ["Itanagar", "Tawang", "Ziro", "Roing", "Pasighat"],
-  "Assam": ["Guwahati", "Silchar", "Dibrugarh", "Jorhat", "Tezpur"],
-  "Bihar": ["Patna", "Gaya", "Muzaffarpur", "Bhagalpur", "Darbhanga"],
-  "Chhattisgarh": ["Raipur", "Bilaspur", "Bhilai", "Korba", "Durg"],
-  "Goa": ["Panaji", "Margao", "Vasco da Gama", "Mapusa"],
-  "Gujarat": ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Gandhinagar", "Bhavnagar"],
-  "Haryana": ["Gurugram", "Faridabad", "Panipat", "Ambala", "Hisar"],
-  "Himachal Pradesh": ["Shimla", "Manali", "Dharamshala", "Kullu", "Solan"],
-  "Jharkhand": ["Ranchi", "Jamshedpur", "Dhanbad", "Bokaro"],
-  "Karnataka": ["Bengaluru", "Mysuru", "Mangalore", "Hubli", "Belagavi"],
-  "Kerala": ["Kochi", "Thiruvananthapuram", "Kozhikode", "Thrissur"],
-  "Madhya Pradesh": ["Indore", "Bhopal", "Gwalior", "Jabalpur", "Ujjain"],
-  "Maharashtra": ["Mumbai", "Pune", "Nagpur", "Nashik", "Thane", "Aurangabad"],
-  "Manipur": ["Imphal"],
-  "Meghalaya": ["Shillong"],
-  "Mizoram": ["Aizawl"],
-  "Nagaland": ["Kohima", "Dimapur"],
-  "Odisha": ["Bhubaneswar", "Cuttack", "Rourkela", "Puri", "Sambalpur"],
-  "Punjab": ["Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Mohali"],
-  "Rajasthan": ["Jaipur", "Udaipur", "Jodhpur", "Kota", "Ajmer"],
-  "Sikkim": ["Gangtok"],
-  "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem"],
-  "Telangana": ["Hyderabad", "Warangal", "Nizamabad", "Karimnagar"],
-  "Tripura": ["Agartala"],
-  "Uttarakhand": ["Dehradun", "Haridwar", "Rishikesh", "Haldwani"],
-  "Uttar Pradesh": ["Lucknow", "Noida", "Ghaziabad", "Kanpur", "Agra", "Varanasi"],
-  "West Bengal": ["Kolkata", "Howrah", "Siliguri", "Durgapur", "Asansol"],
-  "Andaman & Nicobar": ["Port Blair"],
-  "Chandigarh": ["Chandigarh"],
-  "Delhi": ["New Delhi"],
-  "Jammu & Kashmir": ["Srinagar", "Jammu"],
-  "Ladakh": ["Leh"],
-  "Puducherry": ["Puducherry"]
-};
-
-export const indiaCities = Object.values(indiaStatesAndCities).flat().sort();
+// The India-wide city dataset lives in its own module; re-exported here because
+// several pages already import these names from Ad_Pos.
+import { indiaStatesAndCities, indiaCities, CITY_STATE, searchCities } from '../data/indiaCities';
+export { indiaStatesAndCities, indiaCities };
 
 // No need for separate CTC options - we'll generate them dynamically
 
@@ -62,6 +28,8 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
   const { user } = useContext(UserStateContext);
   const [submit, setSubmit] = useState(false);
   const [citySearch, setCitySearch] = useState("");
+  const [cityHi, setCityHi] = useState(-1);          // keyboard-highlighted suggestion
+  const [cityFocus, setCityFocus] = useState(false); // dropdown open only while focused
   const [customCities, setCustomCities] = useState([]);
   // Selected client's tier-based commission config (from Company_Overview)
   const [companyCommission, setCompanyCommission] = useState({ type: '', tiers: [] });
@@ -715,9 +683,33 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
 
   // Full city list = built-in India cities + any custom ones the user added.
   const allCityList = [...customCities, ...indiaCities];
-  const filteredCities = allCityList.filter(city =>
-    city.toLowerCase().includes(citySearch.toLowerCase())
-  );
+  // Quick-pick grid below the box. With ~950 cities in the list, rendering all of
+  // them when nothing is typed is just noise — show the metros until the user
+  // searches, and let the type-ahead handle everything else.
+  const POPULAR_CITIES = [
+    'Bengaluru', 'Mumbai', 'Delhi', 'New Delhi', 'Gurugram', 'Noida', 'Hyderabad', 'Chennai',
+    'Pune', 'Kolkata', 'Ahmedabad', 'Jaipur', 'Chandigarh', 'Lucknow', 'Indore', 'Kochi',
+    'Coimbatore', 'Nagpur', 'Bhubaneswar', 'Thiruvananthapuram', 'Surat', 'Vadodara',
+    'Visakhapatnam', 'Mysuru', 'Nashik', 'Remote',
+  ];
+  const filteredCities = citySearch.trim()
+    ? allCityList.filter(city => city.toLowerCase().includes(citySearch.toLowerCase())).slice(0, 60)
+    : [...new Set([...customCities, ...POPULAR_CITIES.filter(c => allCityList.includes(c))])];
+  // Ranked suggestions for the type-ahead under the search box.
+  const citySuggestions = searchCities(citySearch, customCities, 12);
+
+  // Pick a city from the suggestion list: select it and clear the box so the
+  // next city can be typed straight away.
+  const pickCity = (city) => {
+    setForm(prev => ({
+      ...prev,
+      location: prev.location.some(c => c.toLowerCase() === city.toLowerCase())
+        ? prev.location
+        : [...prev.location, city],
+    }));
+    setCitySearch("");
+    setCityHi(-1);
+  };
   // Whether the typed search is a brand-new location not already in the list.
   const trimmedCity = citySearch.trim();
   const cityExists = trimmedCity && allCityList.some(c => c.toLowerCase() === trimmedCity.toLowerCase());
@@ -738,6 +730,7 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
         : [...prev.location, cityToUse],
     }));
     setCitySearch("");
+    setCityHi(-1);
   };
 
   return (
@@ -1541,23 +1534,75 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
                   <Search size={16} className="sm:w-[18px] sm:h-[18px] absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search or add a city..."
+                    placeholder="Type a city — e.g. Pune, Coimbatore, Siliguri…"
                     value={citySearch}
-                    onChange={(e) => setCitySearch(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (canAddCity) addCustomCity(); } }}
+                    onChange={(e) => { setCitySearch(e.target.value); setCityHi(-1); }}
+                    onFocus={() => setCityFocus(true)}
+                    onBlur={() => setTimeout(() => setCityFocus(false), 150)}
+                    autoComplete="off"
+                    onKeyDown={(e) => {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setCityHi(i => Math.min(i + 1, citySuggestions.length - 1));
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setCityHi(i => Math.max(i - 1, -1));
+                      } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (cityHi >= 0 && citySuggestions[cityHi]) pickCity(citySuggestions[cityHi].city);
+                        else if (citySuggestions.length) pickCity(citySuggestions[0].city);
+                        else if (canAddCity) addCustomCity();
+                      } else if (e.key === 'Escape') {
+                        setCityFocus(false);
+                      }
+                    }}
                     className="w-full h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl pl-10 sm:pl-12 pr-3 sm:pr-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm"
                   />
+
+                  {/* Type-ahead suggestions — any Indian city, in any state */}
+                  {cityFocus && trimmedCity.length > 0 && (citySuggestions.length > 0 || canAddCity) && (
+                    <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-64 overflow-y-auto">
+                      {citySuggestions.map((sug, i) => {
+                        const picked = form.location.some(c => c.toLowerCase() === sug.city.toLowerCase());
+                        return (
+                          <button
+                            key={sug.city}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onMouseEnter={() => setCityHi(i)}
+                            onClick={() => pickCity(sug.city)}
+                            className={`w-full flex items-center justify-between gap-2 px-3 sm:px-4 py-2 text-left transition-colors ${
+                              i === cityHi ? 'bg-blue-50' : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <span className="min-w-0">
+                              <span className="text-sm font-semibold text-gray-800">{sug.city}</span>
+                              {sug.state && <span className="text-xs text-gray-500">, {sug.state}</span>}
+                              {sug.via && <span className="text-[11px] text-gray-400 ml-1">(also “{sug.via}”)</span>}
+                            </span>
+                            {picked
+                              ? <CheckCircle size={15} className="text-green-600 flex-shrink-0" />
+                              : <Plus size={15} className="text-blue-500 flex-shrink-0" />}
+                          </button>
+                        );
+                      })}
+                      {canAddCity && (
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={addCustomCity}
+                          className="w-full flex items-center gap-2 px-3 sm:px-4 py-2 text-left border-t border-gray-100 hover:bg-blue-50"
+                        >
+                          <Plus size={15} className="text-blue-600 flex-shrink-0" />
+                          <span className="text-sm font-semibold text-blue-700">Add “{trimmedCity}” as a new city</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {/* Add-new-city option when the typed city isn't in the list */}
-                {canAddCity && (
-                  <button
-                    type="button"
-                    onClick={addCustomCity}
-                    className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs sm:text-sm font-semibold transition-all"
-                  >
-                    <Plus size={15} /> Add “{trimmedCity}” as a new city
-                  </button>
-                )}
+                <p className="mt-1.5 text-[11px] text-gray-400">
+                  Start typing to see matching cities — pick as many as you need. Not listed? You can add it.
+                </p>
               </div>
 
               {/* Selected Cities */}
