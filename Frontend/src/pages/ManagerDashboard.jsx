@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import { SidebarProvider, SidebarContext } from '../context/Sidebarcontext';
@@ -68,7 +68,7 @@ const Content = () => {
       {/* Tabs (sub-menus) */}
       <div className="bg-white border-b px-4 sm:px-6 lg:px-8">
         <div className="flex gap-1 flex-wrap">
-          {[['clientspocs', 'All ClientSPOCs', Users], ['positions', 'Positions & Candidates', Briefcase], ['recruiters', 'Recruiters', UserCheck], ['reports', 'Reports', BarChart3]].map(([id, label, Icon]) => (
+          {[['clientspocs', 'All ClientSPOCs', Users], ['positions', 'Positions & Candidates', Briefcase], ['recruiters', 'Recruiters', UserCheck], ['spoc-activity', 'SPOC Activity', BarChart3], ['reports', 'Reports', BarChart3]].map(([id, label, Icon]) => (
             <button key={id} onClick={() => setTab(id)}
               className={`inline-flex items-center gap-1.5 px-4 py-3 text-sm font-semibold border-b-2 ${tab === id ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
               <Icon size={15} /> {label}
@@ -115,6 +115,7 @@ const Content = () => {
 
         {tab === 'positions' && <PositionsTab spocs={spocs} selSpoc={selSpoc} setSelSpoc={setSelSpoc} />}
         {tab === 'recruiters' && <RecruitersTab />}
+        {tab === 'spoc-activity' && <SpocActivityTab />}
         {tab === 'reports' && <ReportsTab spocs={spocs} selSpoc={selSpoc} setSelSpoc={setSelSpoc} />}
       </main>
       <Footer />
@@ -241,6 +242,155 @@ const CandidatesPanel = ({ posId }) => {
           {savingId === c.id && <Loader2 size={14} className="animate-spin text-gray-500" />}
         </div>
       ))}
+    </div>
+  );
+};
+
+
+// ── SPOC Activity: date-wise candidate intake vs action, per ClientSPOC ───────
+const SpocActivityTab = () => {
+  const [rows, setRows] = useState(null);
+  const [totals, setTotals] = useState(null);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [spocFilter, setSpocFilter] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    const q = new URLSearchParams();
+    if (from) q.set('from', from);
+    if (to) q.set('to', to);
+    axios.get(`/api/manager/spoc-activity?${q}`, { withCredentials: true })
+      .then(r => { setRows(r.data?.rows || []); setTotals(r.data?.totals || null); })
+      .catch(() => { setRows([]); setTotals(null); })
+      .finally(() => setLoading(false));
+  }, [from, to]);
+  useEffect(() => { load(); }, [load]);
+
+  const spocNames = useMemo(
+    () => [...new Set((rows || []).map(r => r.clientspocName))].sort(), [rows]);
+  const view = useMemo(
+    () => (rows || []).filter(r => !spocFilter || r.clientspocName === spocFilter), [rows, spocFilter]);
+
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+
+  const exportExcel = () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(view.map(r => ({
+      'Date': r.date,
+      'ClientSPOC': r.clientspocName,
+      'Email': r.clientspoc,
+      'Direct Applicants Received': r.directReceived,
+      'Direct Applicants Updated': r.directActioned,
+      'Direct Pending': r.directReceived - r.directActioned,
+      'From Recruiters Received': r.recruiterReceived,
+      'From Recruiters Updated': r.recruiterActioned,
+      'Recruiter Pending': r.recruiterReceived - r.recruiterActioned,
+      'Auto Screen Rejected': r.autoScreenRejected,
+      'Total Received': r.total,
+    }))), 'SPOC Activity');
+    XLSX.writeFile(wb, `SPOC_Activity_${from || 'all'}_${to || 'all'}.xlsx`);
+  };
+
+  const Cell = ({ got, done, showPct = true }) => (
+    <td className="px-3 py-2 text-center whitespace-nowrap">
+      <span className="font-semibold text-gray-900">{got}</span>
+      <span className="text-gray-400"> / </span>
+      <span className={done === got && got > 0 ? 'text-green-600 font-semibold' : 'text-amber-600 font-semibold'}>{done}</span>
+      {showPct && got > 0 && <span className="text-[11px] text-gray-400 ml-1">({pct(done, got)}%)</span>}
+    </td>
+  );
+
+  return (
+    <div>
+      {/* Filters */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-4 flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500">From
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500">To
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-semibold text-gray-500">ClientSPOC
+          <select value={spocFilter} onChange={e => setSpocFilter(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500">
+            <option value="">All ClientSPOCs</option>
+            {spocNames.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        {(from || to || spocFilter) && (
+          <button onClick={() => { setFrom(''); setTo(''); setSpocFilter(''); }}
+            className="text-xs font-medium text-gray-600 border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50">Clear</button>
+        )}
+        <button onClick={exportExcel} disabled={!view.length}
+          className="ml-auto inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-semibold rounded-xl px-4 py-2">
+          <Download size={16} /> Export to Excel
+        </button>
+      </div>
+
+      {/* Totals */}
+      {totals && (
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+          {[
+            ['Direct applicants', totals.directReceived, totals.directActioned],
+            ['From recruiters', totals.recruiterReceived, totals.recruiterActioned],
+            ['Auto screen rejected', totals.autoScreenRejected, null],
+            ['Total received', totals.total, null],
+            ['Overall actioned', totals.total, totals.directActioned + totals.recruiterActioned],
+          ].map(([label, got, done]) => (
+            <div key={label} className="bg-white border border-gray-200 rounded-2xl p-4">
+              <div className="text-2xl font-extrabold text-gray-900">
+                {got}{done !== null && <span className="text-base text-gray-400"> / {done}</span>}
+              </div>
+              <div className="text-xs text-gray-500 mt-0.5">{label}{done !== null && ' (received / updated)'}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        {loading ? (
+          <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>
+        ) : !view.length ? (
+          <div className="py-16 text-center text-gray-400 text-sm">No activity for this period.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gradient-to-r from-blue-50 to-blue-100 text-left">
+                  <th className="px-3 py-3 font-semibold text-gray-600">Date</th>
+                  <th className="px-3 py-3 font-semibold text-gray-600">ClientSPOC</th>
+                  <th className="px-3 py-3 font-semibold text-gray-600 text-center">Direct<br/><span className="text-[10px] font-normal">received / updated</span></th>
+                  <th className="px-3 py-3 font-semibold text-gray-600 text-center">From Recruiters<br/><span className="text-[10px] font-normal">received / updated</span></th>
+                  <th className="px-3 py-3 font-semibold text-gray-600 text-center">Auto<br/><span className="text-[10px] font-normal">screen reject</span></th>
+                  <th className="px-3 py-3 font-semibold text-gray-600 text-center">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {view.map(r => (
+                  <tr key={r.clientspoc + r.date} className="border-t border-gray-100 hover:bg-blue-50/30">
+                    <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{r.date}</td>
+                    <td className="px-3 py-2 font-medium text-gray-800">{r.clientspocName}
+                      <span className="block text-[11px] text-gray-400">{r.clientspoc}</span></td>
+                    <Cell got={r.directReceived} done={r.directActioned} />
+                    <Cell got={r.recruiterReceived} done={r.recruiterActioned} />
+                    <td className="px-3 py-2 text-center">
+                      {r.autoScreenRejected > 0
+                        ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">{r.autoScreenRejected}</span>
+                        : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-center font-bold text-gray-900">{r.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

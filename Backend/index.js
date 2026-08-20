@@ -418,6 +418,26 @@ exports.suspendInactiveRecruiters = onSchedule(
   }
 );
 
+
+// ---- Scheduled: auto Screen Reject stale candidates (hourly) ----
+// 'Applied' untouched for 48h and 'Submitted' untouched for 72h are moved to
+// Screen Reject so they stop holding position slots and become visible in the
+// Resume Bank. Controlled by Firestore app_config/auto_screen_reject.
+exports.autoScreenRejectSweep = onSchedule(
+  {
+    schedule: 'every 1 hours',
+    timeZone: 'Asia/Kolkata',
+    region: 'us-central1',
+    memory: '512MiB',
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const { runAutoScreenReject } = require('./utils/autoScreenReject');
+    const r = await runAutoScreenReject();
+    console.log('🧹 Auto screen-reject sweep:', JSON.stringify(r));
+  }
+);
+
 // ---- Scheduled: delete candidate submission drafts older than 72h ----
 exports.cleanupCandidateDrafts = onSchedule(
   {

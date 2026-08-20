@@ -228,4 +228,85 @@ router.get('/recruiter-candidates', managerAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// GET /api/manager/spoc-activity?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Per ClientSPOC per day: how many candidates arrived (direct applicants vs from
+// recruiters), how many the SPOC has actioned, and how many were auto Screen
+// Rejected by the 48h/72h sweep. Powers the Manager "SPOC Activity" tab.
+router.get('/spoc-activity', managerAuth, async (req, res) => {
+  try {
+    const toMs = (v) => {
+      if (!v) return 0;
+      if (typeof v.toMillis === 'function') return v.toMillis();
+      if (v._seconds) return v._seconds * 1000;
+      const t = new Date(v).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    // Day key in IST so the report lines up with the working day.
+    const dayKey = (ms) => new Date(ms + 5.5 * 3600000).toISOString().slice(0, 10);
+
+    const fromMs = req.query.from ? new Date(req.query.from + 'T00:00:00Z').getTime() - 5.5 * 3600000 : 0;
+    const toMsLimit = req.query.to ? new Date(req.query.to + 'T23:59:59Z').getTime() - 5.5 * 3600000 : Infinity;
+
+    // Map every position to the SPOC that owns it.
+    const posSnap = await db.collection('admin_AddPos').select('pos_id', 'clientspoc', 'clientspoc_name').get();
+    const spocOf = {}, nameOf = {};
+    posSnap.docs.forEach(d => {
+      const p = d.data();
+      if (!p.pos_id) return;
+      spocOf[String(p.pos_id)] = lc(p.clientspoc);
+      if (p.clientspoc_name) nameOf[lc(p.clientspoc)] = p.clientspoc_name;
+    });
+
+    const candSnap = await db.collection('candidate_db')
+      .select('pos_id', 'clientspoc', 'statusa', 'source', 'recRole', 'datePosted',
+              'statusaDate', 'statusChangedAt', 'statusChangedBy', 'autoScreenRejected')
+      .get();
+
+    // rows keyed by "spoc|date"
+    const rows = {};
+    candSnap.docs.forEach(d => {
+      const c = d.data();
+      const created = toMs(c.datePosted);
+      if (!created || created < fromMs || created > toMsLimit) return;
+
+      const spoc = lc(c.clientspoc) || spocOf[String(c.pos_id)] || '';
+      if (!spoc) return;
+      const key = spoc + '|' + dayKey(created);
+      const r = rows[key] || (rows[key] = {
+        clientspoc: spoc, clientspocName: nameOf[spoc] || spoc.split('@')[0], date: dayKey(created),
+        directReceived: 0, directActioned: 0,
+        recruiterReceived: 0, recruiterActioned: 0,
+        autoScreenRejected: 0, total: 0,
+      });
+
+      const isDirect = c.source === 'direct_apply';
+      const status = (c.statusa || '').trim();
+      // "Actioned" = moved past the entry statuses by a human (not the sweep).
+      const actioned = !!status && status !== 'Applied' && status !== 'Submitted' && !c.autoScreenRejected;
+
+      r.total++;
+      if (isDirect) { r.directReceived++; if (actioned) r.directActioned++; }
+      else { r.recruiterReceived++; if (actioned) r.recruiterActioned++; }
+      if (c.autoScreenRejected) r.autoScreenRejected++;
+    });
+
+    const list = Object.values(rows).sort((a, b) =>
+      b.date.localeCompare(a.date) || a.clientspocName.localeCompare(b.clientspocName));
+
+    const totals = list.reduce((t, r) => ({
+      directReceived: t.directReceived + r.directReceived,
+      directActioned: t.directActioned + r.directActioned,
+      recruiterReceived: t.recruiterReceived + r.recruiterReceived,
+      recruiterActioned: t.recruiterActioned + r.recruiterActioned,
+      autoScreenRejected: t.autoScreenRejected + r.autoScreenRejected,
+      total: t.total + r.total,
+    }), { directReceived: 0, directActioned: 0, recruiterReceived: 0, recruiterActioned: 0, autoScreenRejected: 0, total: 0 });
+
+    res.json({ success: true, rows: list, totals });
+  } catch (e) {
+    console.error('spoc-activity error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 module.exports = router;
