@@ -11,7 +11,9 @@ const ROLE_LINKS = {
   coach:      { inbox: '/coach-inbox',      chat: '/messages' },
   expert:     { inbox: '/expert-inbox',     chat: '/messages' },
   clientspoc: { inbox: '/clientspoc-inbox', chat: '/ad_panel#messages' },
-  vendor:     { inbox: '/clientspoc-inbox', chat: '/ad_panel#messages' },
+  // Vendors have their own dashboard tabs (hash-driven) — the ClientSPOC pages
+  // these used to point at aren't theirs to open.
+  vendor:     { inbox: '/vendor-dashboard#inbox', chat: '/vendor-dashboard#messages' },
 };
 
 // Floating Inbox (mail) + Chat bubbles, bottom-right, on every page for a

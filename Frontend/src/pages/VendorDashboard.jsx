@@ -1476,8 +1476,8 @@ const VendorDashboard = () => {
     { id: 'recruiters', icon: Users, label: 'My Recruiters' },
     { id: 'candidates', icon: FileText, label: 'All Candidates' },
     { id: 'positions', icon: Briefcase, label: 'Open Positions' },
-    { id: 'messages', icon: MessageSquare, label: 'Messages' },
-    { id: 'inbox', icon: Inbox, label: 'Inbox' },
+    // Messages and Inbox are reachable from the floating buttons bottom-right,
+    // so they're kept out of the sidebar to avoid duplicating them.
     { id: 'reports', icon: BarChart3, label: 'Reports' },
   ];
 
