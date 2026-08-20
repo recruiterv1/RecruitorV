@@ -719,4 +719,78 @@ router.get('/recruiter-detail', vendorAuth, async (req, res) => {
   }
 });
 
+// ─── Position notes / briefing (vendor → their own team) ─────────────────────
+// Mirrors the coach briefing: a vendor writes guidance against a position their
+// team works on, and only their assigned recruiters can read it. Stored in the
+// same `position_coach_briefing` collection, keyed `${posId}__${vendorEmail}`,
+// so the reader UI is shared.
+const VENDOR_BRIEFING_FIELDS = [
+  'exactPosition', 'sourcingTips', 'challenges',
+  'headhuntingTarget', 'assessmentQuestions', 'engagementPostSubmission',
+];
+
+// Is any recruiter of this vendor assigned to the position? That is what gives the
+// vendor the right to write notes on it.
+async function vendorTeamOnPosition(vendorEmail, posId) {
+  const recSnap = await db.collection('recruiter_db')
+    .where('vendorEmail', '==', (vendorEmail || '').toLowerCase()).get();
+  const emails = recSnap.docs.map(d => (d.data().email || '').toLowerCase()).filter(Boolean);
+  if (!emails.length) return { allowed: false, teamEmails: [] };
+
+  const positionAccess = require('../model_fire/positionAccessF');
+  for (const email of emails) {
+    try {
+      const reqs = await positionAccess.getRecruiterAssignments(email);
+      if ((reqs || []).some(r => String(r.positionId) === String(posId))) {
+        return { allowed: true, teamEmails: emails };
+      }
+    } catch (_) { /* keep checking the rest of the team */ }
+  }
+  return { allowed: false, teamEmails: emails };
+}
+
+// POST /vendor/position-briefing  { positionId, ...answers }
+router.post('/position-briefing', vendorAuth, async (req, res) => {
+  try {
+    const vendorEmail = (req.vendor.email || '').toLowerCase();
+    const positionId = String(req.body?.positionId || '');
+    if (!positionId) return res.status(400).json({ success: false, message: 'positionId is required' });
+
+    const { allowed } = await vendorTeamOnPosition(vendorEmail, positionId);
+    if (!allowed) {
+      return res.status(403).json({ success: false, message: 'None of your recruiters are assigned to this position yet.' });
+    }
+
+    const patch = {
+      positionId, vendorEmail,
+      coachEmail: vendorEmail,                       // shared reader keys off this
+      coachName: req.vendor.name || vendorEmail,
+      authorType: 'vendor',
+      updatedAt: new Date(),
+    };
+    VENDOR_BRIEFING_FIELDS.forEach(f => { patch[f] = String(req.body?.[f] || ''); });
+    await db.collection('position_coach_briefing').doc(`${positionId}__${vendorEmail}`).set(patch, { merge: true });
+    return res.json({ success: true, message: 'Notes saved for your team' });
+  } catch (e) {
+    console.error('vendor position-briefing save error:', e.message);
+    return res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /vendor/position-briefing/:posId — the vendor's own notes (for editing).
+router.get('/position-briefing/:posId', vendorAuth, async (req, res) => {
+  try {
+    const vendorEmail = (req.vendor.email || '').toLowerCase();
+    const doc = await db.collection('position_coach_briefing')
+      .doc(`${String(req.params.posId)}__${vendorEmail}`).get();
+    const { allowed } = await vendorTeamOnPosition(vendorEmail, req.params.posId);
+    return res.json({
+      success: true, canEdit: allowed,
+      found: doc.exists, briefing: doc.exists ? doc.data() : null,
+    });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 module.exports = router;

@@ -969,11 +969,109 @@ const ReportsTab = () => {
 };
 
 // ── Open Positions ─────────────────────────────────────────────
+
+// ── Vendor position notes (visible to that vendor's assigned recruiters) ─────
+const VENDOR_NOTE_QS = [
+  { key: 'exactPosition', label: 'Understanding the Position', desc: 'What exactly are we hiring for?' },
+  { key: 'sourcingTips', label: 'Sourcing Strategy', desc: 'What are the best sourcing tips for this position?' },
+  { key: 'challenges', label: 'Hiring Challenges', desc: 'What challenges should recruiters expect?' },
+  { key: 'headhuntingTarget', label: 'Head-hunting Strategy', desc: 'Who should we target and where?' },
+  { key: 'assessmentQuestions', label: 'Assessment Call', desc: 'What questions should we ask candidates?' },
+  { key: 'engagementPostSubmission', label: 'Post-Submission Engagement', desc: 'How do we keep candidates engaged after submission?' },
+];
+
+const VendorPositionNotes = ({ position, onClose }) => {
+  const empty = Object.fromEntries(VENDOR_NOTE_QS.map(q => [q.key, '']));
+  const [form, setForm] = useState(empty);
+  const [canEdit, setCanEdit] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    axios.get(`/vendor/position-briefing/${position.pos_id}`, { withCredentials: true })
+      .then(r => {
+        setCanEdit(r.data?.canEdit !== false);
+        const b = r.data?.briefing;
+        if (b) setForm(Object.fromEntries(VENDOR_NOTE_QS.map(q => [q.key, b[q.key] || ''])));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [position.pos_id]);
+
+  const save = async () => {
+    setSaving(true); setMsg('');
+    try {
+      await axios.post('/vendor/position-briefing',
+        { positionId: position.pos_id, ...form }, { withCredentials: true });
+      setMsg('ok');
+      setTimeout(onClose, 900);
+    } catch (e) {
+      setMsg(e.response?.data?.message || 'Could not save the notes.');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-5 rounded-t-2xl flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-white truncate">Notes for your team</h2>
+            <p className="text-white/80 text-sm truncate">{position.position} · {position.pos_id}</p>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white flex-shrink-0 text-xl leading-none">×</button>
+        </div>
+
+        <div className="p-5">
+          {loading ? (
+            <div className="py-12 text-center text-gray-400 text-sm">Loading…</div>
+          ) : !canEdit ? (
+            <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              None of your recruiters are assigned to this position yet. Assign someone first, then you can add notes for them.
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-gray-500 mb-4">
+                Only recruiters in your team who are assigned to this position will see these notes — on the position page, and they can play them as audio.
+              </p>
+              {msg && msg !== 'ok' && <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{msg}</div>}
+              {msg === 'ok' && <div className="mb-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>}
+
+              <div className="space-y-4">
+                {VENDOR_NOTE_QS.map((q, i) => (
+                  <div key={q.key}>
+                    <label className="block text-sm font-bold text-gray-900">{i + 1}. {q.label}</label>
+                    <p className="text-xs text-gray-500 mb-1.5">{q.desc}</p>
+                    <textarea rows={3} value={form[q.key]}
+                      onChange={e => setForm(f => ({ ...f, [q.key]: e.target.value }))}
+                      placeholder={q.desc}
+                      className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-purple-500 resize-vertical" />
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-2 mt-5">
+                <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-300 rounded-xl">Cancel</button>
+                <button onClick={save} disabled={saving}
+                  className="px-5 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl disabled:opacity-60">
+                  {saving ? 'Saving…' : 'Save notes'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const OpenPositionsTab = ({ recruiters }) => {
+  const navigate = useNavigate();
   const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedPos, setSelectedPos] = useState(null); // position detail modal
+  const [notesPos, setNotesPos] = useState(null);        // position whose team notes are being edited
   const [assignModal, setAssignModal] = useState(null); // { pos_id, posName }
   const [assigningId, setAssigningId] = useState(null); // recruiterId being assigned
   const [assignResults, setAssignResults] = useState({}); // recruiterId → { success, message }
@@ -1085,10 +1183,17 @@ const OpenPositionsTab = ({ recruiters }) => {
               </div>
               <div className="px-4 pb-4 flex gap-2">
                 <button
-                  onClick={() => setSelectedPos(pos)}
+                  onClick={() => navigate(`/dash_view/${pos.pos_id}`)}
                   className="flex-1 py-2 border-2 border-blue-200 text-blue-600 hover:bg-blue-50 text-xs font-bold rounded-xl transition-colors"
                 >
                   View Details
+                </button>
+                <button
+                  onClick={() => setNotesPos(pos)}
+                  title="Add notes for your team on this position"
+                  className="flex-1 py-2 border-2 border-purple-200 text-purple-700 hover:bg-purple-50 text-xs font-bold rounded-xl transition-colors"
+                >
+                  📝 Notes
                 </button>
                 <button
                   onClick={() => openAssign(pos)}
@@ -1103,6 +1208,10 @@ const OpenPositionsTab = ({ recruiters }) => {
       )}
 
       {/* Position Detail Modal */}
+      {notesPos && (
+        <VendorPositionNotes position={notesPos} onClose={() => setNotesPos(null)} />
+      )}
+
       {selectedPos && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">

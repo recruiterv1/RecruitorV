@@ -3179,6 +3179,17 @@ router.get('/position-briefing/:posId', authMiddleware, async (req, res) => {
       const b = await db.collection('position_coach_briefing').doc(`${posId}__${ce}`).get();
       if (b.exists) return res.json({ success: true, found: true, editable: false, briefing: b.data() });
     }
+    // Vendor path: a recruiter under a vendor also sees the notes their vendor wrote
+    // for this position (same collection, keyed by the vendor's email).
+    try {
+      const rSnap = await db.collection('recruiter_db').where('email', '==', emailLower).limit(1).get();
+      const vendorEmail = rSnap.empty ? '' : (rSnap.docs[0].data().vendorEmail || '').toLowerCase();
+      if (vendorEmail) {
+        const vb = await db.collection('position_coach_briefing').doc(`${posId}__${vendorEmail}`).get();
+        if (vb.exists) return res.json({ success: true, found: true, editable: false, briefing: vb.data() });
+      }
+    } catch (_) { /* fall through to "not found" */ }
+
     return res.json({ success: true, found: false, editable: false, briefing: null });
   } catch (err) {
     console.error('position-briefing get error:', err.message);
