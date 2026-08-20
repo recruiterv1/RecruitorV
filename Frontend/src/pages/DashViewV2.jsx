@@ -438,6 +438,9 @@ function DashViewV2Inner() {
     .toString().toLowerCase().replace(/\s/g, '');
   const isCoachExpert = ['coach', 'expert'].includes(roleSlug);
   const isVendor = roleSlug === 'vendor';
+  // The Coach/Expert panel is about joining a coach's team — irrelevant to a
+  // vendor and to the recruiters working under one, so it stays hidden for both.
+  const isVendorSide = isVendor || !!teamUser?.vendorEmail;
   // Coaches, experts and vendors all brief and assign their own team.
   const isTeamLead = isCoachExpert || isVendor;
   const [spocDetails, setSpocDetails] = useState(null);   // { name, email, mobile } — coach/expert only
@@ -583,7 +586,7 @@ function DashViewV2Inner() {
   };
 
   useEffect(() => {
-    if (!teamUser?.email) return;
+    if (!teamUser?.email || isVendorSide) return;
     const recCats = (Array.isArray(teamUser.skillCategory) ? teamUser.skillCategory : (teamUser.skillCategory ? [teamUser.skillCategory] : []))
       .map(c => String(c).toLowerCase().trim());
     const FORTY_EIGHT = 48 * 60 * 60 * 1000, now = Date.now();
@@ -1587,6 +1590,7 @@ function DashViewV2Inner() {
                 )}
               </div>
 
+              {!isVendorSide && (
               <div className="card">
                 <h2>Coach / Expert</h2>
                 <p className="card-sub">Coaches & Experts in your skill category, active in the last 48 hours. Send a request to join their team.</p>
@@ -1650,6 +1654,7 @@ function DashViewV2Inner() {
                   </div>
                 )}
               </div>
+              )}
 
               <div className="card">
                 <h2>Position Details</h2>

@@ -2270,6 +2270,48 @@ router.patch('/coach-vendor-requests/:id', async (req, res) => {
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ success: false, message: 'Request not found' });
     await docRef.update({ status, updatedAt: FieldValue.serverTimestamp() });
+
+    // Approving only flipped a flag before, so upgraded coaches never became real
+    // vendors: they were missing from Vendor Management and every /vendor/*
+    // endpoint (which resolves the caller out of admin_db) rejected them.
+    // Create the vendor account here. Their coach_db record is left untouched —
+    // /admin/authcheck refuses tokens carrying `portal: 'user'`, so signing in
+    // through the coach portal still resolves them as a coach.
+    if (status === 'approved') {
+      try {
+        const c = doc.data();
+        const email = (c.coachEmail || '').toLowerCase().trim();
+        if (email) {
+          const existing = await db.collection('admin_db').where('email', '==', email).limit(1).get();
+          const payload = {
+            name: c.coachName || email.split('@')[0],
+            email,
+            phone: c.coachPhone || '',
+            roleCategory: 'Vendor',
+            role: 'Vendor',
+            upgradedFromCoach: true,
+            coachId: c.coachId || '',
+            skillCategory: c.coachSkillCategory || [],
+            accountStatus: 'approved',
+          };
+          if (existing.empty) {
+            await db.collection('admin_db').add({
+              ...payload, recruiterQuantity: 0, createdAt: FieldValue.serverTimestamp(),
+            });
+          } else {
+            // Never downgrade an existing admin/SuperAdmin into a vendor.
+            const cur = existing.docs[0].data();
+            const curRole = (cur.roleCategory || cur.role || '').toLowerCase().replace(/\s/g, '');
+            if (!curRole || curRole === 'vendor') {
+              await existing.docs[0].ref.set(payload, { merge: true });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('coach->vendor upgrade: could not create vendor account:', e.message);
+      }
+    }
+
     return res.json({ success: true, message: `Request ${status}` });
   } catch (err) {
     console.error('patch coach-vendor-requests error:', err.message);

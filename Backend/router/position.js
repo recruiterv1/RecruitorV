@@ -97,6 +97,7 @@ function authMiddleware(req, res, next) {
 router.get('/pos/show', async (req,res)=>{
   try {
     let show = await ad_Pos.getAllPosition();
+    show = show.filter(p => p.vendorPrivate !== true);   // team-only vendor roles stay private
     const commMap = await buildCommissionMap();
     show = applyCommission(show, commMap);
     res.status(200).json(show);
@@ -142,6 +143,25 @@ router.get('/pos/show-for-user', authMiddleware, async (req, res) => {
     } else {
       show = show.filter(pos => !pos.consultingFirmId || pos.openToAll === true);
     }
+
+    // Vendor scoping, mirroring the firm rules above. A vendor's private position
+    // never leaves their team, and when the SuperAdmin has turned off "may work
+    // RecruiterV positions" for that vendor, their recruiters see only the
+    // positions their own vendor added.
+    const myVendor = (userDoc?.vendorEmail || '').toLowerCase();
+    let vendorAllowsPlatform = true;
+    if (myVendor) {
+      try {
+        const vSnap = await db.collection('admin_db').where('email', '==', myVendor).limit(1).get();
+        if (!vSnap.empty) vendorAllowsPlatform = vSnap.docs[0].data().allowPlatformPositions !== false;
+      } catch (_) { /* default to allowed */ }
+    }
+    show = show.filter(pos => {
+      const owner = (pos.postedByVendor || '').toLowerCase();
+      if (owner && myVendor && owner === myVendor) return true;   // own vendor's roles
+      if (pos.vendorPrivate === true) return false;               // someone else's private role
+      return myVendor ? vendorAllowsPlatform : true;
+    });
 
     // Filter by skillCategory — only show positions whose skill_category matches.
     // scope=all skips this (the "All" tab) but keeps the active + firm scoping above.

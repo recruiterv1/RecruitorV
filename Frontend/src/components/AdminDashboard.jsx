@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
+import VendorSpocModal from './VendorSpocModal';
 import { useNavigate } from 'react-router-dom';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import axios from 'axios';
@@ -428,6 +429,20 @@ const VendorManagement = () => {
   const [selectedRecs, setSelectedRecs] = React.useState([]);
   const [assocSearch, setAssocSearch] = React.useState('');
   const [assocSaving, setAssocSaving] = React.useState(false);
+  const [spocVendor, setSpocVendor] = React.useState(null);
+  const [platformBusy, setPlatformBusy] = React.useState(null);
+
+  // Optimistic: flip the card immediately, roll back if the write fails.
+  const togglePlatform = async (vendor, allow) => {
+    setPlatformBusy(vendor.id);
+    setVendors(prev => prev.map(x => x.id === vendor.id ? { ...x, allowPlatformPositions: allow } : x));
+    try {
+      await axios.patch('/admin/vendor-platform-access', { vendorId: vendor.id, allow }, { withCredentials: true });
+    } catch (err) {
+      setVendors(prev => prev.map(x => x.id === vendor.id ? { ...x, allowPlatformPositions: !allow } : x));
+      alert(err.response?.data?.message || 'Could not update platform access');
+    } finally { setPlatformBusy(null); }
+  };
 
   const loadVendors = async () => {
     setLoading(true);
@@ -537,7 +552,41 @@ const VendorManagement = () => {
                       <div className={`h-2 rounded-full transition-all ${pct >= 100 ? 'bg-red-500' : pct >= 75 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                     </div>
                   </div>
-                  <p className="text-xs text-gray-400">Added: {fmt(v.createdAt)}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-gray-50 rounded-xl px-3 py-2">
+                      <p className="text-[11px] text-gray-400">Positions added</p>
+                      <p className="text-lg font-bold text-gray-800 leading-tight">{v.positionsAdded ?? 0}</p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl px-3 py-2">
+                      <p className="text-[11px] text-gray-400">On RecruiterV roles</p>
+                      <p className="text-lg font-bold text-gray-800 leading-tight">{v.platformPositionsWorking ?? 0}</p>
+                    </div>
+                  </div>
+
+                  <label className="flex items-start gap-2 bg-blue-50/60 border border-blue-100 rounded-xl px-3 py-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={v.allowPlatformPositions !== false}
+                      disabled={platformBusy === v.id}
+                      onChange={(e) => togglePlatform(v, e.target.checked)}
+                      className="w-4 h-4 accent-blue-600 mt-0.5 flex-shrink-0"
+                    />
+                    <span className="text-[11px] leading-snug text-gray-600">
+                      Team may work <b className="text-gray-800">RecruiterV positions</b>.
+                      Unticked, they only see positions this vendor added.
+                    </span>
+                  </label>
+
+                  <div className="text-[11px] text-gray-500">
+                    ClientSPOCs: <b className="text-gray-700">{(v.clientspocs || []).length}</b>
+                    {(v.clientspocs || []).length > 0 && (
+                      <span className="text-gray-400"> — {(v.clientspocs || []).map(x => x.name || x.email).join(', ')}</span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-gray-400">
+                    Added: {fmt(v.createdAt)}{v.upgradedFromCoach && <span className="ml-1 text-purple-500">· upgraded from coach</span>}
+                  </p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => { setEditModal({ vendor: v }); setNewQty(String(v.recruiterQuantity)); }}
@@ -552,11 +601,21 @@ const VendorManagement = () => {
                       <Link2 size={13} /> Associate
                     </button>
                   </div>
+                  <button
+                    onClick={() => setSpocVendor(v)}
+                    className="w-full py-2 border-2 border-purple-200 text-purple-700 hover:bg-purple-50 text-xs font-bold rounded-xl transition-colors"
+                  >
+                    Assign ClientSPOCs
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {spocVendor && (
+        <VendorSpocModal vendor={spocVendor} onClose={() => setSpocVendor(null)} onSaved={loadVendors} />
       )}
 
       {/* Edit Quota Modal */}

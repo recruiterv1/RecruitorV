@@ -552,7 +552,20 @@ router.get('/open-positions', vendorAuth, async (req, res) => {
       }
     }
 
-    const positions = all.map(pos => {
+    // What this vendor's side is allowed to see:
+    //  - their own positions, always (including the private, team-only ones);
+    //  - every other RecruiterV position only when the SuperAdmin has ticked
+    //    "may work RecruiterV positions" on their vendor card.
+    const vendorEmail = (req.vendor.email || '').toLowerCase();
+    const allowPlatform = req.vendor.allowPlatformPositions !== false;   // default: allowed
+    const visible = all.filter(p => {
+      const owner = (p.postedByVendor || '').toLowerCase();
+      if (owner === vendorEmail) return true;
+      if (p.vendorPrivate === true) return false;     // another vendor's private role
+      return allowPlatform;
+    });
+
+    const positions = visible.map(pos => {
       const spocEmail = (pos.clientspoc || '').toLowerCase();
       const spoc = spocMap[spocEmail] || null;
       return {
@@ -579,9 +592,11 @@ router.get('/open-positions', vendorAuth, async (req, res) => {
         maxCandidate: pos.maxCandidate || 10,
         status: pos.status || 'active',
         datePosted: pos.datePosted || null,
+        postedByVendor: pos.postedByVendor || '',
+        vendorPrivate: pos.vendorPrivate === true,
       };
     });
-    return res.json({ success: true, data: positions, count: positions.length });
+    return res.json({ success: true, data: positions, count: positions.length, allowPlatform });
   } catch (err) {
     console.error('vendor/open-positions error:', err);
     return res.status(500).json({ success: false, message: err.message });
@@ -1019,38 +1034,59 @@ router.post('/positions', vendorAuth, async (req, res) => {
     if (!(body.position || '').toString().trim()) return res.status(400).json({ success: false, message: 'Position title is required.' });
     if (!(body.client || '').toString().trim()) return res.status(400).json({ success: false, message: 'Client is required.' });
 
-    // The position must be routed to one of the ClientSPOCs the SuperAdmin attached
-    // to this vendor — that SPOC is the only one who can make it live.
+    // Two kinds of vendor position:
+    //  - publishToPlatform: goes to one of the vendor's ClientSPOCs to review and
+    //    make live on RecruiterV.
+    //  - private (default): never leaves the vendor — only their own team sees it
+    //    and works on it, so no ClientSPOC is involved.
+    const publishToPlatform = body.publishToPlatform === true || body.publishToPlatform === 'true';
     const mySpocs = Array.isArray(req.vendor.clientspocs) ? req.vendor.clientspocs : [];
-    if (!mySpocs.length) {
-      return res.status(400).json({ success: false, message: 'No ClientSPOC is attached to your vendor account yet. Please contact the administrator.' });
-    }
-    const chosen = (body.clientspoc || '').toString().toLowerCase().trim();
-    const spoc = mySpocs.find(x => (x.email || '').toLowerCase() === chosen);
-    if (!spoc) {
-      return res.status(400).json({ success: false, message: 'Select one of the ClientSPOCs attached to your account.' });
+    let spoc = null;
+    if (publishToPlatform) {
+      if (!mySpocs.length) {
+        return res.status(400).json({ success: false, message: 'No ClientSPOC is attached to your vendor account yet. Please contact the administrator.' });
+      }
+      const chosen = (body.clientspoc || '').toString().toLowerCase().trim();
+      spoc = mySpocs.find(x => (x.email || '').toLowerCase() === chosen);
+      if (!spoc) {
+        return res.status(400).json({ success: false, message: 'Select one of the ClientSPOCs attached to your account.' });
+      }
     }
 
     // A company the vendor added themselves can only be used once approved.
+    // Approval only gates going public — a vendor may work a pending company
+    // privately with their own team in the meantime.
     const clientName = (body.client || '').toString().trim();
-    const compSnap = await db.collection('Company_Overview').where('lower', '==', clientName.toLowerCase()).limit(1).get();
-    if (!compSnap.empty) {
-      const c = compSnap.docs[0].data();
-      if (c.addedByVendor && c.vendorApproved !== true) {
-        return res.status(403).json({ success: false, message: 'This company is still awaiting SuperAdmin approval — you can post positions against it once approved.' });
+    if (publishToPlatform) {
+      const compSnap = await db.collection('Company_Overview').where('lower', '==', clientName.toLowerCase()).limit(1).get();
+      if (!compSnap.empty) {
+        const c = compSnap.docs[0].data();
+        if (c.addedByVendor && c.vendorApproved !== true) {
+          return res.status(403).json({ success: false, message: 'This company is still awaiting SuperAdmin approval — you can publish positions against it once approved.' });
+        }
       }
     }
 
     const adminF = require('../model_fire/adminF');
     const created = await adminF.CreatePosition({
       ...body,
-      clientspoc: spoc.email,
-      clientspoc_name: spoc.name || '',
-      status: 'pending',                       // hidden from recruiters until the SPOC publishes
+      clientspoc: spoc ? spoc.email : '',
+      clientspoc_name: spoc ? (spoc.name || '') : '',
+      // 'pending' waits on the SPOC; a private position is live for the vendor's
+      // own team straight away but never surfaces on the public platform.
+      status: publishToPlatform ? 'pending' : 'active',
+      publishToPlatform,
+      vendorPrivate: !publishToPlatform,
       postedByVendor: (req.vendor.email || '').toLowerCase(),
       vendorName: req.vendor.name || '',
     });
-    res.json({ success: true, message: 'Position submitted for ClientSPOC approval.', data: created });
+    res.json({
+      success: true,
+      message: publishToPlatform
+        ? 'Position submitted for ClientSPOC approval.'
+        : 'Position created — visible to your team only.',
+      data: created,
+    });
   } catch (e) {
     console.error('vendor/positions error:', e.message);
     res.status(500).json({ success: false, message: e.message });
@@ -1165,28 +1201,67 @@ router.get('/companies', vendorAuth, async (req, res) => {
   try {
     const email = (req.vendor.email || '').toLowerCase();
     const snap = await db.collection('Company_Overview').where('addedByVendor', '==', email).get();
-    const mine = snap.docs.map(d => ({ id: d.id, name: d.data().name, approved: d.data().vendorApproved === true,
+    const mine = snap.docs.map(d => ({ ...d.data(), id: d.id, approved: d.data().vendorApproved === true,
       rejectedReason: d.data().vendorRejectReason || '' }));
     res.json({ success: true, companies: mine.sort((a, b) => a.name.localeCompare(b.name)) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// POST /vendor/companies { name, overview } — created unapproved.
+// Fields a vendor may set on a company. Same shape the SuperAdmin company form
+// produces, minus anything that would let a vendor grant themselves commission
+// terms — those stay with the SuperAdmin.
+const VENDOR_COMPANY_FIELDS = [
+  'name', 'lower', 'overview', 'candidateInstructions', 'audioText',
+  'photoRequired', 'questions', 'requiredFields',
+];
+
+const pickCompanyFields = (body) => {
+  const out = {};
+  VENDOR_COMPANY_FIELDS.forEach(f => { if (body[f] !== undefined) out[f] = body[f]; });
+  out.name = String(out.name || '').trim();
+  out.lower = String(out.lower || out.name).toLowerCase().trim();
+  return out;
+};
+
+// POST /vendor/companies — created unapproved; a SuperAdmin must approve before
+// positions can be published against it.
 router.post('/companies', vendorAuth, async (req, res) => {
   try {
     const email = (req.vendor.email || '').toLowerCase();
-    const name = (req.body?.name || '').toString().trim();
-    if (!name) return res.status(400).json({ success: false, message: 'Company name is required.' });
-    const dup = await db.collection('Company_Overview').where('lower', '==', name.toLowerCase()).limit(1).get();
+    const fields = pickCompanyFields(req.body || {});
+    if (!fields.name) return res.status(400).json({ success: false, message: 'Company name is required.' });
+    const dup = await db.collection('Company_Overview').where('lower', '==', fields.lower).limit(1).get();
     if (!dup.empty) return res.status(409).json({ success: false, message: 'A company with that name already exists.' });
     const ref = await db.collection('Company_Overview').add({
-      name, lower: name.toLowerCase(),
-      overview: (req.body?.overview || '').toString(),
+      ...fields,
       addedByVendor: email, vendorName: req.vendor.name || '',
-      vendorApproved: false,                    // SuperAdmin must approve
+      vendorApproved: false,
       createdAt: new Date(),
     });
-    res.json({ success: true, id: ref.id, message: 'Company submitted — positions can be posted against it once a SuperAdmin approves.' });
+    res.json({ success: true, id: ref.id, message: 'Company submitted — positions can be published against it once a SuperAdmin approves.' });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// PUT /vendor/companies/:id — editable only while still awaiting approval.
+router.put('/companies/:id', vendorAuth, async (req, res) => {
+  try {
+    const email = (req.vendor.email || '').toLowerCase();
+    const ref = db.collection('Company_Overview').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists || (doc.data().addedByVendor || '').toLowerCase() !== email) {
+      return res.status(404).json({ success: false, message: 'Company not found.' });
+    }
+    if (doc.data().vendorApproved === true) {
+      return res.status(403).json({ success: false, message: 'This company is already approved — contact the administrator to change it.' });
+    }
+    const fields = pickCompanyFields(req.body || {});
+    if (!fields.name) return res.status(400).json({ success: false, message: 'Company name is required.' });
+    const dup = await db.collection('Company_Overview').where('lower', '==', fields.lower).limit(1).get();
+    if (!dup.empty && dup.docs[0].id !== req.params.id) {
+      return res.status(409).json({ success: false, message: 'A company with that name already exists.' });
+    }
+    await ref.set({ ...fields, updatedAt: new Date() }, { merge: true });
+    res.json({ success: true, message: 'Company updated.' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

@@ -5,7 +5,7 @@ import { UserStateContext } from '../context/AuthPro';
 import { useLocation } from 'react-router-dom';
 import { Autocomplete, Chip, TextField } from '@mui/material';
 import RichTextEditor, { isHtmlEmpty } from '../components/RichTextEditor';
-import { TagInput, ListInput, LimitedTextarea, EducationSelect } from '../components/PositionFieldInputs';
+import { TagInput, ListInput, LimitedTextarea, EducationSelect, SearchSelect } from '../components/PositionFieldInputs';
 import QuestionsEditor, { QuestionsList, validateQuestions } from '../components/QuestionsEditor';
 import CityMultiSelect from '../components/CityMultiSelect';
 
@@ -34,6 +34,16 @@ export const EXPERIENCE_RANGES = [
   '7-10 years', '8-12 years', '10-15 years', '12-15 years', '15-20 years', '20+ years',
 ];
 export const EXPERIENCE_YEARS = Array.from({ length: 31 }, (_, i) => i);
+
+// CTC ladder: ₹3L to ₹1Cr in ₹50k steps, shown in rupees with a lakh hint so
+// typing "12" finds both ₹12,00,000 and "12 LPA".
+export const CTC_OPTIONS = Array.from(
+  { length: ((10000000 - 300000) / 50000) + 1 },
+  (_, i) => 300000 + i * 50000,
+).map(val => ({
+  value: val,
+  label: `₹${val.toLocaleString('en-IN')}  (${(val / 100000).toFixed(val % 100000 ? 1 : 0)} LPA)`,
+}));
 
 const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendorMode = null } = {}) => {
   const { user } = useContext(UserStateContext);
@@ -116,6 +126,7 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
     hr_name: copiedData?.hr_name || "",
     ripplehire_job_id: editData?.ripplehire_job_id || copiedData?.ripplehire_job_id || "",
     client: companyMode?.companyName || publicMode?.companyName || copiedData?.client || "",
+    publishToPlatform: false,       // vendor-only; private to the team by default
     ctcStart: copiedData?.ctcStart || "",
     ctcEnd: copiedData?.ctcEnd || "",
     location: copiedData?.location || [],
@@ -510,7 +521,9 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
       'commison', 'experience', 'pos_cat', 'skill_category', 'skill_sub_category',
       'comp_view', 'm_have', 'g_have', 'compet', 'key_res',
       'employment_type', 'work_mode', 'no_of_positions', 'min_exp', 'req_education', 'location',
-    ];
+    // A vendor keeping the position inside their own team has no ClientSPOC to
+    // route it to, so that field is only required when publishing to RecruiterV.
+    ].filter(f => !(f === 'clientspoc' && vendorMode && !form.publishToPlatform));
     const labels = { no_of_positions: 'no. of positions', employment_type: 'employment type', work_mode: 'work mode', min_exp: 'minimum experience', req_education: 'required education', skill_sub_category: 'skill sub category', comp_view: 'company overview', job_desc: 'job summary', m_have: 'must-have skills', g_have: 'good-to-have skills', compet: 'competencies', key_res: 'key responsibilities' };
     const richFields = ['key_res', 'm_have', 'g_have', 'compet', 'job_desc'];
     for (const key of requiredFields) {
@@ -610,6 +623,7 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
         client: "",
         clientspoc: form.clientspoc, // Keep selected SPOC email
         clientspoc_name: form.clientspoc_name, // Keep selected SPOC name
+        publishToPlatform: false,
         ctcStart: "",
         ctcEnd: "",
         location: [],
@@ -1127,38 +1141,26 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     CTC Start <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    name="ctcStart"
+                  <SearchSelect
                     value={form.ctcStart}
-                    onChange={handleChange}
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm"
-                    required
-                  >
-                    <option value="">Starting From</option>
-                    {Array.from({ length: ((10000000 - 300000) / 50000) + 1 }, (_, i) => 300000 + i * 50000)
-                      .map((val) => (
-                        <option key={val} value={val}>₹{val.toLocaleString('en-IN')}</option>
-                      ))}
-                  </select>
+                    onChange={(v) => setForm(prev => ({ ...prev, ctcStart: v }))}
+                    options={CTC_OPTIONS}
+                    placeholder="Starting From"
+                    searchPlaceholder="Type an amount — e.g. 12"
+                  />
                 </div>
 
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     CTC End <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    name="ctcEnd"
+                  <SearchSelect
                     value={form.ctcEnd}
-                    onChange={handleChange}
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm"
-                    required
-                  >
-                    <option value="">Ending At</option>
-                    {Array.from({ length: ((10000000 - 300000) / 50000) + 1 }, (_, i) => 300000 + i * 50000)
-                      .map((val) => (
-                        <option key={val} value={val}>₹{val.toLocaleString('en-IN')}</option>
-                      ))}
-                  </select>
+                    onChange={(v) => setForm(prev => ({ ...prev, ctcEnd: v }))}
+                    options={CTC_OPTIONS}
+                    placeholder="Ending At"
+                    searchPlaceholder="Type an amount — e.g. 12"
+                  />
                 </div>
 
                 {/* Position Tier — from the client's tier-based commission config */}
@@ -1456,8 +1458,8 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Required education <span className="text-red-500">*</span></label>
                   <EducationSelect
                     value={form.req_education}
-                    onChange={(v) => setForm(p => ({ ...p, req_education: v, ...(p.pref_education && p.pref_education.toLowerCase() === (v || '').toLowerCase() ? { pref_education: '' } : {}) }))}
-                    placeholder="Select or add required education" />
+                    onChange={(v) => setForm(p => ({ ...p, req_education: v }))}
+                    placeholder="Search education — type to filter" />
                 </div>
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Preferred education</label>
@@ -1465,7 +1467,7 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
                     value={form.pref_education}
                     exclude={[form.req_education]}
                     onChange={(v) => setForm(p => ({ ...p, pref_education: v }))}
-                    placeholder="Select or add preferred education" />
+                    placeholder="Search education — type to filter" />
                 </div>
                 <div className="flex flex-col sm:col-span-1">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Mandatory certifications</label>
@@ -1667,6 +1669,35 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
                 minHeight={160}
               />
             </div>
+
+            {/* Vendor-only: publish on RecruiterV, or keep the role inside the team. */}
+            {vendorMode && (
+              <div className="mb-6 sm:mb-8">
+                <div className="flex items-center gap-2 mb-3 sm:mb-4">
+                  <Building size={18} className="sm:w-5 sm:h-5 text-blue-600" />
+                  <h4 className="text-base sm:text-lg font-bold text-gray-900">Where should this position live?</h4>
+                </div>
+                <label className={`flex items-start gap-3 rounded-xl border-2 p-4 cursor-pointer transition-colors ${
+                  form.publishToPlatform ? 'border-blue-500 bg-blue-50/60' : 'border-gray-200 hover:bg-gray-50'}`}>
+                  <input
+                    type="checkbox"
+                    checked={!!form.publishToPlatform}
+                    onChange={(e) => setForm(prev => ({ ...prev, publishToPlatform: e.target.checked }))}
+                    className="w-5 h-5 accent-blue-600 mt-0.5 flex-shrink-0"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-gray-800">
+                      Publish this position on the RecruiterV public platform
+                    </span>
+                    <span className="block text-xs text-gray-500 mt-1">
+                      Ticked, it goes to the ClientSPOC you selected for review — they decide whether it
+                      goes live. Left unticked, the position stays private to your own team: only your
+                      recruiters see it and work on it, and no ClientSPOC approval is needed.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            )}
             </>)}
 
             {/* Wizard navigation */}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import VendorSpocModal from '../components/VendorSpocModal';
 import axios from 'axios';
 import {
   Store, Users, ChevronRight, ChevronDown, RefreshCw,
@@ -169,84 +170,6 @@ const VendorDetail = ({ vendorId, onBack }) => {
 
 // ─── All Vendors List ────────────────────────────────────────
 
-// ── Attach ClientSPOC(s) to a vendor (SuperAdmin) ───────────────────────────
-// A vendor can have several; when they post a position they pick one, and only
-// that SPOC can publish it.
-const VendorSpocModal = ({ vendor, onClose, onSaved }) => {
-  const [all, setAll] = useState([]);
-  const [picked, setPicked] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    axios.get(`/vendor/admin/${vendor.id}/clientspocs`, { withCredentials: true })
-      .then(r => {
-        setAll(r.data?.clientspocs || []);
-        setPicked((r.data?.assigned || []).map(x => (x.email || '').toLowerCase()));
-      })
-      .catch(e => setErr(e.response?.data?.message || 'Failed to load.'))
-      .finally(() => setLoading(false));
-  }, [vendor.id]);
-
-  const toggle = (email) => setPicked(p => p.includes(email) ? p.filter(x => x !== email) : [...p, email]);
-
-  const save = async () => {
-    setSaving(true); setErr('');
-    try {
-      await axios.post(`/vendor/admin/${vendor.id}/clientspocs`,
-        { clientspocs: picked.map(e => ({ email: e, name: all.find(a => a.email === e)?.name || '' })) },
-        { withCredentials: true });
-      onSaved();
-      onClose();
-    } catch (e) { setErr(e.response?.data?.message || 'Failed to save.'); }
-    finally { setSaving(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-5 rounded-t-2xl">
-          <h2 className="text-lg font-bold text-white">Assign ClientSPOCs</h2>
-          <p className="text-white/80 text-sm truncate">{vendor.name} · {vendor.email}</p>
-        </div>
-        <div className="p-5">
-          <p className="text-xs text-gray-500 mb-3">
-            The vendor picks one of these when posting a position — and only that ClientSPOC can make it live.
-          </p>
-          {err && <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{err}</div>}
-          {loading ? (
-            <div className="py-10 text-center text-gray-400 text-sm">Loading…</div>
-          ) : !all.length ? (
-            <div className="py-10 text-center text-gray-400 text-sm">No ClientSPOCs found.</div>
-          ) : (
-            <div className="space-y-1 max-h-72 overflow-y-auto border border-gray-200 rounded-xl p-2">
-              {all.map(sp => (
-                <label key={sp.email} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer">
-                  <input type="checkbox" checked={picked.includes(sp.email)} onChange={() => toggle(sp.email)}
-                    className="w-4 h-4 accent-purple-600" />
-                  <span className="text-sm text-gray-700 truncate">{sp.name}
-                    <span className="text-gray-400"> ({sp.email})</span></span>
-                </label>
-              ))}
-            </div>
-          )}
-          <div className="flex justify-end gap-2 mt-5">
-            <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-300 rounded-xl">Cancel</button>
-            <button onClick={save} disabled={saving || loading}
-              className="px-5 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl disabled:opacity-60">
-              {saving ? 'Saving…' : `Save (${picked.length})`}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-
-// SuperAdmin queue of companies vendors added themselves. Approving one lets the
-// vendor post positions against it.
 const VendorCompaniesApproval = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -423,6 +346,10 @@ const AllVendors = ({ embedded }) => {
             );
           })}
         </div>
+      )}
+
+      {spocVendor && (
+        <VendorSpocModal vendor={spocVendor} onClose={() => setSpocVendor(null)} onSaved={load} />
       )}
     </div>
   );

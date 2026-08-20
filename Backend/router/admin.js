@@ -1196,11 +1196,32 @@ router.get('/vendors', adminAuthMiddleware, async (req, res) => {
   try {
     const { db } = require('./firebase_ad');
     const snap = await db.collection('admin_db').where('roleCategory', '==', 'Vendor').get();
+
+    // Position assignments are keyed on the recruiter's email, so a vendor is
+    // "working a RecruiterV position" when the vendor or one of their recruiters
+    // holds a position that vendor did not post themselves.
+    const positionAccess = require('../model_fire/positionAccessF');
     const vendors = await Promise.all(snap.docs.map(async doc => {
       const d = doc.data();
-      const recSnap = await db.collection('recruiter_db')
-        .where('vendorEmail', '==', (d.email || '').toLowerCase())
-        .get();
+      const email = (d.email || '').toLowerCase();
+      const [recSnap, ownSnap] = await Promise.all([
+        db.collection('recruiter_db').where('vendorEmail', '==', email).get(),
+        db.collection('admin_AddPos').where('postedByVendor', '==', email).get(),
+      ]);
+      const ownPosIds = new Set(ownSnap.docs.map(p => String(p.data().pos_id)));
+
+      const teamEmails = [...new Set([email, ...recSnap.docs.map(r => (r.data().email || '').toLowerCase())])].filter(Boolean);
+      const platformPosIds = new Set();
+      await Promise.all(teamEmails.map(async (e) => {
+        try {
+          const asn = await positionAccess.getRecruiterAssignments(e) || [];
+          asn.forEach(a => {
+            const pid = String(a.positionId || '');
+            if (pid && !ownPosIds.has(pid)) platformPosIds.add(pid);
+          });
+        } catch (_) { /* skip this member */ }
+      }));
+
       return {
         id: doc.id,
         name: d.name,
@@ -1208,11 +1229,33 @@ router.get('/vendors', adminAuthMiddleware, async (req, res) => {
         recruiterQuantity: d.recruiterQuantity || 0,
         recruitersUsed: recSnap.size,
         createdAt: d.createdAt || null,
+        upgradedFromCoach: d.upgradedFromCoach === true,
+        clientspocs: Array.isArray(d.clientspocs) ? d.clientspocs : [],
+        positionsAdded: ownSnap.size,
+        platformPositionsWorking: platformPosIds.size,
+        allowPlatformPositions: d.allowPlatformPositions !== false,   // default: allowed
       };
     }));
     return res.json({ success: true, data: vendors });
   } catch (err) {
     console.error('vendors list error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PATCH /admin/vendor-platform-access { vendorId, allow }
+// Controls whether a vendor's team may work positions posted on RecruiterV by
+// anyone else. Off means they only ever see the positions their vendor added.
+router.patch('/vendor-platform-access', adminAuthMiddleware, async (req, res) => {
+  try {
+    const { db } = require('./firebase_ad');
+    const { vendorId, allow } = req.body || {};
+    if (!vendorId) return res.status(400).json({ success: false, message: 'vendorId is required' });
+    await db.collection('admin_db').doc(vendorId)
+      .set({ allowPlatformPositions: allow === true, allowPlatformPositionsUpdatedAt: new Date() }, { merge: true });
+    return res.json({ success: true, allowPlatformPositions: allow === true });
+  } catch (err) {
+    console.error('vendor-platform-access error:', err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 });

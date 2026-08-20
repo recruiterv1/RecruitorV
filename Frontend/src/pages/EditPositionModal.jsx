@@ -6,9 +6,9 @@ import {
 } from 'lucide-react';
 import { Autocomplete, Chip, TextField } from '@mui/material';
 import CityMultiSelect from '../components/CityMultiSelect';
-import { EXPERIENCE_RANGES, EXPERIENCE_YEARS } from './Ad_Pos';
+import { EXPERIENCE_RANGES, EXPERIENCE_YEARS, CTC_OPTIONS } from './Ad_Pos';
 import RichTextEditor, { isHtmlEmpty } from '../components/RichTextEditor';
-import { TagInput, ListInput, LimitedTextarea, EducationSelect } from '../components/PositionFieldInputs';
+import { TagInput, ListInput, LimitedTextarea, EducationSelect, SearchSelect } from '../components/PositionFieldInputs';
 import QuestionsEditor, { QuestionsList, validateQuestions } from '../components/QuestionsEditor';
 
 const positionCategories = [
@@ -635,26 +635,26 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">
                     CTC Start <span className="text-red-500">*</span>
                   </label>
-                  <select name="ctcStart" value={form.ctcStart} onChange={handleChange} required
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm">
-                    <option value="">Starting From</option>
-                    {Array.from({ length: ((10000000 - 300000) / 50000) + 1 }, (_, i) => 300000 + i * 50000).map(val => (
-                      <option key={val} value={val}>₹{val.toLocaleString('en-IN')}</option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    value={form.ctcStart}
+                    onChange={(v) => setForm(prev => ({ ...prev, ctcStart: v }))}
+                    options={CTC_OPTIONS}
+                    placeholder="Starting From"
+                    searchPlaceholder="Type an amount — e.g. 12"
+                  />
                 </div>
 
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">
                     CTC End <span className="text-red-500">*</span>
                   </label>
-                  <select name="ctcEnd" value={form.ctcEnd} onChange={handleChange} required
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm">
-                    <option value="">Ending At</option>
-                    {Array.from({ length: ((10000000 - 300000) / 50000) + 1 }, (_, i) => 300000 + i * 50000).map(val => (
-                      <option key={val} value={val}>₹{val.toLocaleString('en-IN')}</option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    value={form.ctcEnd}
+                    onChange={(v) => setForm(prev => ({ ...prev, ctcEnd: v }))}
+                    options={CTC_OPTIONS}
+                    placeholder="Ending At"
+                    searchPlaceholder="Type an amount — e.g. 12"
+                  />
                 </div>
 
                 {/* Position Tier — from the client's tier-based commission config */}
@@ -883,7 +883,7 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
                   <Seg name="team_handling" options={["Yes", "No"]} /></div>
                 <div className="flex flex-col"><label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Required education</label>
                   <EducationSelect value={form.req_education}
-                    onChange={(v) => setForm(p => ({ ...p, req_education: v, ...(p.pref_education && p.pref_education.toLowerCase() === (v || '').toLowerCase() ? { pref_education: '' } : {}) }))}
+                    onChange={(v) => setForm(p => ({ ...p, req_education: v }))}
                     placeholder="Select or add required education" /></div>
                 <div className="flex flex-col"><label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Preferred education</label>
                   <EducationSelect value={form.pref_education} exclude={[form.req_education]}

@@ -6,7 +6,12 @@ import RichTextEditor from '../components/RichTextEditor';
 import MandatoryFieldsEditor, { defaultRequiredFields } from '../components/MandatoryFieldsEditor';
 
 // ── Edit Modal ────────────────────────────────────────────────────────────────
-const EditModal = ({ company, onClose, onSaved }) => {
+/**
+ * Company create/edit form. SuperAdmin edits an existing company; a vendor uses
+ * the identical form to submit a new one for approval — `saveRequest` swaps the
+ * endpoint so the fields and validation stay in one place.
+ */
+export const CompanyFormModal = ({ company = {}, onClose, onSaved, title, saveRequest }) => {
   const [form, setForm] = useState({
     name:         company.name         || '',
     lower:        company.lower        || '',
@@ -69,7 +74,9 @@ const EditModal = ({ company, onClose, onSaved }) => {
     setError('');
     try {
       const photoRequired = (requiredFields.find(f => f.key === 'photo')?.required) === true;
-      await axios.put(`/clientspoc/company/${company.id}`, { ...form, photoRequired, lower: form.lower.trim(), ...commissionPayload, questions: cleanQuestions, requiredFields }, { withCredentials: true });
+      const payload = { ...form, photoRequired, lower: form.lower.trim(), ...commissionPayload, questions: cleanQuestions, requiredFields };
+      if (saveRequest) await saveRequest(payload);
+      else await axios.put(`/clientspoc/company/${company.id}`, payload, { withCredentials: true });
       onSaved();
       onClose();
     } catch (err) {
@@ -86,7 +93,7 @@ const EditModal = ({ company, onClose, onSaved }) => {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
             <Pencil size={16} className="text-blue-600" />
-            <h2 className="font-bold text-gray-900">Edit Company</h2>
+            <h2 className="font-bold text-gray-900">{title || 'Edit Company'}</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X size={20} />
@@ -222,6 +229,8 @@ const EditModal = ({ company, onClose, onSaved }) => {
 };
 
 // ── Main component ────────────────────────────────────────────────────────────
+const EditModal = CompanyFormModal;
+
 const AllCompanies = () => {
   const [companies, setCompanies] = useState([]);
   const [loading,   setLoading]   = useState(true);

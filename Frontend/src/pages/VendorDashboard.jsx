@@ -12,6 +12,7 @@ import {
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import Ad_Candi from './Ad_Candi';
 import Ad_Pos from './Ad_Pos';
+import { CompanyFormModal } from './AllCompanies';
 import EditPositionModal from './EditPositionModal';
 import ChatPanel from '../components/ChatPanel';
 import InboxPage from '../components/InboxPage';
@@ -1172,71 +1173,48 @@ const VendorAssignedPositionsTab = () => {
 
 // ── Positions the vendor posted (editable until the ClientSPOC approves) ────
 
-// Companies a vendor adds themselves. A SuperAdmin must approve one before any
-// position can be posted against it.
+// Companies a vendor adds themselves, using the very same form the SuperAdmin
+// uses so the fields, validation and question editor stay identical. A SuperAdmin
+// must approve one before positions can be published against it.
 const VendorCompaniesTab = () => {
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [name, setName] = useState('');
-  const [overview, setOverview] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState(null);   // { type, text }
+  const [rows, setRows] = useState(null);
+  const [modal, setModal] = useState(null);   // { company, isNew }
+  const [msg, setMsg] = useState(null);
 
   const load = () => axios.get('/vendor/companies', { withCredentials: true })
     .then(r => setRows(r.data?.companies || []))
-    .catch(() => setRows([]))
-    .finally(() => setLoading(false));
+    .catch(() => setRows([]));
 
   useEffect(() => { load(); }, []);
 
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setSaving(true); setMsg(null);
-    try {
-      const r = await axios.post('/vendor/companies', { name: name.trim(), overview }, { withCredentials: true });
-      setMsg({ type: 'ok', text: r.data?.message || 'Company submitted for approval.' });
-      setName(''); setOverview('');
-      load();
-    } catch (e2) {
-      setMsg({ type: 'err', text: e2.response?.data?.message || 'Could not add the company.' });
-    } finally { setSaving(false); }
+  const save = async (payload) => {
+    const r = modal.isNew
+      ? await axios.post('/vendor/companies', payload, { withCredentials: true })
+      : await axios.put(`/vendor/companies/${modal.company.id}`, payload, { withCredentials: true });
+    setMsg(r.data?.message || 'Saved.');
+    setTimeout(() => setMsg(null), 5000);
+    load();
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Companies</h2>
-        <p className="text-sm text-gray-500">
-          Add a company here, then a SuperAdmin approves it. Only approved companies can be selected when you add a position.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">Companies</h2>
+          <p className="text-sm text-gray-500">
+            Add a company here, then a SuperAdmin approves it. Positions can be published
+            on RecruiterV only against an approved company.
+          </p>
+        </div>
+        <button onClick={() => setModal({ company: {}, isNew: true })}
+          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-xl">
+          + Add Company
+        </button>
       </div>
 
-      <form onSubmit={submit} className="bg-white rounded-2xl shadow-md border border-gray-100 p-5 space-y-3">
-        {msg && (
-          <div className={`text-sm rounded-lg px-3 py-2 border ${msg.type === 'ok'
-            ? 'bg-green-50 border-green-200 text-green-700'
-            : 'bg-red-50 border-red-200 text-red-600'}`}>{msg.text}</div>
-        )}
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Company name *</label>
-          <input value={name} onChange={e => setName(e.target.value)}
-            className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
-            placeholder="e.g. Acme Technologies Pvt Ltd" />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">Overview</label>
-          <textarea value={overview} onChange={e => setOverview(e.target.value)} rows={3}
-            className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
-            placeholder="What the company does, size, locations…" />
-        </div>
-        <button type="submit" disabled={saving || !name.trim()}
-          className="px-5 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl disabled:opacity-60">
-          {saving ? 'Submitting…' : 'Submit for approval'}
-        </button>
-      </form>
+      {msg && <div className="text-sm bg-green-50 border border-green-200 text-green-700 rounded-lg px-3 py-2">{msg}</div>}
 
-      {loading ? (
+      {!rows ? (
         <div className="py-12 text-center text-gray-400 text-sm">Loading…</div>
       ) : !rows.length ? (
         <div className="py-12 text-center text-gray-400 text-sm">You haven't added any company yet.</div>
@@ -1250,14 +1228,32 @@ const VendorCompaniesTab = () => {
                   <p className="text-xs text-red-600 mt-0.5">Rejected: {c.rejectedReason}</p>
                 )}
               </div>
-              <span className={`text-xs font-semibold px-3 py-1 rounded-full ${c.approved
-                ? 'bg-green-100 text-green-700'
-                : c.rejectedReason ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                {c.approved ? 'Approved' : c.rejectedReason ? 'Rejected' : 'Pending approval'}
-              </span>
+              <div className="flex items-center gap-2">
+                {!c.approved && (
+                  <button onClick={() => setModal({ company: c, isNew: false })}
+                    className="text-xs font-semibold text-purple-700 border border-purple-200 rounded-lg px-3 py-1.5 hover:bg-purple-50">
+                    Edit
+                  </button>
+                )}
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full ${c.approved
+                  ? 'bg-green-100 text-green-700'
+                  : c.rejectedReason ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {c.approved ? 'Approved' : c.rejectedReason ? 'Rejected' : 'Pending approval'}
+                </span>
+              </div>
             </div>
           ))}
         </div>
+      )}
+
+      {modal && (
+        <CompanyFormModal
+          company={modal.company}
+          title={modal.isNew ? 'Add Company' : 'Edit Company'}
+          saveRequest={save}
+          onSaved={() => {}}
+          onClose={() => setModal(null)}
+        />
       )}
     </div>
   );
@@ -1728,9 +1724,9 @@ const VendorDashboard = () => {
         { id: 'assigned-positions', icon: ClipboardList, label: 'Assigned Positions' },
         { id: 'add-position', icon: PlusCircle, label: 'Add Position' },
         { id: 'added-positions', icon: FolderOpen, label: 'Added Positions' },
-        { id: 'companies', icon: Building2, label: 'Companies' },
       ],
     },
+    { id: 'companies', icon: Building2, label: 'Companies' },
     // Messages and Inbox are reachable from the floating buttons bottom-right,
     // so they're kept out of the sidebar to avoid duplicating them.
     { id: 'reports', icon: BarChart3, label: 'Reports' },

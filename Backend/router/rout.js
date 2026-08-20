@@ -969,7 +969,12 @@ router.get('/check', authMiddleware, async (req,res)=>{
                     maxPositions: user.maxPositions,
                     planExpiryDate: user.planExpiryDate,
                     registrationDate: user.registrationDate,
-                    agreementSigned: !!user.agreementSigned
+                    agreementSigned: !!user.agreementSigned,
+                    // Set when the recruiter belongs to a vendor's team. The
+                    // dash_view page uses it to hide the Coach/Expert section,
+                    // which is not relevant to a vendor's own recruiters.
+                    vendorEmail: user.vendorEmail || '',
+                    isVendorSelf: !!user.isVendorSelf
                 }
             });
         }
