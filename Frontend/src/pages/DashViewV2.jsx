@@ -799,6 +799,19 @@ function DashViewV2Inner() {
     if (requesting) return;
     setRequesting(true);
     try {
+      if (isCoachExpert) {
+        // Same route the Coach/Expert Open Positions page uses — auto-approved.
+        await axios.post('/api/direct-coach-request',
+          { positionId: pos_id, roleCategory: teamUser?.roleCategory }, { withCredentials: true });
+        const r2 = await axios.get(`/api/coach-expert/position-access/${pos_id}`, { withCredentials: true });
+        const ok = r2.data?.hasAccess === true;
+        setAccess({ hasAccess: ok });
+        setToast(ok ? '✓ Position assigned to you — you can now submit candidates'
+                    : 'Request sent — pending approval');
+        setTimeout(() => setToast(''), 3500);
+        setRequesting(false);
+        return;
+      }
       await axios.post('/api/position-access/request', { positionId: pos_id }, { withCredentials: true });
       const r = await axios.get(`/api/position-access/check/${pos_id}`, { withCredentials: true });
       const a = r.data?.data || { hasAccess: false, status: 'pending' };
@@ -824,8 +837,7 @@ function DashViewV2Inner() {
   const submitLabel = positionClosed ? 'Position Paused'
     : access === null ? 'Submit Candidate'
     : hasAccess ? 'Submit Candidate'
-    : isCoachExpert ? 'Not approved'
-    : requesting ? 'Requesting…'
+    : requesting ? 'Assigning…'
     : isPendingAccess ? 'Request Pending' : 'Assign Me';
   const handleSubmitEntry = () => {
     if (positionClosed) {                         // paused/closed → no submissions
@@ -836,11 +848,6 @@ function DashViewV2Inner() {
     if (access === null) return;                 // still checking
     if (hasAccess) {
       setView('form'); window.scrollTo({ top: 0, behavior: 'smooth' }); return;
-    }
-    if (isCoachExpert) {                          // coach/expert can't self-request here
-      setToast('⚠ You are not approved for this position yet.');
-      setTimeout(() => setToast(''), 3500);
-      return;
     }
     if (!isPendingAccess) requestAssign();       // pending → nothing to do
   };
