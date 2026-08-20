@@ -1479,13 +1479,28 @@ const calcProfileCompletion = (data) => {
 };
 
 // GET /admin/reports/recruiters
+// Reports aggregate over candidate_db, which now holds 21.5k+ documents. Reading
+// whole documents pulled ~162MB and took ~35s per report — every report tab was
+// failing. These are the only candidate fields the reports touch; projecting them
+// brings the same read down to ~8MB and ~4s.
+const CANDIDATE_REPORT_FIELDS = [
+  'candidate', 'emails', 'mob', 'pos_id', 'pos_name', 'client', 'clientspoc',
+  'clientspoc_name', 'recEmail', 'recruiterEmail', 'recName', 'recRole', 'recPhone',
+  'statusa', 'status', 'source', 'matchPercent', 'rejectReason',
+  'coachEmail', 'expertEmail', 'submittedBy',
+  'datePosted', 'createdAt', 'updatedAt',
+  'autoScreenRejected', 'autoRejectedFrom', 'autoRejectedAt',
+];
+const candidatesForReports = () =>
+  db.collection('candidate_db').select(...CANDIDATE_REPORT_FIELDS).get();
+
 router.get('/reports/recruiters', adminAuthMiddleware, async (req, res) => {
   try {
     const { db } = require('./firebase_ad');
     const [recSnap, posAccSnap, candSnap, posSnap] = await Promise.all([
       db.collection('recruiter_db').get(),
       db.collection('position_access_requests').where('status', '==', 'approved').get(),
-      db.collection('candidate_db').get(),
+      candidatesForReports(),
       db.collection('admin_AddPos').get(),
     ]);
 
@@ -1857,7 +1872,7 @@ router.get('/reports/coaches', adminAuthMiddleware, async (req, res) => {
     const [coachSnap, ceSnap, candSnap] = await Promise.all([
       db.collection('coach_db').get(),
       db.collection('coach_expert_requests').where('coachExpertType', '==', 'Coach').get(),
-      db.collection('candidate_db').get(),
+      candidatesForReports(),
     ]);
 
     // Candidate map: posId → [{ status, datePosted }]
@@ -1919,7 +1934,7 @@ router.get('/reports/experts', adminAuthMiddleware, async (req, res) => {
     const [expertSnap, ceSnap, candSnap] = await Promise.all([
       db.collection('expert_db').get(),
       db.collection('coach_expert_requests').where('coachExpertType', '==', 'Expert').get(),
-      db.collection('candidate_db').get(),
+      candidatesForReports(),
     ]);
 
     const candByPos = {};
@@ -1974,7 +1989,7 @@ router.get('/reports/vendors', adminAuthMiddleware, async (req, res) => {
       db.collection('recruiter_db').get(),
       db.collection('position_access_requests').where('status', '==', 'approved').get(),
       db.collection('coach_expert_requests').get(),
-      db.collection('candidate_db').get(),
+      candidatesForReports(),
     ]);
 
     // recruiterEmail → vendorEmail
@@ -2082,7 +2097,7 @@ router.get('/reports/clientspocs', adminAuthMiddleware, async (req, res) => {
       db.collection('admin_AddPos').get(),
       db.collection('position_access_requests').where('status', '==', 'approved').get(),
       db.collection('coach_expert_requests').get(),
-      db.collection('candidate_db').get(),
+      candidatesForReports(),
       db.collection('admin_db').get(),
     ]);
 
@@ -2295,7 +2310,7 @@ router.get('/reports/positions', adminAuthMiddleware, async (req, res) => {
       db.collection('admin_AddPos').get(),
       db.collection('position_access_requests').where('status', '==', 'approved').get(),
       db.collection('coach_expert_requests').get(),
-      db.collection('candidate_db').get(),
+      candidatesForReports(),
     ]);
 
     // Recruiter count per position
@@ -2858,6 +2873,140 @@ router.post('/parse-resume', adminAuthMiddleware, async (req, res) => {
     });
   } catch (err) {
     console.error('parse-resume error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ── SuperAdmin → Candidates ────────────────────────────────────────────────────
+// One endpoint behind three tabs (All / Direct / Active). candidate_db holds
+// 21k+ documents, so this never ships the whole collection: it projects just the
+// list columns with .select(), filters and paginates server-side, and caches the
+// projection briefly so paging and filtering don't re-read the collection.
+
+// In play = not parked in the Resume Bank and not closed out.
+const INACTIVE_CANDIDATE_STATUSES = new Set([
+  'resume bank', 'duplicate', 'client drop', 'candidate drop',
+  'position on hold', 'offer declined', 'draft',
+]);
+const isActiveCandidateStatus = (st) => {
+  const s = String(st || '').toLowerCase().trim();
+  if (!s) return false;
+  if (s.includes('reject')) return false;
+  return !INACTIVE_CANDIDATE_STATUSES.has(s);
+};
+
+const CANDIDATE_LIST_FIELDS = [
+  'candidate', 'emails', 'mob', 'pos_id', 'pos_name', 'client', 'clientspoc',
+  'clientspoc_name', 'recName', 'recEmail', 'recRole', 'recPhone', 'statusa',
+  'source', 'datePosted', 'updatedAt', 'matchPercent',
+];
+
+let _candCache = { at: 0, rows: null };
+const CAND_CACHE_MS = 60 * 1000;
+
+const toDate = (v) => {
+  if (!v) return null;
+  if (v._seconds) return new Date(v._seconds * 1000);
+  if (typeof v.toDate === 'function') return v.toDate();
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+async function loadCandidateRows() {
+  if (_candCache.rows && Date.now() - _candCache.at < CAND_CACHE_MS) return _candCache.rows;
+  const { db } = require('./firebase_ad');
+  const snap = await db.collection('candidate_db').select(...CANDIDATE_LIST_FIELDS).get();
+  const rows = snap.docs.map(doc => {
+    const d = doc.data();
+    return {
+      id: doc.id,
+      candidate: d.candidate || '',
+      emails: d.emails || '',
+      mob: d.mob || '',
+      pos_id: d.pos_id || '',
+      pos_name: d.pos_name || '',
+      client: d.client || '',
+      clientspoc: d.clientspoc || '',
+      clientspocName: d.clientspoc_name || '',
+      recName: d.recName || '',
+      recEmail: d.recEmail || '',
+      recRole: d.recRole || '',
+      recPhone: d.recPhone || '',
+      statusa: d.statusa || '',
+      source: d.source || '',
+      matchPercent: (d.matchPercent === undefined || d.matchPercent === null) ? null : d.matchPercent,
+      datePosted: toDate(d.datePosted),
+      updatedAt: toDate(d.updatedAt),
+    };
+  });
+  _candCache = { at: Date.now(), rows };
+  return rows;
+}
+
+// GET /admin/candidates?tab=all|direct|active&q=&status=&position=&client=&recruiter=
+//                       &source=&from=&to=&page=1&pageSize=50&sort=landed|updated
+router.get('/candidates', adminAuthMiddleware, async (req, res) => {
+  try {
+    const all = await loadCandidateRows();
+    const tab = String(req.query.tab || 'all').toLowerCase();
+
+    let rows = all;
+    if (tab === 'direct') rows = rows.filter(r => r.source === 'direct_apply');
+    else if (tab === 'active') rows = rows.filter(r => isActiveCandidateStatus(r.statusa));
+
+    // Dropdown choices reflect the tab, so a filter can never select nothing.
+    const uniq = (key) => [...new Set(rows.map(r => (r[key] || '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    const facets = {
+      statuses: uniq('statusa'),
+      positions: uniq('pos_name'),
+      clients: uniq('client'),
+      sources: uniq('source'),
+      recruiters: [...new Set(rows.map(r => (r.recName || r.recEmail || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b)),
+    };
+    const tabTotal = rows.length;
+
+    const q = String(req.query.q || '').toLowerCase().trim();
+    if (q) {
+      rows = rows.filter(r =>
+        r.candidate.toLowerCase().includes(q) ||
+        String(r.emails).toLowerCase().includes(q) ||
+        String(r.mob).toLowerCase().includes(q) ||
+        String(r.pos_id).toLowerCase().includes(q) ||
+        r.pos_name.toLowerCase().includes(q));
+    }
+    const eq = (val, field) => { const v = String(val || '').trim(); if (v) rows = rows.filter(r => (r[field] || '') === v); };
+    eq(req.query.status, 'statusa');
+    eq(req.query.position, 'pos_name');
+    eq(req.query.client, 'client');
+    eq(req.query.source, 'source');
+    const rec = String(req.query.recruiter || '').trim();
+    if (rec) rows = rows.filter(r => (r.recName || r.recEmail || '') === rec);
+
+    const dateField = tab === 'active' ? 'updatedAt' : 'datePosted';
+    const from = req.query.from ? new Date(`${req.query.from}T00:00:00`) : null;
+    const to = req.query.to ? new Date(`${req.query.to}T23:59:59`) : null;
+    if (from && !isNaN(from)) rows = rows.filter(r => r[dateField] && r[dateField] >= from);
+    if (to && !isNaN(to)) rows = rows.filter(r => r[dateField] && r[dateField] <= to);
+
+    const sortField = String(req.query.sort || '') === 'updated' ? 'updatedAt' : dateField;
+    rows = [...rows].sort((a, b) => (b[sortField]?.getTime() || 0) - (a[sortField]?.getTime() || 0));
+
+    const filtered = rows.length;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(200, Math.max(10, parseInt(req.query.pageSize, 10) || 50));
+    const start = (page - 1) * pageSize;
+
+    return res.json({
+      success: true,
+      candidates: rows.slice(start, start + pageSize),
+      total: filtered, tabTotal, page, pageSize,
+      pages: Math.max(1, Math.ceil(filtered / pageSize)),
+      facets,
+    });
+  } catch (err) {
+    console.error('admin/candidates error:', err.message);
     return res.status(500).json({ success: false, message: err.message });
   }
 });

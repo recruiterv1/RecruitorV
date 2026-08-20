@@ -60,6 +60,7 @@ import SuperAdminCoachExpertRequests from '../pages/SuperAdminCoachExpertRequest
 import CoachRecruiterAssignmentsAdmin from '../pages/CoachRecruiterAssignmentsAdmin';
 import { PendingUsersPanel, VendorManagement } from './AdminDashboard';
 import AllVendors from '../pages/AllVendors';
+import { AllCandidatesPanel, DirectCandidatesPanel, ActiveCandidatesPanel } from '../pages/SuperAdminCandidates';
 import SuperAdminAssignedPositions from '../pages/SuperAdminAssignedPositions';
 import CoachVendorRequests from '../pages/CoachVendorRequests';
 import SuperAdminReports from '../pages/SuperAdminReports';
@@ -300,6 +301,31 @@ const SuperAdmin = () => {
           label: 'Coach & Expert Stats',
           component: <CoachExpertStats />
         }
+      ]
+    },
+    {
+      id: 'candidates',
+      icon: Users,
+      label: 'Candidates',
+      children: [
+        {
+          id: 'candidates-all',
+          icon: Users,
+          label: 'All Candidates',
+          component: <AllCandidatesPanel />
+        },
+        {
+          id: 'candidates-direct',
+          icon: UserPlus,
+          label: 'Direct Candidate',
+          component: <DirectCandidatesPanel />
+        },
+        {
+          id: 'candidates-active',
+          icon: Briefcase,
+          label: 'Active Candidates',
+          component: <ActiveCandidatesPanel />
+        },
       ]
     },
     {

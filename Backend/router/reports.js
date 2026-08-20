@@ -22,10 +22,29 @@ const strArr = (val) => {
 /**
  * GET /api/reports/candidates
  */
+// Building this report reads 21.6k candidates and serialises ~20MB, which takes
+// ~13s. The underlying data changes slowly, so a short cache makes repeat opens
+// and tab switches instant without risking a stale-looking report.
+let _reportCache = { at: 0, body: null };
+const REPORT_CACHE_MS = 2 * 60 * 1000;
+
 router.get('/candidates', async (req, res) => {
   try {
-    // 1. Fetch all candidates
-    const candidateSnap = await candidateDb.get();
+    if (_reportCache.body && Date.now() - _reportCache.at < REPORT_CACHE_MS
+        && String(req.query.refresh || '') !== '1') {
+      return res.json(_reportCache.body);
+    }
+    // 1. Fetch all candidates — projected. Reading whole documents pulled ~162MB
+    // for 21.5k candidates (resumeText/matchTokens dominate) and timed out as a 503.
+    const CANDIDATE_REPORT_FIELDS = [
+      'pos_id', 'pos_name', 'client', 'recEmail', 'recruiterEmail', 'recName', 'recPhone',
+      'candidate', 'emails', 'mob', 'rel_exp', 'relExp', 'total_exp', 'totalExp',
+      'current_ctc', 'currentCTC', 'exp_ctc', 'expectedCTC', 'notice_period', 'noticePeriod',
+      'curr_emp', 'currentEmployer', 'rh_id', 'highest_education', 'curr_loc', 'currentLocation',
+      'pref_loc', 'preferredLocation', 'tech_skill', 'techSkills', 'nontech_skill', 'nonTechSkills',
+      'statusa', 'status', 'datePosted', 'createdAt', 'updatedAt',
+    ];
+    const candidateSnap = await candidateDb.select(...CANDIDATE_REPORT_FIELDS).get();
     const candidates = candidateSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     if (candidates.length === 0) return res.json({ success: true, data: [] });
@@ -36,8 +55,10 @@ router.get('/candidates', async (req, res) => {
 
     // 3. Fetch full position details in batches of 10
     const positionMap = {};
-    for (let i = 0; i < posIds.length; i += 10) {
-      const batch = posIds.slice(i, i + 10);
+    const posBatches = [];
+    for (let i = 0; i < posIds.length; i += 10) posBatches.push(posIds.slice(i, i + 10));
+    // Run the ~40 batches together rather than one after another.
+    await Promise.all(posBatches.map(async (batch) => {
       const snap = await positionsDb.where('pos_id', 'in', batch).get();
       snap.docs.forEach(doc => {
         const d = doc.data();
@@ -66,28 +87,32 @@ router.get('/candidates', async (req, res) => {
           postedAt:       toIso(d.datePosted),
         };
       });
-    }
+    }));
 
-    // 4. Fetch full recruiter details (one by one — small set)
+    // 4. Recruiter details. This used to be 300 sequential findRecruiterByEmail
+    // round trips; one projected scan of recruiter_db is far cheaper.
     const recruiterMap = {};
-    for (const email of recruiterEmails) {
-      try {
-        const rec = await recruiterF.findRecruiterByEmail(email);
-        if (rec) {
-          recruiterMap[email] = {
-            name:               rec.name || '',
-            email:              rec.email || email,
-            mobile:             rec.mobile || rec.phone || '',
-            experienceCategory: rec.experienceCategory || '',
-            location:           rec.location || '',
-            roleCategory:       rec.roleCategory || '',
-            commisiontype:      rec.commisiontype || '',
-            agreementSigned:    !!rec.agreementSigned,
-            registrationDate:   toIso(rec.registrationDate),
-          };
-        }
-      } catch (_) {}
-    }
+    const wanted = new Set(recruiterEmails.map(e => String(e).toLowerCase()));
+    const recSnap = await db.collection('recruiter_db')
+      .select('name', 'email', 'mobile', 'phone', 'experienceCategory', 'location',
+              'roleCategory', 'commisiontype', 'agreementSigned', 'registrationDate')
+      .get();
+    recSnap.docs.forEach(doc => {
+      const rec = doc.data();
+      const email = String(rec.email || '').toLowerCase();
+      if (!email || !wanted.has(email)) return;
+      recruiterMap[email] = {
+        name:               rec.name || '',
+        email:              rec.email || email,
+        mobile:             rec.mobile || rec.phone || '',
+        experienceCategory: rec.experienceCategory || '',
+        location:           rec.location || '',
+        roleCategory:       rec.roleCategory || '',
+        commisiontype:      rec.commisiontype || '',
+        agreementSigned:    !!rec.agreementSigned,
+        registrationDate:   toIso(rec.registrationDate),
+      };
+    });
 
     // 5. Fetch all coach/expert requests grouped by positionId
     const requestsSnap = await coachExpertRequestsDb.get();
@@ -128,7 +153,9 @@ router.get('/candidates', async (req, res) => {
         // Position
         positionId:    c.pos_id || '',
         positionTitle: pos.positionTitle || c.pos_name || '',
-        positionDetail: Object.keys(pos).length ? pos : null,
+        // The position modal fetches /candidate/position/:id on demand, so the full
+        // object is not repeated on all 21.5k rows.
+        positionDetail: null,
         client:        pos.client || c.client || '',
         skill_category: pos.skill_category || '',
         clientspocName:  pos.clientspocName || '',
@@ -167,7 +194,9 @@ router.get('/candidates', async (req, res) => {
       };
     });
 
-    res.json({ success: true, count: rows.length, data: rows });
+    const body = { success: true, count: rows.length, data: rows };
+    _reportCache = { at: Date.now(), body };
+    res.json(body);
   } catch (error) {
     console.error('Reports candidates error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch report data', error: error.message });
