@@ -4,12 +4,15 @@ import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   Users, UserPlus, BarChart3, LogOut, RefreshCw, Eye, EyeOff,
+  PlusCircle, FolderOpen, ClipboardList,
   ChevronDown, ChevronRight, ChevronLeft, AlertCircle, Building,
   Briefcase, Download, X, Hash, Store, Menu, Clock, MapPin,
   IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox
 } from 'lucide-react';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import Ad_Candi from './Ad_Candi';
+import Ad_Pos from './Ad_Pos';
+import EditPositionModal from './EditPositionModal';
 import ChatPanel from '../components/ChatPanel';
 import InboxPage from '../components/InboxPage';
 import { RichTextView } from '../components/RichTextEditor';
@@ -1106,6 +1109,139 @@ const VendorPositionNotes = ({ position, onClose }) => {
   );
 };
 
+
+// ── Positions assigned to the vendor or their team ──────────────────────────
+const VendorAssignedPositionsTab = () => {
+  const navigate = useNavigate();
+  const [rows, setRows] = useState(null);
+  const load = () => axios.get('/vendor/assigned-positions', { withCredentials: true })
+    .then(r => setRows(r.data?.positions || [])).catch(() => setRows([]));
+  useEffect(() => { load(); }, []);
+
+  if (!rows) return <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>;
+  if (!rows.length) return <div className="py-16 text-center text-gray-400 text-sm">No positions assigned to you or your team yet. Assign one from Open Positions.</div>;
+
+  return (
+    <div>
+      <p className="text-sm text-gray-500 mb-4">Positions you or your recruiters are working on. Open one to submit a candidate yourself.</p>
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {rows.map(p => (
+          <div key={p.pos_id} className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col">
+            <div className="flex items-start justify-between gap-2">
+              <div className="font-bold text-gray-900 leading-snug">{p.position}</div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                (p.status || 'active').toLowerCase() === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                {p.status || 'active'}
+              </span>
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">#{p.pos_id}</div>
+            <div className="text-xs text-gray-600 mt-2 truncate">{p.client}</div>
+            <div className="text-xs text-gray-500 mt-0.5 truncate">
+              {Array.isArray(p.location) ? p.location.join(', ') : (p.location || '—')}
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {p.assignedTo.map(who => (
+                <span key={who} className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                  who === 'Self' ? 'bg-purple-100 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
+                  {who === 'Self' ? '👤 Self' : who}
+                </span>
+              ))}
+            </div>
+
+            <button onClick={() => navigate(`/dash_view/${p.pos_id}?submit=1`)}
+              className="mt-4 w-full py-2 bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white text-xs font-bold rounded-xl">
+              Submit Candidate
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ── Positions the vendor posted (editable until the ClientSPOC approves) ────
+const VendorAddedPositionsTab = () => {
+  const [rows, setRows] = useState(null);
+  const [editPos, setEditPos] = useState(null);
+  const [holdFor, setHoldFor] = useState(null);
+  const [reason, setReason] = useState('');
+  const load = () => axios.get('/vendor/my-positions', { withCredentials: true })
+    .then(r => setRows(r.data?.positions || [])).catch(() => setRows([]));
+  useEffect(() => { load(); }, []);
+
+  const doHold = async () => {
+    if (!reason.trim()) return;
+    try {
+      await axios.post(`/vendor/positions/${holdFor.id}/hold`, { reason: reason.trim() }, { withCredentials: true });
+      setHoldFor(null); setReason(''); load();
+    } catch (e) { alert(e.response?.data?.message || 'Failed to hold.'); }
+  };
+
+  if (!rows) return <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>;
+  if (!rows.length) return <div className="py-16 text-center text-gray-400 text-sm">You haven't posted any positions yet. Use “Add Position”.</div>;
+
+  return (
+    <div>
+      <p className="text-sm text-gray-500 mb-4">
+        Positions you posted. You can edit them until the ClientSPOC approves — after that they're locked.
+      </p>
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {rows.map(p => (
+          <div key={p.id} className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col">
+            <div className="flex items-start justify-between gap-2">
+              <div className="font-bold text-gray-900 leading-snug">{p.position}</div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                p.canEdit ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                {p.canEdit ? 'Awaiting approval' : (p.status || 'live')}
+              </span>
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">#{p.pos_id}</div>
+            <div className="text-xs text-gray-600 mt-2 truncate">{p.client}</div>
+            <div className="text-xs text-gray-500 mt-0.5 truncate">
+              {Array.isArray(p.location) ? p.location.join(', ') : (p.location || '—')}
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2 flex-wrap">
+              {p.canEdit ? (
+                <button onClick={() => setEditPos(p)}
+                  className="text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg px-2.5 py-1.5 hover:bg-blue-50">Edit</button>
+              ) : (
+                <span className="text-[11px] text-gray-400">Approved — editing locked</span>
+              )}
+              {(p.status || '').toLowerCase() !== 'hold' && (
+                <button onClick={() => { setHoldFor(p); setReason(''); }}
+                  className="text-xs font-medium text-orange-600 border border-orange-200 rounded-lg px-2.5 py-1.5 hover:bg-orange-50">Hold</button>
+              )}
+            </div>
+
+            {holdFor?.id === p.id && (
+              <div className="mt-2 border-t border-gray-100 pt-2">
+                <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
+                  placeholder="Reason for holding (required)…"
+                  className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-orange-400/40" />
+                <div className="flex justify-end gap-2 mt-2">
+                  <button onClick={() => setHoldFor(null)} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>
+                  <button onClick={doHold} disabled={!reason.trim()}
+                    className="text-xs font-semibold text-white bg-orange-600 rounded-lg px-3 py-1.5 disabled:opacity-50">Confirm hold</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {editPos && (
+        <EditPositionModal
+          position={editPos}
+          onClose={() => setEditPos(null)}
+          onSuccess={() => { setEditPos(null); load(); }}
+        />
+      )}
+    </div>
+  );
+};
+
 const OpenPositionsTab = ({ recruiters }) => {
   const navigate = useNavigate();
   const [positions, setPositions] = useState([]);
@@ -1410,12 +1546,14 @@ const VendorDashboard = () => {
   const navigate = useNavigate();
 
   // Honour a #hash so the sidebar (and deep links) can open a specific tab.
-  const VALID_TABS = ['register', 'recruiters', 'candidates', 'positions', 'messages', 'inbox', 'reports'];
+  const VALID_TABS = ['register', 'recruiters', 'candidates', 'direct-applicants', 'positions',
+    'assigned-positions', 'add-position', 'added-positions', 'messages', 'inbox', 'reports'];
   const tabFromHash = () => {
     const h = (window.location.hash || '').replace('#', '').trim();
     return VALID_TABS.includes(h) ? h : 'register';
   };
   const [activeTab, setActiveTab] = useState(tabFromHash);
+  const [openGroups, setOpenGroups] = useState({});
   useEffect(() => {
     const onHash = () => setActiveTab(tabFromHash());
     window.addEventListener('hashchange', onHash);
@@ -1474,8 +1612,22 @@ const VendorDashboard = () => {
   const menuItems = [
     { id: 'register', icon: UserPlus, label: 'Register Recruiter' },
     { id: 'recruiters', icon: Users, label: 'My Recruiters' },
-    { id: 'candidates', icon: FileText, label: 'All Candidates' },
-    { id: 'positions', icon: Briefcase, label: 'Open Positions' },
+    {
+      id: 'candidates-group', icon: FileText, label: 'Candidates',
+      children: [
+        { id: 'candidates', icon: FileText, label: 'All Candidates' },
+        { id: 'direct-applicants', icon: UserCheck, label: 'Direct Applicants' },
+      ],
+    },
+    {
+      id: 'positions-group', icon: Briefcase, label: 'Positions',
+      children: [
+        { id: 'positions', icon: Briefcase, label: 'Open Positions' },
+        { id: 'assigned-positions', icon: ClipboardList, label: 'Assigned Positions' },
+        { id: 'add-position', icon: PlusCircle, label: 'Add Position' },
+        { id: 'added-positions', icon: FolderOpen, label: 'Added Positions' },
+      ],
+    },
     // Messages and Inbox are reachable from the floating buttons bottom-right,
     // so they're kept out of the sidebar to avoid duplicating them.
     { id: 'reports', icon: BarChart3, label: 'Reports' },
@@ -1485,6 +1637,50 @@ const VendorDashboard = () => {
     <ul className="space-y-2">
       {menuItems.map((item, index) => {
         const Icon = item.icon;
+        // Groups expand to reveal their sub-items.
+        if (item.children) {
+          const groupActive = item.children.some(c => c.id === activeTab);
+          const isOpen = openGroups[item.id] ?? groupActive;
+          return (
+            <li key={item.id}>
+              <button
+                onClick={() => setOpenGroups(g => ({ ...g, [item.id]: !isOpen }))}
+                className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 ${
+                  groupActive ? 'bg-blue-700/60 text-white' : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
+                } ${(!showExpanded && !forMobile) ? 'justify-center' : ''}`}
+              >
+                <Icon size={20} className="flex-shrink-0" />
+                {(showExpanded || forMobile) && (
+                  <>
+                    <span className="font-medium text-sm flex-1 truncate text-left">{item.label}</span>
+                    <ChevronDown size={15} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                  </>
+                )}
+              </button>
+              {isOpen && (showExpanded || forMobile) && (
+                <ul className="mt-1 ml-4 space-y-1 border-l border-blue-700/60 pl-2">
+                  {item.children.map(c => {
+                    const CIcon = c.icon;
+                    const cActive = activeTab === c.id;
+                    return (
+                      <li key={c.id}>
+                        <button
+                          onClick={() => { setActiveTab(c.id); setIsMobileSidebarOpen(false); }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                            cActive ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow' : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
+                          }`}
+                        >
+                          <CIcon size={16} className="flex-shrink-0" />
+                          <span className="truncate text-left">{c.label}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+          );
+        }
         const active = activeTab === item.id;
         return (
           <li key={item.id}>
@@ -1517,6 +1713,10 @@ const VendorDashboard = () => {
     recruiters: <MyRecruitersTab recruiters={recruiters} loading={loadingRecruiters} onRefresh={loadRecruiters} />,
     candidates: <Ad_Candi vendorView={true} />,
     positions: <OpenPositionsTab recruiters={recruiters} />,
+    'direct-applicants': <Ad_Candi vendorView={true} directOnly={true} />,
+    'assigned-positions': <VendorAssignedPositionsTab />,
+    'add-position': <Ad_Pos vendorMode={{ onPosted: () => setActiveTab('added-positions') }} />,
+    'added-positions': <VendorAddedPositionsTab />,
     messages: <div className="h-[calc(100vh-160px)] min-h-[520px] bg-white rounded-xl border border-gray-200 overflow-hidden"><ChatPanel /></div>,
     inbox: <div className="h-[calc(100vh-160px)] min-h-[520px] bg-white rounded-xl border border-gray-200 overflow-hidden"><InboxPage title="Inbox" embedded /></div>,
     reports: <ReportsTab />,

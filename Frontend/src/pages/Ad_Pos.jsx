@@ -58,7 +58,7 @@ export const indiaCities = Object.values(indiaStatesAndCities).flat().sort();
 // `firmMode` (optional): a consulting firm posting a position — client list and
 // SPOC list are the firm's own; submits to the consulting endpoint (server tags
 // consultingFirmId + routes to the firm's SPOC as 'pending').
-const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {}) => {
+const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendorMode = null } = {}) => {
   const { user } = useContext(UserStateContext);
   const [submit, setSubmit] = useState(false);
   const [citySearch, setCitySearch] = useState("");
@@ -589,12 +589,13 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null } = {})
       if (editData) {
         res = await axios.put(`/api/consulting/positions/${editData.id}`, submitData, { withCredentials: true });
       } else {
-        const postUrl = publicMode ? '/api/public-job/submit' : firmMode ? '/api/consulting/positions' : companyMode ? '/api/company/positions' : '/candidate/pos';
+        const postUrl = publicMode ? '/api/public-job/submit' : firmMode ? '/api/consulting/positions' : companyMode ? '/api/company/positions' : vendorMode ? '/vendor/positions' : '/candidate/pos';
         res = await axios.post(postUrl, submitData, { withCredentials: true });
       }
       console.log("Server Response:", res.data);
       if (publicMode && typeof publicMode.onPosted === 'function') { try { publicMode.onPosted(res.data); } catch (_) {} }
       if (companyMode && typeof companyMode.onPosted === 'function') { try { companyMode.onPosted(); } catch (_) {} }
+      if (vendorMode && typeof vendorMode.onPosted === 'function') { try { vendorMode.onPosted(); } catch (_) {} }
       if (firmMode && typeof firmMode.onPosted === 'function') { try { firmMode.onPosted(); } catch (_) {} }
       // (openToAll is carried in submitData below via the ...form spread)
       

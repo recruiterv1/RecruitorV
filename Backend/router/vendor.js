@@ -896,4 +896,143 @@ router.post('/assign-me', vendorAuth, async (req, res) => {
   }
 });
 
+// ─── Positions: assigned to the vendor / their team, and vendor-added ────────
+
+// GET /vendor/assigned-positions — every position the vendor or one of their
+// recruiters is approved to work on, tagged with who holds it.
+router.get('/assigned-positions', vendorAuth, async (req, res) => {
+  try {
+    const vendorEmail = (req.vendor.email || '').toLowerCase();
+    const teamSnap = await db.collection('recruiter_db')
+      .where('vendorEmail', '==', vendorEmail).get();
+
+    // email -> display name ("Self" for the vendor's own profile)
+    const holders = {};
+    teamSnap.docs.forEach(d => {
+      const r = d.data();
+      const e = (r.email || '').toLowerCase();
+      if (e) holders[e] = r.isVendorSelf ? 'Self' : (r.name || e.split('@')[0]);
+    });
+    holders[vendorEmail] = holders[vendorEmail] || 'Self';
+
+    const positionAccess = require('../model_fire/positionAccessF');
+    const byPos = {};
+    await Promise.all(Object.keys(holders).map(async (email) => {
+      let list = [];
+      try { list = await positionAccess.getRecruiterAssignments(email) || []; } catch (_) {}
+      list.forEach(a => {
+        const pid = String(a.positionId || '');
+        if (!pid) return;
+        (byPos[pid] = byPos[pid] || new Set()).add(holders[email]);
+      });
+    }));
+
+    const posIds = Object.keys(byPos);
+    if (!posIds.length) return res.json({ success: true, positions: [] });
+
+    const positions = [];
+    for (let i = 0; i < posIds.length; i += 10) {
+      const batch = posIds.slice(i, i + 10);
+      const snap = await db.collection('admin_AddPos').where('pos_id', 'in', batch).get();
+      snap.docs.forEach(d => {
+        const p = d.data();
+        positions.push({
+          id: d.id, pos_id: p.pos_id, position: p.position, client: p.client,
+          location: p.location || [], state: p.state || [],
+          skill_category: p.skill_category || '', pos_cat: p.pos_cat || '',
+          ctcStart: p.ctcStart || '', ctcEnd: p.ctcEnd || '',
+          commison: p.commison || '', commission_type: p.commission_type || '',
+          experience: p.experience || '', status: p.status || 'active',
+          datePosted: p.datePosted || null,
+          assignedTo: [...byPos[String(p.pos_id)]].sort(),
+        });
+      });
+    }
+    positions.sort((a, b) => (b.datePosted?._seconds || 0) - (a.datePosted?._seconds || 0));
+    res.json({ success: true, positions });
+  } catch (e) {
+    console.error('vendor/assigned-positions error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /vendor/my-positions — positions this vendor posted.
+router.get('/my-positions', vendorAuth, async (req, res) => {
+  try {
+    const vendorEmail = (req.vendor.email || '').toLowerCase();
+    const snap = await db.collection('admin_AddPos').where('postedByVendor', '==', vendorEmail).get();
+    const positions = snap.docs.map(d => {
+      const p = d.data();
+      // Editable only until the ClientSPOC makes it live.
+      const status = (p.status || '').toLowerCase();
+      return { id: d.id, ...p, canEdit: status === 'pending' || status === 'admin-pending' };
+    }).sort((a, b) => (b.datePosted?._seconds || 0) - (a.datePosted?._seconds || 0));
+    res.json({ success: true, positions });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// POST /vendor/positions — vendor posts a position; it waits for ClientSPOC approval.
+router.post('/positions', vendorAuth, async (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!(body.position || '').toString().trim()) return res.status(400).json({ success: false, message: 'Position title is required.' });
+    if (!(body.client || '').toString().trim()) return res.status(400).json({ success: false, message: 'Client is required.' });
+
+    const adminF = require('../model_fire/adminF');
+    const created = await adminF.CreatePosition({
+      ...body,
+      status: 'pending',                       // hidden from recruiters until approved
+      postedByVendor: (req.vendor.email || '').toLowerCase(),
+      vendorName: req.vendor.name || '',
+    });
+    res.json({ success: true, message: 'Position submitted for ClientSPOC approval.', data: created });
+  } catch (e) {
+    console.error('vendor/positions error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// PUT /vendor/positions/:id — edit, allowed only before the SPOC approves.
+router.put('/positions/:id', vendorAuth, async (req, res) => {
+  try {
+    const vendorEmail = (req.vendor.email || '').toLowerCase();
+    const ref = db.collection('admin_AddPos').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists || (doc.data().postedByVendor || '').toLowerCase() !== vendorEmail) {
+      return res.status(404).json({ success: false, message: 'Position not found.' });
+    }
+    const status = (doc.data().status || '').toLowerCase();
+    if (!['pending', 'admin-pending'].includes(status)) {
+      return res.status(403).json({ success: false, message: 'This position has already been approved — it can no longer be edited.' });
+    }
+    const update = { ...req.body };
+    ['pos_id', 'postedByVendor', 'datePosted', 'status'].forEach(k => delete update[k]);
+    update.modifiedAt = new Date();
+    await ref.update(update);
+    res.json({ success: true, message: 'Position updated.' });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// POST /vendor/positions/:id/hold — pause one of the vendor's own positions.
+router.post('/positions/:id/hold', vendorAuth, async (req, res) => {
+  try {
+    const vendorEmail = (req.vendor.email || '').toLowerCase();
+    const reason = (req.body?.reason || '').toString().trim();
+    if (!reason) return res.status(400).json({ success: false, message: 'A reason is required.' });
+    const ref = db.collection('admin_AddPos').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists || (doc.data().postedByVendor || '').toLowerCase() !== vendorEmail) {
+      return res.status(404).json({ success: false, message: 'Position not found.' });
+    }
+    await ref.update({ status: 'hold', holdReason: reason, holdAt: new Date(), holdBy: vendorEmail });
+    res.json({ success: true, message: 'Position placed on hold.' });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 module.exports = router;
