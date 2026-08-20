@@ -7,10 +7,11 @@ import { Autocomplete, Chip, TextField } from '@mui/material';
 import RichTextEditor, { isHtmlEmpty } from '../components/RichTextEditor';
 import { TagInput, ListInput, LimitedTextarea, EducationSelect } from '../components/PositionFieldInputs';
 import QuestionsEditor, { QuestionsList, validateQuestions } from '../components/QuestionsEditor';
+import CityMultiSelect from '../components/CityMultiSelect';
 
 // The India-wide city dataset lives in its own module; re-exported here because
 // several pages already import these names from Ad_Pos.
-import { indiaStatesAndCities, indiaCities, CITY_STATE, searchCities } from '../data/indiaCities';
+import { indiaStatesAndCities, indiaCities } from '../data/indiaCities';
 export { indiaStatesAndCities, indiaCities };
 
 // No need for separate CTC options - we'll generate them dynamically
@@ -24,13 +25,19 @@ export { indiaStatesAndCities, indiaCities };
 // `firmMode` (optional): a consulting firm posting a position — client list and
 // SPOC list are the firm's own; submits to the consulting endpoint (server tags
 // consultingFirmId + routes to the firm's SPOC as 'pending').
+// Experience pickers. Free-typed values were inconsistent ("5-8 yrs", "5 to 8
+// years", "5+"), which made positions hard to filter on, so both the summary
+// range and the individual year fields are chosen from a list. Any value already
+// saved on a position is kept as an extra option so editing never loses it.
+export const EXPERIENCE_RANGES = [
+  '0-1 years', '1-2 years', '2-3 years', '3-5 years', '5-7 years', '5-8 years',
+  '7-10 years', '8-12 years', '10-15 years', '12-15 years', '15-20 years', '20+ years',
+];
+export const EXPERIENCE_YEARS = Array.from({ length: 31 }, (_, i) => i);
+
 const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendorMode = null } = {}) => {
   const { user } = useContext(UserStateContext);
   const [submit, setSubmit] = useState(false);
-  const [citySearch, setCitySearch] = useState("");
-  const [cityHi, setCityHi] = useState(-1);          // keyboard-highlighted suggestion
-  const [cityFocus, setCityFocus] = useState(false); // dropdown open only while focused
-  const [customCities, setCustomCities] = useState([]);
   // Selected client's tier-based commission config (from Company_Overview)
   const [companyCommission, setCompanyCommission] = useState({ type: '', tiers: [] });
   // Client-requirement questions set on the company profile (read-only here)
@@ -186,15 +193,6 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
     "High Commission",
     "New"
   ];
-
-  const toggleCity = (city) => {
-    setForm(prev => ({
-      ...prev,
-      location: prev.location.includes(city)
-        ? prev.location.filter(c => c !== city)
-        : [...prev.location, city]
-    }));
-  };
 
   // Fetch client list from Company_Overview collection (or firm-scoped list).
   useEffect(() => {
@@ -679,58 +677,6 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
     } finally {
       setSubmit(false);
     }
-  };
-
-  // Full city list = built-in India cities + any custom ones the user added.
-  const allCityList = [...customCities, ...indiaCities];
-  // Quick-pick grid below the box. With ~950 cities in the list, rendering all of
-  // them when nothing is typed is just noise — show the metros until the user
-  // searches, and let the type-ahead handle everything else.
-  const POPULAR_CITIES = [
-    'Bengaluru', 'Mumbai', 'Delhi', 'New Delhi', 'Gurugram', 'Noida', 'Hyderabad', 'Chennai',
-    'Pune', 'Kolkata', 'Ahmedabad', 'Jaipur', 'Chandigarh', 'Lucknow', 'Indore', 'Kochi',
-    'Coimbatore', 'Nagpur', 'Bhubaneswar', 'Thiruvananthapuram', 'Surat', 'Vadodara',
-    'Visakhapatnam', 'Mysuru', 'Nashik', 'Remote',
-  ];
-  const filteredCities = citySearch.trim()
-    ? allCityList.filter(city => city.toLowerCase().includes(citySearch.toLowerCase())).slice(0, 60)
-    : [...new Set([...customCities, ...POPULAR_CITIES.filter(c => allCityList.includes(c))])];
-  // Ranked suggestions for the type-ahead under the search box.
-  const citySuggestions = searchCities(citySearch, customCities, 12);
-
-  // Pick a city from the suggestion list: select it and clear the box so the
-  // next city can be typed straight away.
-  const pickCity = (city) => {
-    setForm(prev => ({
-      ...prev,
-      location: prev.location.some(c => c.toLowerCase() === city.toLowerCase())
-        ? prev.location
-        : [...prev.location, city],
-    }));
-    setCitySearch("");
-    setCityHi(-1);
-  };
-  // Whether the typed search is a brand-new location not already in the list.
-  const trimmedCity = citySearch.trim();
-  const cityExists = trimmedCity && allCityList.some(c => c.toLowerCase() === trimmedCity.toLowerCase());
-  const canAddCity = trimmedCity.length > 0 && !cityExists;
-
-  // Add the typed location: no duplicates (case-insensitive); if it already
-  // exists just select it, otherwise register it and select it.
-  const addCustomCity = () => {
-    const name = citySearch.trim();
-    if (!name) return;
-    const match = allCityList.find(c => c.toLowerCase() === name.toLowerCase());
-    const cityToUse = match || name;
-    if (!match) setCustomCities(prev => [...prev, name]);
-    setForm(prev => ({
-      ...prev,
-      location: prev.location.some(c => c.toLowerCase() === cityToUse.toLowerCase())
-        ? prev.location
-        : [...prev.location, cityToUse],
-    }));
-    setCitySearch("");
-    setCityHi(-1);
   };
 
   return (
@@ -1366,15 +1312,19 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     Experience <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <select
                     name="experience"
                     value={form.experience}
                     onChange={handleChange}
-                    placeholder="e.g., 5-8 years"
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm"
+                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm bg-white"
                     required
-                  />
+                  >
+                    <option value="">Select experience range</option>
+                    {EXPERIENCE_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
+                    {form.experience && !EXPERIENCE_RANGES.includes(form.experience) && (
+                      <option value={form.experience}>{form.experience}</option>
+                    )}
+                  </select>
                 </div>
 
                 {/* Add Expert - Optional Field (internal only; hidden on the public employer page) */}
@@ -1467,18 +1417,36 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Minimum experience (yrs) <span className="text-red-500">*</span></label>
-                  <input type="number" min="0" name="min_exp" value={form.min_exp} onChange={handleChange} placeholder="e.g. 4"
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" />
+                  <select name="min_exp" value={form.min_exp} onChange={handleChange}
+                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm bg-white">
+                    <option value="">Select years</option>
+                    {EXPERIENCE_YEARS.map(y => <option key={y} value={y}>{y === 0 ? 'Fresher (0)' : y}</option>)}
+                    {form.min_exp !== "" && form.min_exp != null && !EXPERIENCE_YEARS.includes(Number(form.min_exp)) && (
+                      <option value={form.min_exp}>{form.min_exp}</option>
+                    )}
+                  </select>
                 </div>
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Maximum experience (yrs)</label>
-                  <input type="number" min="0" name="max_exp" value={form.max_exp} onChange={handleChange} placeholder="e.g. 8"
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" />
+                  <select name="max_exp" value={form.max_exp} onChange={handleChange}
+                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm bg-white">
+                    <option value="">Select years</option>
+                    {EXPERIENCE_YEARS.map(y => <option key={y} value={y}>{y === 0 ? 'Fresher (0)' : y}</option>)}
+                    {form.max_exp !== "" && form.max_exp != null && !EXPERIENCE_YEARS.includes(Number(form.max_exp)) && (
+                      <option value={form.max_exp}>{form.max_exp}</option>
+                    )}
+                  </select>
                 </div>
                 <div className="flex flex-col">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Min relevant experience (yrs)</label>
-                  <input type="number" min="0" name="min_rel_exp" value={form.min_rel_exp} onChange={handleChange} placeholder="e.g. 3"
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" />
+                  <select name="min_rel_exp" value={form.min_rel_exp} onChange={handleChange}
+                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm bg-white">
+                    <option value="">Select years</option>
+                    {EXPERIENCE_YEARS.map(y => <option key={y} value={y}>{y === 0 ? 'Fresher (0)' : y}</option>)}
+                    {form.min_rel_exp !== "" && form.min_rel_exp != null && !EXPERIENCE_YEARS.includes(Number(form.min_rel_exp)) && (
+                      <option value={form.min_rel_exp}>{form.min_rel_exp}</option>
+                    )}
+                  </select>
                 </div>
                 <div className="flex flex-col sm:col-span-3">
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">Team handling experience required?</label>
@@ -1528,128 +1496,10 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
                 <h4 className="text-base sm:text-lg font-bold text-gray-900">Job Location <span className="text-red-500">*</span></h4>
               </div>
               
-              {/* Search Box */}
-              <div className="mb-3 sm:mb-4">
-                <div className="relative">
-                  <Search size={16} className="sm:w-[18px] sm:h-[18px] absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Type a city — e.g. Pune, Coimbatore, Siliguri…"
-                    value={citySearch}
-                    onChange={(e) => { setCitySearch(e.target.value); setCityHi(-1); }}
-                    onFocus={() => setCityFocus(true)}
-                    onBlur={() => setTimeout(() => setCityFocus(false), 150)}
-                    autoComplete="off"
-                    onKeyDown={(e) => {
-                      if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        setCityHi(i => Math.min(i + 1, citySuggestions.length - 1));
-                      } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        setCityHi(i => Math.max(i - 1, -1));
-                      } else if (e.key === 'Enter') {
-                        e.preventDefault();
-                        if (cityHi >= 0 && citySuggestions[cityHi]) pickCity(citySuggestions[cityHi].city);
-                        else if (citySuggestions.length) pickCity(citySuggestions[0].city);
-                        else if (canAddCity) addCustomCity();
-                      } else if (e.key === 'Escape') {
-                        setCityFocus(false);
-                      }
-                    }}
-                    className="w-full h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl pl-10 sm:pl-12 pr-3 sm:pr-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm"
-                  />
-
-                  {/* Type-ahead suggestions — any Indian city, in any state */}
-                  {cityFocus && trimmedCity.length > 0 && (citySuggestions.length > 0 || canAddCity) && (
-                    <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-xl max-h-64 overflow-y-auto">
-                      {citySuggestions.map((sug, i) => {
-                        const picked = form.location.some(c => c.toLowerCase() === sug.city.toLowerCase());
-                        return (
-                          <button
-                            key={sug.city}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onMouseEnter={() => setCityHi(i)}
-                            onClick={() => pickCity(sug.city)}
-                            className={`w-full flex items-center justify-between gap-2 px-3 sm:px-4 py-2 text-left transition-colors ${
-                              i === cityHi ? 'bg-blue-50' : 'hover:bg-gray-50'
-                            }`}
-                          >
-                            <span className="min-w-0">
-                              <span className="text-sm font-semibold text-gray-800">{sug.city}</span>
-                              {sug.state && <span className="text-xs text-gray-500">, {sug.state}</span>}
-                              {sug.via && <span className="text-[11px] text-gray-400 ml-1">(also “{sug.via}”)</span>}
-                            </span>
-                            {picked
-                              ? <CheckCircle size={15} className="text-green-600 flex-shrink-0" />
-                              : <Plus size={15} className="text-blue-500 flex-shrink-0" />}
-                          </button>
-                        );
-                      })}
-                      {canAddCity && (
-                        <button
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={addCustomCity}
-                          className="w-full flex items-center gap-2 px-3 sm:px-4 py-2 text-left border-t border-gray-100 hover:bg-blue-50"
-                        >
-                          <Plus size={15} className="text-blue-600 flex-shrink-0" />
-                          <span className="text-sm font-semibold text-blue-700">Add “{trimmedCity}” as a new city</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <p className="mt-1.5 text-[11px] text-gray-400">
-                  Start typing to see matching cities — pick as many as you need. Not listed? You can add it.
-                </p>
-              </div>
-
-              {/* Selected Cities */}
-              {form.location.length > 0 && (
-                <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
-                  <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                    Selected Cities ({form.location.length}):
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {form.location.map(city => (
-                      <span
-                        key={city}
-                        className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-blue-600 text-white rounded-lg text-xs sm:text-sm font-medium"
-                      >
-                        {city}
-                        <button
-                          type="button"
-                          onClick={() => toggleCity(city)}
-                          className="hover:bg-blue-700 rounded-full p-0.5 transition-colors"
-                        >
-                          <X size={12} className="sm:w-[14px] sm:h-[14px]" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Cities Grid */}
-              <div className="border-2 border-gray-200 rounded-xl p-3 sm:p-4 max-h-56 sm:max-h-64 overflow-y-auto">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                  {filteredCities.map(city => (
-                    <button
-                      key={city}
-                      type="button"
-                      onClick={() => toggleCity(city)}
-                      className={`px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                        form.location.includes(city)
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {city}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <CityMultiSelect
+                value={form.location}
+                onChange={(cities) => setForm(prev => ({ ...prev, location: cities }))}
+              />
             </div>
 
             {/* Job Requirements */}

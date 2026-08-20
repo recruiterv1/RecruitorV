@@ -2,6 +2,8 @@ import axios from 'axios';
 import React, { useState, useEffect, useContext } from 'react';
 import { Edit, X, Trash2, Copy } from 'lucide-react';
 import { indiaStatesAndCities } from "./Ad_Pos";
+import CityMultiSelect from "../components/CityMultiSelect";
+import { EXPERIENCE_RANGES } from "./Ad_Pos";
 import { UserStateContext } from '../context/AuthPro';
 
 const Input = ({ label, ...props }) => (
@@ -248,7 +250,8 @@ const EditJobModal = ({ job, onClose, onUpdate }) => {
             <Input label="Must Have" name="m_have" value={form.m_have} onChange={handleChange} />
             <Input label="Good To Have" name="g_have" value={form.g_have} onChange={handleChange} />
             <Input label="Competencies" name="compet" value={form.compet} onChange={handleChange} />
-            <Input label="Experience" name="experience" value={form.experience} onChange={handleChange} />
+            <Select label="Experience" name="experience" value={form.experience} onChange={handleChange}
+              options={[...EXPERIENCE_RANGES, ...(form.experience && !EXPERIENCE_RANGES.includes(form.experience) ? [form.experience] : [])]} />
             <Input label="Commission (%)" name="commison" value={form.commison} onChange={handleChange} />
 
             <MultiSelect
@@ -256,16 +259,16 @@ const EditJobModal = ({ job, onClose, onUpdate }) => {
               name="state"
               value={form.state}
               options={Object.keys(indiaStatesAndCities)}
-              onChange={(states) => setForm({ ...form, state: states, location: [] })}
+              onChange={(states) => setForm({ ...form, state: states })}
             />
 
-            <MultiSelect
-              label="City"
-              name="location"
-              value={form.location}
-              options={form.state.flatMap(state => indiaStatesAndCities[state] || [])}
-              onChange={(cities) => setForm({ ...form, location: cities })}
-            />
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">City</label>
+              <CityMultiSelect
+                value={form.location}
+                onChange={(cities) => setForm({ ...form, location: cities })}
+              />
+            </div>
 
             <Textarea label="Company Overview" name="comp_view" value={form.comp_view} onChange={handleChange} />
             <Textarea label="Job Summary" name="job_desc" value={form.job_desc} onChange={handleChange} />

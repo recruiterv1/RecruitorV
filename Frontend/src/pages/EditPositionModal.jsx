@@ -5,7 +5,8 @@ import {
   CheckCircle, X, Search, Edit2, Plus
 } from 'lucide-react';
 import { Autocomplete, Chip, TextField } from '@mui/material';
-import { indiaCities } from './Ad_Pos';
+import CityMultiSelect from '../components/CityMultiSelect';
+import { EXPERIENCE_RANGES, EXPERIENCE_YEARS } from './Ad_Pos';
 import RichTextEditor, { isHtmlEmpty } from '../components/RichTextEditor';
 import { TagInput, ListInput, LimitedTextarea, EducationSelect } from '../components/PositionFieldInputs';
 import QuestionsEditor, { QuestionsList, validateQuestions } from '../components/QuestionsEditor';
@@ -27,8 +28,6 @@ const parseNames = (stored) => {
 
 const EditPositionModal = ({ position, onClose, onSuccess }) => {
   const [submit, setSubmit] = useState(false);
-  const [citySearch, setCitySearch] = useState('');
-  const [customCities, setCustomCities] = useState([]);
   // Selected client's tier-based commission config (from Company_Overview)
   const [companyCommission, setCompanyCommission] = useState({ type: '', tiers: [] });
   // Client-requirement questions set on the company profile (read-only here)
@@ -299,15 +298,6 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
     setForm(prev => ({ ...prev, expert_ids: newValue }));
   };
 
-  const toggleCity = (city) => {
-    setForm(prev => ({
-      ...prev,
-      location: prev.location.includes(city)
-        ? prev.location.filter(c => c !== city)
-        : [...prev.location, city]
-    }));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submit) return;
@@ -382,30 +372,6 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
       o.specialization?.toLowerCase().includes(params.inputValue.toLowerCase())
     );
 
-  const allCityList = [...customCities, ...indiaCities];
-  const filteredCities = allCityList.filter(city =>
-    city.toLowerCase().includes(citySearch.toLowerCase())
-  );
-  const trimmedCity = citySearch.trim();
-  const cityExists = trimmedCity && allCityList.some(c => c.toLowerCase() === trimmedCity.toLowerCase());
-  const canAddCity = trimmedCity.length > 0 && !cityExists;
-
-  // Add the typed location: no duplicates (case-insensitive); if it already
-  // exists just select it, otherwise register it and select it.
-  const addCustomCity = () => {
-    const name = citySearch.trim();
-    if (!name) return;
-    const match = allCityList.find(c => c.toLowerCase() === name.toLowerCase());
-    const cityToUse = match || name;
-    if (!match) setCustomCities(prev => [...prev, name]);
-    setForm(prev => ({
-      ...prev,
-      location: prev.location.some(c => c.toLowerCase() === cityToUse.toLowerCase())
-        ? prev.location
-        : [...prev.location, cityToUse],
-    }));
-    setCitySearch('');
-  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 overflow-y-auto flex items-start justify-center p-4">
@@ -775,9 +741,14 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">
                     Experience <span className="text-red-500">*</span>
                   </label>
-                  <input type="text" name="experience" value={form.experience} onChange={handleChange}
-                    placeholder="e.g., 5-8 years" required
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" />
+                  <select name="experience" value={form.experience} onChange={handleChange} required
+                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm bg-white">
+                    <option value="">Select experience range</option>
+                    {EXPERIENCE_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
+                    {form.experience && !EXPERIENCE_RANGES.includes(form.experience) && (
+                      <option value={form.experience}>{form.experience}</option>
+                    )}
+                  </select>
                 </div>
 
                 {/* Add Expert — MUI Autocomplete */}
@@ -848,54 +819,10 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
                 <h4 className="text-base sm:text-lg font-bold text-gray-900">Job Location <span className="text-red-500">*</span></h4>
               </div>
 
-              <div className="mb-3 sm:mb-4">
-                <div className="relative">
-                  <Search size={16} className="sm:w-[18px] sm:h-[18px] absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input type="text" placeholder="Search or add a city..." value={citySearch}
-                    onChange={(e) => setCitySearch(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (canAddCity) addCustomCity(); } }}
-                    className="w-full h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl pl-10 sm:pl-12 pr-3 sm:pr-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" />
-                </div>
-                {canAddCity && (
-                  <button type="button" onClick={addCustomCity}
-                    className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs sm:text-sm font-semibold transition-all">
-                    <Plus size={15} /> Add “{trimmedCity}” as a new city
-                  </button>
-                )}
-              </div>
-
-              {form.location.length > 0 && (
-                <div className="mb-3 sm:mb-4 p-3 sm:p-4 bg-blue-50 rounded-xl border-2 border-blue-200">
-                  <p className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">
-                    Selected Cities ({form.location.length}):
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {form.location.map(city => (
-                      <span key={city}
-                        className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-blue-600 text-white rounded-lg text-xs sm:text-sm font-medium">
-                        {city}
-                        <button type="button" onClick={() => toggleCity(city)}
-                          className="hover:bg-blue-700 rounded-full p-0.5 transition-colors">
-                          <X size={12} className="sm:w-[14px] sm:h-[14px]" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="border-2 border-gray-200 rounded-xl p-3 sm:p-4 max-h-56 sm:max-h-64 overflow-y-auto">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                  {filteredCities.map(city => (
-                    <button key={city} type="button" onClick={() => toggleCity(city)}
-                      className={`px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                        form.location.includes(city) ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}>
-                      {city}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <CityMultiSelect
+                value={form.location}
+                onChange={(cities) => setForm(prev => ({ ...prev, location: cities }))}
+              />
             </div>
 
             {/* Role classification */}
@@ -929,11 +856,29 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                 <div className="flex flex-col"><label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Minimum experience (yrs)</label>
-                  <input type="number" min="0" name="min_exp" value={form.min_exp} onChange={handleChange} className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" /></div>
+                  <select name="min_exp" value={form.min_exp} onChange={handleChange} className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm bg-white">
+                    <option value="">Select years</option>
+                    {EXPERIENCE_YEARS.map(y => <option key={y} value={y}>{y === 0 ? 'Fresher (0)' : y}</option>)}
+                    {form.min_exp !== "" && form.min_exp != null && !EXPERIENCE_YEARS.includes(Number(form.min_exp)) && (
+                      <option value={form.min_exp}>{form.min_exp}</option>
+                    )}
+                  </select></div>
                 <div className="flex flex-col"><label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Maximum experience (yrs)</label>
-                  <input type="number" min="0" name="max_exp" value={form.max_exp} onChange={handleChange} className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" /></div>
+                  <select name="max_exp" value={form.max_exp} onChange={handleChange} className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm bg-white">
+                    <option value="">Select years</option>
+                    {EXPERIENCE_YEARS.map(y => <option key={y} value={y}>{y === 0 ? 'Fresher (0)' : y}</option>)}
+                    {form.max_exp !== "" && form.max_exp != null && !EXPERIENCE_YEARS.includes(Number(form.max_exp)) && (
+                      <option value={form.max_exp}>{form.max_exp}</option>
+                    )}
+                  </select></div>
                 <div className="flex flex-col"><label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Min relevant experience (yrs)</label>
-                  <input type="number" min="0" name="min_rel_exp" value={form.min_rel_exp} onChange={handleChange} className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm" /></div>
+                  <select name="min_rel_exp" value={form.min_rel_exp} onChange={handleChange} className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm bg-white">
+                    <option value="">Select years</option>
+                    {EXPERIENCE_YEARS.map(y => <option key={y} value={y}>{y === 0 ? 'Fresher (0)' : y}</option>)}
+                    {form.min_rel_exp !== "" && form.min_rel_exp != null && !EXPERIENCE_YEARS.includes(Number(form.min_rel_exp)) && (
+                      <option value={form.min_rel_exp}>{form.min_rel_exp}</option>
+                    )}
+                  </select></div>
                 <div className="flex flex-col sm:col-span-3"><label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Team handling experience required?</label>
                   <Seg name="team_handling" options={["Yes", "No"]} /></div>
                 <div className="flex flex-col"><label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Required education</label>
