@@ -972,38 +972,40 @@ const ReportsTab = () => {
 // ── Open Positions ─────────────────────────────────────────────
 
 
-// ── Notes indicator: has this recruiter listened to the vendor's notes? ──────
-//  green glow  → listened
-//  red glow    → notes exist, not listened yet
-//  red + cross → no notes written for this position yet
+// ── Per-question notes lights (one per briefing question) ───────────────────
+//  green glow  → recruiter has listened to that answer
+//  red glow    → answered by the vendor, not listened yet
+//  red + cross → the vendor hasn't answered that question
 const NotesLight = ({ pos }) => {
-  const listened = !!pos.notesListened;
-  const hasNotes = !!pos.hasNotes;
-  const colour = listened ? '#22c55e' : '#ef4444';
-
-  const tip = !hasNotes
-    ? 'No notes added for this position yet — add them from the position page.'
-    : (listened
-        ? `Listened${pos.notesListenedAt ? ' on ' + new Date(pos.notesListenedAt).toLocaleString('en-IN') : ''}\n\n`
-        : 'Not listened yet.\n\n') +
-      (pos.notes || []).map(n => `${n.label}: ${n.text}`).join('\n\n');
+  const qs = pos.noteQuestions || [];
+  if (!qs.length) return null;
 
   return (
-    <span title={tip} className="relative inline-flex items-center justify-center flex-shrink-0" style={{ width: 16, height: 16 }}>
-      <span
-        style={{
-          width: 11, height: 11, borderRadius: '50%', background: colour,
-          boxShadow: `0 0 6px 2px ${colour}99`,
-          animation: 'notesPulse 1.6s ease-in-out infinite',
-        }}
-      />
-      {!hasNotes && (
-        // cross over the light when the vendor hasn't written any notes
-        <svg viewBox="0 0 16 16" width="16" height="16" style={{ position: 'absolute', inset: 0 }}>
-          <line x1="3" y1="3" x2="13" y2="13" stroke="#7f1d1d" strokeWidth="2.2" strokeLinecap="round" />
-          <line x1="13" y1="3" x2="3" y2="13" stroke="#7f1d1d" strokeWidth="2.2" strokeLinecap="round" />
-        </svg>
-      )}
+    <span className="inline-flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+      {qs.map((q, i) => {
+        const colour = q.listened ? '#22c55e' : '#ef4444';
+        const state = !q.written ? 'Not answered by you yet'
+          : q.listened ? `Listened${q.listenedAt ? ' on ' + new Date(q.listenedAt).toLocaleString('en-IN') : ''}`
+          : 'Not listened yet';
+        const tip = `${i + 1}. ${q.label}\n${state}` + (q.written ? `\n\n${q.text}` : '');
+        return (
+          <span key={q.key} title={tip}
+            className="relative inline-flex items-center justify-center"
+            style={{ width: 14, height: 14 }}>
+            <span style={{
+              width: 9, height: 9, borderRadius: '50%', background: colour,
+              boxShadow: `0 0 5px 1.5px ${colour}99`,
+              animation: 'notesPulse 1.6s ease-in-out infinite',
+            }} />
+            {!q.written && (
+              <svg viewBox="0 0 14 14" width="14" height="14" style={{ position: 'absolute', inset: 0 }}>
+                <line x1="3" y1="3" x2="11" y2="11" stroke="#7f1d1d" strokeWidth="2" strokeLinecap="round" />
+                <line x1="11" y1="3" x2="3" y2="11" stroke="#7f1d1d" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            )}
+          </span>
+        );
+      })}
       <style>{`@keyframes notesPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
     </span>
   );

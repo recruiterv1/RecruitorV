@@ -3207,15 +3207,20 @@ router.post('/position-briefing/:posId/listened', authMiddleware, async (req, re
     const posId = String(req.params.posId);
     const author = (req.body?.author || '').toString().toLowerCase();
     if (!author) return res.status(400).json({ success: false, message: 'author is required' });
+    // Which of the six questions was played (each has its own speaker).
+    const key = (req.body?.key || '').toString().trim();
 
     const { FieldValue } = require('firebase-admin/firestore');
     const ref = db.collection('briefing_listens').doc(`${posId}__${author}__${listener}`);
     const existing = await ref.get();
+    const now = new Date();
     await ref.set({
       positionId: posId, authorEmail: author, listenerEmail: listener,
-      lastListenedAt: new Date(),
-      ...(existing.exists ? {} : { firstListenedAt: new Date() }),
+      lastListenedAt: now,
+      ...(existing.exists ? {} : { firstListenedAt: now }),
       plays: FieldValue.increment(1),
+      // per-question map: { sourcingTips: <date>, challenges: <date>, … }
+      ...(key ? { listenedKeys: { ...(existing.exists ? existing.data().listenedKeys : {}), [key]: now } } : {}),
     }, { merge: true });
     return res.json({ success: true });
   } catch (e) {

@@ -716,14 +716,25 @@ router.get('/recruiter-detail', vendorAuth, async (req, res) => {
           db.collection('position_coach_briefing').doc(`${pid}__${vendorEmail}`).get(),
           db.collection('briefing_listens').doc(`${pid}__${vendorEmail}__${listenerEmail}`).get(),
         ]);
-        p.hasNotes = noteDoc.exists && NOTE_KEYS.some(k => (noteDoc.data()[k] || '').trim());
-        p.notesListened = listenDoc.exists;
+        const note = noteDoc.exists ? noteDoc.data() : {};
+        const heard = listenDoc.exists ? (listenDoc.data().listenedKeys || {}) : {};
+        // One entry per question so the UI can show a light for each:
+        //   written=false      → red with a cross (vendor hasn't answered it)
+        //   written, !listened → red
+        //   written, listened  → green
+        p.noteQuestions = NOTE_KEYS.map(k => {
+          const text = String(note[k] || '').trim();
+          return {
+            key: k, label: LABELS[k], written: !!text, text,
+            listened: !!text && !!heard[k],
+            listenedAt: heard[k]?.toDate?.()?.toISOString?.() || null,
+          };
+        });
+        p.hasNotes = p.noteQuestions.some(q => q.written);
+        p.notesListened = p.noteQuestions.some(q => q.written && q.listened);
         p.notesListenedAt = listenDoc.exists
           ? (listenDoc.data().lastListenedAt?.toDate?.()?.toISOString() || null) : null;
-        p.notes = p.hasNotes
-          ? NOTE_KEYS.filter(k => (noteDoc.data()[k] || '').trim())
-              .map(k => ({ label: LABELS[k], text: String(noteDoc.data()[k]).trim() }))
-          : [];
+        p.notes = p.noteQuestions.filter(q => q.written).map(q => ({ label: q.label, text: q.text }));
       }));
     } catch (e) { console.error('notes/listen enrich failed:', e.message); }
 

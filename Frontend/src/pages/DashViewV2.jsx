@@ -178,10 +178,37 @@ const arr = (v) => Array.isArray(v) ? v.filter(Boolean) : (v ? String(v).split('
 const fmtCtc = (v) => { const n = parseFloat(String(v || '').replace(/[^\d.]/g, '')); if (!n) return '—'; return n >= 100000 ? `₹${Math.round(n / 100000)}L` : `₹${n}`; };
 const fmtDate = (ts) => { const s = ts?._seconds || ts?.seconds; if (!s) return ''; return new Date(s * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
 // Split rich text / list content into discrete items (for chips / list rows).
+// Turn a rich-text / pasted-from-Word field into clean bullet items.
+// Word paste arrives as "1.&nbsp;&nbsp;&nbsp;Responsible for…", so entities must be
+// decoded BEFORE splitting — splitting on ';' first was cutting '&nbsp;' into a
+// stray '&nbsp' bullet of its own.
+const decodeEntities = (str) => String(str)
+  .replace(/&nbsp;|&#160;|&#xa0;/gi, ' ')
+  .replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+  .replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+  .replace(/&[a-z]+;|&#\d+;/gi, ' ');
+
 const splitItems = (v) => {
   if (!v) return [];
-  const text = String(v).replace(/<\/(li|p|div|br)>/gi, '\n').replace(/<[^>]+>/g, '');
-  return text.split(/\n|,|;|•|•/).map(s => s.trim()).filter(s => s.length > 1).slice(0, 24);
+  const text = decodeEntities(
+    String(v).replace(/<\/(li|p|div|tr|h[1-6])>/gi, '\n').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
+  ).replace(/\u00a0/g, ' ');
+
+  const clean = (s) => s
+    .replace(/^[\s•\-–—*]+/, '')        // leading bullet glyphs
+    .replace(/^\(?\d+[.)]\s*/, '')      // leading "1." / "1)" / "(1)"
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  let items = text.split(/[\n•]+/).map(clean).filter(s => s.length > 1);
+
+  // A single blob of comma-separated values is a skills list — split it. Sentences
+  // (which contain spaces around commas and end with a full stop) are left intact.
+  if (items.length === 1 && items[0].includes(',') && items[0].length < 400) {
+    const parts = items[0].split(',').map(clean).filter(s => s.length > 1);
+    if (parts.length > 1 && parts.every(p => p.split(/\s+/).length <= 6)) items = parts;
+  }
+  return items.slice(0, 24);
 };
 
 // JD prose fields (Job Summary / Company Overview / Candidate Instructions) may be
@@ -885,12 +912,13 @@ function DashViewV2Inner() {
   // Spoken script the recruiter hears (only non-empty answers).
   // Tell the author (coach/vendor) that this recruiter actually heard the notes —
   // once per page visit is enough; the server keeps the first/last timestamps.
-  const listenReported = useRef(false);
-  const markBriefingListened = () => {
-    if (listenReported.current || !briefingAuthor || !pos_id) return;
-    listenReported.current = true;
+  const listenReported = useRef({});
+  const markBriefingListened = (key) => {
+    if (!briefingAuthor || !pos_id) return;
+    if (listenReported.current[key]) return;          // once per question per visit
+    listenReported.current[key] = true;
     axios.post(`/api/coach-expert/position-briefing/${pos_id}/listened`,
-      { author: briefingAuthor }, { withCredentials: true }).catch(() => {});
+      { author: briefingAuthor, key }, { withCredentials: true }).catch(() => {});
   };
 
   const briefingScript = BRIEFING_QS
@@ -1448,7 +1476,7 @@ function DashViewV2Inner() {
                       {q.desc && <div style={{ fontSize: 12, color: '#64748b' }}>{q.desc}</div>}
                     </div>
                     <SpeakButton text={`${q.label}. ${briefing[q.key].trim()}.`} title={`Play: ${q.label}`} tone="green" compact
-                      onPlay={markBriefingListened} />
+                      onPlay={() => markBriefingListened(q.key)} />
                   </div>
                 ))}
               </div>
