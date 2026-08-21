@@ -7,7 +7,7 @@ import {
   PlusCircle, FolderOpen, ClipboardList,
   ChevronDown, ChevronRight, ChevronLeft, AlertCircle, Building,
   Briefcase, Download, X, Hash, Store, Menu, Clock, MapPin,
-  IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox, Building2
+  IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox, Building2, Mic
 } from 'lucide-react';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import Ad_Candi from './Ad_Candi';
@@ -1619,6 +1619,15 @@ const VendorDashboard = () => {
       ],
     },
     { id: 'companies', icon: Building2, label: 'Companies' },
+    // Briefings live on their own pages (shared with coaches/experts), so this
+    // entry navigates rather than switching a tab.
+    {
+      id: 'briefings-group', icon: Mic, label: 'Position Briefings',
+      children: [
+        { id: 'briefings-mine', icon: ClipboardList, label: 'My Briefings', path: '/my-briefings' },
+        { id: 'briefings-add', icon: Mic, label: 'Add Briefing', path: '/my-briefings#pending' },
+      ],
+    },
     // Messages and Inbox are reachable from the floating buttons bottom-right,
     // so they're kept out of the sidebar to avoid duplicating them.
     { id: 'reports', icon: BarChart3, label: 'Reports' },
@@ -1656,7 +1665,10 @@ const VendorDashboard = () => {
                     return (
                       <li key={c.id}>
                         <button
-                          onClick={() => { setActiveTab(c.id); setIsMobileSidebarOpen(false); }}
+                          onClick={() => {
+                            setIsMobileSidebarOpen(false);
+                            if (c.path) navigate(c.path); else setActiveTab(c.id);
+                          }}
                           className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
                             cActive ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow' : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
                           }`}
@@ -1676,7 +1688,10 @@ const VendorDashboard = () => {
         return (
           <li key={item.id}>
             <button
-              onClick={() => { setActiveTab(item.id); setIsMobileSidebarOpen(false); }}
+              onClick={() => {
+                setIsMobileSidebarOpen(false);
+                if (item.path) navigate(item.path); else setActiveTab(item.id);
+              }}
               className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group relative ${
                 active ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg' : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
               } ${(!showExpanded && !forMobile) ? 'justify-center' : ''}`}
