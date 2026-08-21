@@ -283,6 +283,44 @@ const CVModal = ({ url, onClose }) => {
 
 // ── Candidate detail modal ────────────────────────────────────────────────────
 const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPosition, onViewCV, hideRecruiterInfo = false, clientSpocView = false, onCandidateUpdate }) => {
+  // Who does the submitting recruiter report to? Shown under their details so a
+  // ClientSPOC can see the coach/expert/vendor standing behind the submission.
+  const [teamHeads, setTeamHeads] = useState([]);
+  const [fbOpen, setFbOpen] = useState(false);
+  const [fbText, setFbText] = useState('');
+  const [fbSending, setFbSending] = useState(false);
+  const [fbResult, setFbResult] = useState('');
+
+  useEffect(() => {
+    const email = candidate?.recEmail;
+    if (!email) { setTeamHeads([]); return; }
+    let live = true;
+    axios.get('/api/chat/team-head', { params: { email }, withCredentials: true })
+      .then(r => { if (live) setTeamHeads(r.data?.heads || []); })
+      .catch(() => { if (live) setTeamHeads([]); });
+    return () => { live = false; };
+  }, [candidate?.recEmail]);
+
+  const sendFeedbackGroup = async () => {
+    if (!fbText.trim()) return;
+    setFbSending(true); setFbResult('');
+    try {
+      const r = await axios.post('/api/chat/feedback-group', {
+        candidateId: candidate.id,
+        candidateName: candidate.candidate,
+        positionName: candidate.pos_name,
+        posId: candidate.pos_id,
+        recruiterEmail: candidate.recEmail,
+        message: fbText.trim(),
+      }, { withCredentials: true });
+      setFbResult(`✓ Sent to a group of ${r.data?.members || 2} — open Messages to continue the conversation.`);
+      setFbText('');
+      setTimeout(() => { setFbOpen(false); setFbResult(''); }, 3500);
+    } catch (e) {
+      setFbResult(e.response?.data?.message || 'Could not send the feedback.');
+    } finally { setFbSending(false); }
+  };
+
   const [status, setStatus]     = useState(candidate?.statusa || '');
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
@@ -691,6 +729,69 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
                   <InfoItem icon={Mail}  label={`${role} Email`}   value={candidate.recEmail} color="#6b7280" />
                   <InfoItem icon={Phone} label={`${role} Phone`}   value={candidate.recPhone} color="#0891b2" />
                 </div>
+
+                {teamHeads.length > 0 && (
+                  <>
+                    <div style={{ fontSize:12, fontWeight:800, color:'#374151', textTransform:'uppercase', letterSpacing:0.6, margin:'18px 0 8px', paddingBottom:6, borderBottom:'2px solid #eef2f7' }}>
+                      Team Head{teamHeads.length > 1 ? 's' : ''}
+                    </div>
+                    {teamHeads.map(h => (
+                      <div key={h.email} style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:'0 28px' }}>
+                        <InfoItem icon={User}  label={h.role}              value={h.name}  color="#7c3aed" />
+                        <InfoItem icon={Mail}  label={`${h.role} Email`}   value={h.email} color="#6b7280" />
+                        <InfoItem icon={Phone} label={`${h.role} Phone`}   value={h.phone} color="#0891b2" />
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {clientSpocView && candidate.recEmail && (
+                  <div style={{ marginTop:14, padding:14, background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:12 }}>
+                    {!fbOpen ? (
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+                        <div>
+                          <div style={{ fontSize:13, fontWeight:700, color:'#0f172a' }}>Share feedback with the team</div>
+                          <div style={{ fontSize:12, color:'#64748b', marginTop:2 }}>
+                            Starts a group with {candidate.recName || 'the recruiter'}
+                            {teamHeads.length ? ` and ${teamHeads.map(h => h.name).join(', ')}` : ''} about this candidate.
+                          </div>
+                        </div>
+                        <button onClick={() => setFbOpen(true)}
+                          style={{ padding:'8px 16px', borderRadius:10, border:'none', background:'#2563eb', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', whiteSpace:'nowrap' }}>
+                          💬 Send Feedback
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ fontSize:13, fontWeight:700, color:'#0f172a', marginBottom:6 }}>
+                          Feedback on {candidate.candidate}
+                        </div>
+                        <textarea
+                          value={fbText}
+                          onChange={e => setFbText(e.target.value)}
+                          rows={3}
+                          placeholder="e.g. Profile looks strong on product knowledge but the notice period is too long — can you check if it can be bought out?"
+                          style={{ width:'100%', border:'2px solid #e5e7eb', borderRadius:10, padding:'8px 12px', fontSize:13, resize:'vertical', outline:'none' }}
+                        />
+                        {fbResult && (
+                          <div style={{ marginTop:8, fontSize:12, fontWeight:600, color: fbResult.startsWith('✓') ? '#166534' : '#b91c1c' }}>
+                            {fbResult}
+                          </div>
+                        )}
+                        <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginTop:10 }}>
+                          <button onClick={() => { setFbOpen(false); setFbText(''); setFbResult(''); }} disabled={fbSending}
+                            style={{ padding:'8px 14px', borderRadius:10, border:'1px solid #e5e7eb', background:'#fff', fontWeight:700, fontSize:13, cursor:'pointer' }}>
+                            Cancel
+                          </button>
+                          <button onClick={sendFeedbackGroup} disabled={fbSending || !fbText.trim()}
+                            style={{ padding:'8px 18px', borderRadius:10, border:'none', background:'#2563eb', color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer', opacity: (fbSending || !fbText.trim()) ? 0.5 : 1 }}>
+                            {fbSending ? 'Sending…' : 'Send to group'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             );
           })()}

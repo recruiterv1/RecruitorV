@@ -519,6 +519,164 @@ router.post('/upload', authMiddleware, async (req, res) => {
 });
 
 // ── Group creation ───────────────────────────────────────────────────────────
+
+// Write a message into a conversation and bump its unread counters — the same
+// bookkeeping /send does, reused by the feedback-group flow.
+async function postMessage(conversationId, me, text) {
+  const meLc = lc(me.email);
+  const convRef = db.collection('chat_conversations').doc(conversationId);
+  const conv = await convRef.get();
+  if (!conv.exists) throw new Error('Conversation not found');
+  const participants = conv.data().participants || [];
+  const trimmed = String(text || '').trim().slice(0, 4000);
+  const now = FieldValue.serverTimestamp();
+
+  await db.collection('chat_messages').add({
+    conversationId, senderEmail: me.email, senderName: me.name,
+    text: trimmed, attachment: null, mentions: [], createdAt: now,
+  });
+
+  const newUnread = { ...(conv.data().unread || {}) };
+  participants.forEach(p => { if (p !== meLc) newUnread[p] = (newUnread[p] || 0) + 1; });
+  newUnread[meLc] = 0;
+  await convRef.update({
+    lastMessage: trimmed.slice(0, 120), lastMessageAt: now, lastSender: meLc, unread: newUnread,
+  });
+
+  sendPushToEmails(participants.filter(p => p !== meLc), {
+    title: conv.data().name || 'Candidate feedback',
+    body: `${me.name}: ${trimmed}`.slice(0, 160),
+    data: { type: 'chat', conversationId },
+  }).catch(() => {});
+}
+
+// ── Team head of a recruiter ─────────────────────────────────────────────────
+// A recruiter can sit under a coach/expert (an approved coach_team_requests row)
+// or under a vendor (vendorEmail on their recruiter_db record). Returns every
+// team head found, so a ClientSPOC can see who stands behind a submission.
+async function teamHeadsForRecruiter(recEmail) {
+  const e = lc(recEmail || '');
+  if (!e) return [];
+  const heads = {};
+
+  try {
+    const snap = await db.collection('coach_team_requests')
+      .where('recruiterEmail', '==', e)
+      .where('status', '==', 'approved')
+      .get();
+    for (const d of snap.docs) {
+      const ce = lc(d.data().coachEmail || '');
+      if (!ce) continue;
+      const u = await resolveUser(ce);
+      heads[ce] = {
+        email: u.email, name: u.name,
+        role: u.role === 'expert' ? 'Expert' : 'Coach',
+        phone: u.phone || '',
+      };
+    }
+  } catch (_) { /* fall through to the vendor check */ }
+
+  try {
+    const rSnap = await db.collection('recruiter_db').where('email', '==', e).limit(1).get();
+    if (!rSnap.empty) {
+      const ve = lc(rSnap.docs[0].data().vendorEmail || '');
+      if (ve && !heads[ve]) {
+        const vSnap = await db.collection('admin_db').where('email', '==', ve).limit(1).get();
+        const v = vSnap.empty ? {} : vSnap.docs[0].data();
+        heads[ve] = {
+          email: ve, name: v.name || ve.split('@')[0], role: 'Vendor',
+          phone: v.mobile || v.phone || '',
+        };
+      }
+    }
+  } catch (_) { /* no vendor */ }
+
+  return Object.values(heads);
+}
+
+// GET /api/chat/team-head?email=<recruiter email>
+// Used by the ClientSPOC candidate modal to show who the submitter reports to.
+router.get('/team-head', authMiddleware, async (req, res) => {
+  try {
+    const heads = await teamHeadsForRecruiter(req.query.email);
+    res.json({ success: true, heads });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// POST /api/chat/feedback-group
+//   { candidateId, candidateName, positionName, posId, recruiterEmail, message }
+// One tap from the candidate modal: opens (or reuses) a group with the ClientSPOC,
+// the recruiter who submitted, and that recruiter's team head(s), then posts the
+// feedback as the first message. Keyed on candidate + SPOC so repeat feedback on
+// the same candidate lands in the same thread rather than spawning new groups.
+router.post('/feedback-group', authMiddleware, async (req, res) => {
+  try {
+    const me = await resolveUserCached(req.user.email);
+    if (!['clientspoc', 'admin'].includes(me.role)) {
+      return res.status(403).json({ success: false, message: 'Only a ClientSPOC can start a feedback group.' });
+    }
+    const meLc = lc(me.email);
+    const recEmail = lc(req.body?.recruiterEmail || '');
+    const message = String(req.body?.message || '').trim();
+    const candidateId = String(req.body?.candidateId || '');
+    if (!recEmail) return res.status(400).json({ success: false, message: 'recruiterEmail is required' });
+    if (!message) return res.status(400).json({ success: false, message: 'Write your feedback first.' });
+
+    const rec = await resolveUser(recEmail);
+    const heads = await teamHeadsForRecruiter(recEmail);
+
+    const candidateName = String(req.body?.candidateName || 'Candidate').trim();
+    const positionName = String(req.body?.positionName || '').trim();
+    const groupName = [candidateName, positionName].filter(Boolean).join(' · ').slice(0, 80);
+    const feedbackKey = `${candidateId || groupName}__${meLc}`;
+
+    // Reuse the existing thread for this candidate if there is one.
+    const existing = await db.collection('chat_conversations')
+      .where('feedbackKey', '==', feedbackKey).limit(1).get();
+
+    let convId;
+    if (!existing.empty) {
+      convId = existing.docs[0].id;
+    } else {
+      const parts = { [meLc]: { name: me.name, role: me.role } };
+      parts[recEmail] = { name: rec.name || recEmail.split('@')[0], role: rec.role || 'recruiter' };
+      heads.forEach(h => { parts[lc(h.email)] = { name: h.name, role: (h.role || '').toLowerCase() }; });
+
+      const participants = Object.keys(parts);
+      const names = {}, roles = {}, unread = {};
+      participants.forEach(p => { names[p] = parts[p].name; roles[p] = parts[p].role; unread[p] = 0; });
+
+      const doc = await db.collection('chat_conversations').add({
+        type: 'group',
+        name: groupName || 'Candidate feedback',
+        participants, names, roles, unread,
+        createdBy: meLc,
+        admins: [meLc],
+        feedbackKey,
+        candidateId: candidateId || '',
+        positionId: String(req.body?.posId || ''),
+        lastMessage: '',
+        lastMessageAt: FieldValue.serverTimestamp(),
+        lastSender: '',
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      convId = doc.id;
+    }
+
+    await postMessage(convId, me, message);
+    const conv = await db.collection('chat_conversations').doc(convId).get();
+    res.json({
+      success: true,
+      conversationId: convId,
+      members: (conv.data().participants || []).length,
+      teamHeads: heads,
+    });
+  } catch (e) {
+    console.error('chat/feedback-group', e);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 const GROUP_CREATOR_ROLES = ['coach', 'expert', 'admin', 'clientspoc'];
 
 router.post('/group/create', authMiddleware, async (req, res) => {
