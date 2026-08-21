@@ -9,39 +9,25 @@ const STATUS_CFG = {
   rejected: { label: 'Rejected', cls: 'bg-red-100    text-red-700',    icon: XCircle },
 };
 
-// The 6 coach position-briefing questions (order + labels match dash_view_v2).
-const BRIEFING_QS = [
-  { key: 'exactPosition', label: 'Understanding the Position', desc: 'What exactly are we hiring for?' },
-  { key: 'sourcingTips', label: 'Sourcing Strategy', desc: 'What are the best sourcing tips for this position?' },
-  { key: 'challenges', label: 'Hiring Challenges', desc: 'What challenges should recruiters expect?' },
-  { key: 'headhuntingTarget', label: 'Head-hunting Strategy', desc: 'Who should we target and where?' },
-  { key: 'assessmentQuestions', label: 'Assessment Call', desc: 'What questions should we ask candidates?' },
-  { key: 'engagementPostSubmission', label: 'Post-Submission Engagement', desc: 'How do we keep candidates engaged after submission?' },
-];
-
-// Per-question lights. Each ANSWERED question is its own green speaker — clicking it
-// plays only that answer (with language choice). Unanswered questions stay red dots.
+// A coach now records one briefing per position rather than six answers. The
+// cell shows its state and, once published, plays it.
 const BriefingCell = ({ briefing }) => {
-  const b = briefing || {};
-  const anyFilled = BRIEFING_QS.some(q => (b[q.key] || '').trim());
+  if (!briefing || !(briefing.briefingText || '').trim()) {
+    return <span className="text-[11px] text-gray-400">No briefing</span>;
+  }
+  const ready = briefing.status === 'ready';
+  const text = [briefing.briefingText, briefing.winningTip && `One winning tip. ${briefing.winningTip}`]
+    .filter(Boolean).join('. ');
   return (
-    <div className="flex items-center gap-1.5 flex-wrap justify-center" style={{ maxWidth: 230 }}>
-      {BRIEFING_QS.map((q, i) => {
-        const ans = (b[q.key] || '').trim();
-        if (ans) {
-          return (
-            <span key={q.key} title={`${i + 1}. ${q.label} — click to play`}>
-              <SpeakButton text={`${q.label}. ${ans}.`} title={`Play ${i + 1}. ${q.label}`} tone="green" compact />
-            </span>
-          );
-        }
-        return (
-          <span key={q.key}
-            title={`${i + 1}. ${q.label}: not answered`}
-            className="inline-block w-2.5 h-2.5 rounded-full bg-red-400" />
-        );
-      })}
-      {!anyFilled && <span className="text-[10px] text-gray-400">no answers</span>}
+    <div className="flex items-center gap-2 justify-center">
+      <SpeakButton text={text} title="Play the briefing" tone={ready ? 'green' : 'blue'} compact />
+      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+        ready ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+        {ready ? 'Ready' : 'Draft'}
+      </span>
+      <span className="text-[10px] text-gray-400">
+        {briefing.coverage?.length || 0}/5 · {briefing.wordCount || 0}w
+      </span>
     </div>
   );
 };

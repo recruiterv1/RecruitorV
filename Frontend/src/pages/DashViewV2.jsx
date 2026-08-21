@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import axios from 'axios';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { SidebarProvider, SidebarContext } from '../context/Sidebarcontext';
 import { UserStateContext } from '../context/AuthPro';
 import Sidebar from './Sidebar';
@@ -379,6 +379,7 @@ const STEP_NAMES = ['Identity', 'Experience', 'Compensation', 'Location', 'Notic
 
 function DashViewV2Inner() {
   const { pos_id } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const wantsSubmit = searchParams.get('submit') === '1';
   const [view, setView] = useState('jd');
@@ -888,74 +889,44 @@ function DashViewV2Inner() {
     }
   }, [wantsSubmit, hasAccess]);
 
-  // ── Position Briefing: coach/expert authors 6 answers; assigned recruiters hear it ──
-  const BRIEFING_QS = [
-    { key: 'exactPosition', label: 'Understanding the Position', desc: 'What exactly are we hiring for?' },
-    { key: 'sourcingTips', label: 'Sourcing Strategy', desc: 'What are the best sourcing tips for this position?' },
-    { key: 'challenges', label: 'Hiring Challenges', desc: 'What challenges should recruiters expect?' },
-    { key: 'headhuntingTarget', label: 'Head-hunting Strategy', desc: 'Who should we target and where?' },
-    { key: 'assessmentQuestions', label: 'Assessment Call', desc: 'What questions should we ask candidates?' },
-    { key: 'engagementPostSubmission', label: 'Post-Submission Engagement', desc: 'How do we keep candidates engaged after submission?' },
-  ];
-  const EMPTY_BRIEFING = { exactPosition: '', sourcingTips: '', challenges: '', headhuntingTarget: '', assessmentQuestions: '', engagementPostSubmission: '' };
-  const [briefing, setBriefing] = useState(EMPTY_BRIEFING);
-  const [briefingFound, setBriefingFound] = useState(false);
-  const [briefingAuthor, setBriefingAuthor] = useState('');   // coach/vendor who wrote it
-  const [briefingModalOpen, setBriefingModalOpen] = useState(false);
-  const [briefingSaving, setBriefingSaving] = useState(false);
-  // A vendor may write notes on a position their team already holds, even before
-  // they take it onto their own account — the server decides and reports canEdit.
-  const [briefingCanEdit, setBriefingCanEdit] = useState(false);
+  // ── Position Briefing ───────────────────────────────────────────────────────
+  // Authoring lives on its own page now (/briefing/:pos_id). Here we only READ
+  // the briefing, and only the ones this viewer is entitled to: the server
+  // returns a briefing solely when its author put this recruiter on the position
+  // (coach/expert) or the recruiter belongs to that vendor.
+  const [teamBriefings, setTeamBriefings] = useState([]);
+  const [myBriefingState, setMyBriefingState] = useState(null);   // author's own: null|'draft'|'ready'
 
   useEffect(() => {
-    if (!pos_id || (!hasAccess && !isTeamLead)) { setBriefingFound(false); setBriefing(EMPTY_BRIEFING); setBriefingCanEdit(false); return; }
+    if (!pos_id) { setTeamBriefings([]); return; }
     let live = true;
-    axios.get(isVendor ? `/vendor/position-briefing/${pos_id}` : `/api/coach-expert/position-briefing/${pos_id}`, { withCredentials: true })
-      .then(r => {
-        if (!live) return;
-        setBriefingCanEdit(r.data?.canEdit === true || r.data?.editable === true || hasAccess);
-        if (r.data?.found && r.data.briefing) {
-          const b = r.data.briefing;
-          setBriefing(Object.fromEntries(BRIEFING_QS.map(q => [q.key, b[q.key] || ''])));
-          setBriefingAuthor((b.coachEmail || b.vendorEmail || '').toLowerCase());
-          setBriefingFound(true);
-        } else { setBriefing(EMPTY_BRIEFING); setBriefingFound(false); }
-      })
-      .catch(() => {});
+    axios.get(`/api/briefing/for-me/${pos_id}`, { withCredentials: true })
+      .then(r => { if (live) setTeamBriefings(r.data?.briefings || []); })
+      .catch(() => { if (live) setTeamBriefings([]); });
     return () => { live = false; };
-  }, [pos_id, hasAccess, isVendor, isTeamLead]);
+  }, [pos_id]);
 
-  const saveBriefing = async () => {
-    setBriefingSaving(true);
-    try {
-      await axios.post(isVendor ? '/vendor/position-briefing' : '/api/coach-expert/position-briefing',
-        { positionId: pos_id, ...briefing }, { withCredentials: true });
-      setBriefingFound(true);
-      setBriefingModalOpen(false);
-      setToast('✓ Position briefing saved');
-      setTimeout(() => setToast(''), 3000);
-    } catch (e) {
-      setToast('⚠ ' + (e.response?.data?.message || 'Could not save briefing'));
-      setTimeout(() => setToast(''), 4000);
-    } finally { setBriefingSaving(false); }
-  };
+  // Team leads also see whether they have briefed this position themselves.
+  useEffect(() => {
+    if (!pos_id || !isTeamLead) { setMyBriefingState(null); return; }
+    let live = true;
+    axios.get(`/api/briefing/position/${pos_id}`, { withCredentials: true })
+      .then(r => { if (live) setMyBriefingState(r.data?.briefing?.status || null); })
+      .catch(() => { if (live) setMyBriefingState(null); });
+    return () => { live = false; };
+  }, [pos_id, isTeamLead]);
 
-  // Spoken script the recruiter hears (only non-empty answers).
-  // Tell the author (coach/vendor) that this recruiter actually heard the notes —
-  // once per page visit is enough; the server keeps the first/last timestamps.
+  // Tell the author this recruiter actually played their briefing.
   const listenReported = useRef({});
-  const markBriefingListened = (key) => {
-    if (!briefingAuthor || !pos_id) return;
-    if (listenReported.current[key]) return;          // once per question per visit
-    listenReported.current[key] = true;
-    axios.post(`/api/coach-expert/position-briefing/${pos_id}/listened`,
-      { author: briefingAuthor, key }, { withCredentials: true }).catch(() => {});
+  const markBriefingListened = (authorEmail) => {
+    if (!authorEmail || !pos_id) return;
+    const k = `${pos_id}__${authorEmail}`;
+    if (listenReported.current[k]) return;
+    listenReported.current[k] = true;
+    axios.post(`/api/briefing/for-me/${pos_id}/listened`, { authorEmail }, { withCredentials: true })
+      .catch(() => {});
   };
 
-  const briefingScript = BRIEFING_QS
-    .filter(q => (briefing[q.key] || '').trim())
-    .map(q => `${q.label}. ${briefing[q.key].trim()}.`)
-    .join(' ');
 
   // Does this position's company require a candidate photo? (same rule as the
   // live "Use your own" form — driven by Company_Overview.photoRequired)
@@ -1445,11 +1416,12 @@ function DashViewV2Inner() {
           <div className="jd-header">
             <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
               {/* Coach/expert: author the position briefing */}
-              {isTeamLead && (hasAccess || briefingCanEdit) && (
-                <button onClick={() => setBriefingModalOpen(true)} title="Add/edit the position briefing for your team"
+              {isTeamLead && hasAccess && (
+                <button onClick={() => navigate(`/briefing/${pos_id}`)}
+                  title="Write the briefing your own team will hear"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.15)', color: '#fff',
                     border: '1px solid rgba(255,255,255,0.35)', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                  📝 {briefingFound ? 'Edit Briefing' : 'Add Briefing'}
+                  🎙️ {myBriefingState === 'ready' ? 'Edit Briefing' : myBriefingState === 'draft' ? 'Continue Briefing' : 'Add Briefing'}
                 </button>
               )}
               <button onClick={sharePosition} title="Copy shareable link"
@@ -1494,25 +1466,44 @@ function DashViewV2Inner() {
             </div>
           </div>
 
-          {/* Coach Briefing — recruiter hears each question's answer via its own speaker */}
-          {!isCoachExpert && hasAccess && briefingFound && briefingScript && (
-            <div className="card" style={{ marginBottom: 20 }}>
-              <h2>Coach Briefing</h2>
-              <p className="card-sub">Your coach's guidance for this position. Tap a question's speaker to hear that answer (English/Hindi &amp; more).</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
-                {BRIEFING_QS.filter(q => (briefing[q.key] || '').trim()).map((q, i) => (
-                  <div key={q.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{i + 1}. {q.label}</div>
-                      {q.desc && <div style={{ fontSize: 12, color: '#64748b' }}>{q.desc}</div>}
+          {/* Briefings shared with this recruiter by their own coach/vendor. The
+              server only ever returns briefings the viewer is entitled to. */}
+          {!isTeamLead && teamBriefings.length > 0 && teamBriefings.map(b => (
+            <div className="card" style={{ marginBottom: 20 }} key={b.id}>
+              <h2>{b.authorType === 'vendor' ? 'Vendor Briefing' : 'Coach Briefing'}</h2>
+              <p className="card-sub">
+                {b.authorName || 'Your team lead'}'s guidance for this position — press play to hear it
+                (English/Hindi &amp; more).
+              </p>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 10 }}>
+                <SpeakButton
+                  text={[b.briefingText, b.winningTip && `One winning tip. ${b.winningTip}`].filter(Boolean).join('. ')}
+                  title="Play the briefing" tone="green"
+                  onPlay={() => markBriefingListened(b.authorEmail)} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap', margin: 0 }}>
+                    {b.briefingText}
+                  </p>
+                  {b.winningTip && (
+                    <p style={{ marginTop: 10, fontSize: 13, color: '#92400e', background: '#fffbeb',
+                      border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px' }}>
+                      ⭐ <b>Winning tip:</b> {b.winningTip}
+                    </p>
+                  )}
+                  {b.areas?.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                      {b.areas.map(a => (
+                        <span key={a.key} style={{ fontSize: 11, fontWeight: 600, color: '#166534',
+                          background: '#dcfce7', borderRadius: 999, padding: '3px 9px' }}>
+                          {a.icon} {a.title}
+                        </span>
+                      ))}
                     </div>
-                    <SpeakButton text={`${q.label}. ${briefing[q.key].trim()}.`} title={`Play: ${q.label}`} tone="green" compact
-                      onPlay={() => markBriefingListened(q.key)} />
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
             </div>
-          )}
+          ))}
 
           <div className="grid">
             <div>
@@ -2270,45 +2261,6 @@ function DashViewV2Inner() {
           </div>
         );
       })()}
-
-      {/* Position Briefing modal (coach/expert authors) */}
-      {briefingModalOpen && (
-        <div onClick={() => !briefingSaving && setBriefingModalOpen(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,20,35,0.55)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 620, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 60px -12px rgba(0,0,0,0.5)' }}>
-            <div style={{ background: 'linear-gradient(135deg,#2563eb,#f97316)', color: '#fff', padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>Position Briefing</div>
-                <div style={{ fontSize: 12, opacity: 0.9 }}>Your team's recruiters can play this as audio for this position.</div>
-              </div>
-              <button onClick={() => !briefingSaving && setBriefingModalOpen(false)}
-                style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 32, height: 32, borderRadius: 8, cursor: 'pointer', fontSize: 18, fontWeight: 700 }}>×</button>
-            </div>
-            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {BRIEFING_QS.map((q, i) => (
-                <div key={q.key}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 1 }}>{i + 1}. {q.label}</label>
-                  {q.desc && <div style={{ fontSize: 12, color: '#64748b', marginBottom: 5 }}>{q.desc}</div>}
-                  <textarea rows={3} value={briefing[q.key]}
-                    onChange={e => setBriefing(b => ({ ...b, [q.key]: e.target.value }))}
-                    style={{ width: '100%', border: '2px solid #e5e7eb', borderRadius: 10, padding: '8px 12px', fontSize: 13, resize: 'vertical', outline: 'none' }}
-                    placeholder={q.desc || `Enter ${q.label.toLowerCase()}…`} />
-                </div>
-              ))}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
-                <button onClick={() => setBriefingModalOpen(false)} disabled={briefingSaving}
-                  style={{ padding: '9px 18px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-                <button onClick={saveBriefing} disabled={briefingSaving}
-                  style={{ padding: '9px 20px', borderRadius: 10, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: briefingSaving ? 0.6 : 1 }}>
-                  {briefingSaving ? 'Saving…' : 'Save briefing'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
 
       {/* Toast */}
       {toast && (

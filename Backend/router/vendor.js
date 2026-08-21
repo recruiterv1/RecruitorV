@@ -732,47 +732,28 @@ router.get('/recruiter-detail', vendorAuth, async (req, res) => {
     const positions = Object.values(posMap).sort((a, b) => b.candidates.length - a.candidates.length);
 
     // For each position, has this recruiter actually listened to the notes this
-    // vendor wrote? Drives the green/red indicator in the recruiter modal.
+    // Briefing state per position: has the vendor briefed it, and has this
+    // recruiter actually listened? Drives the light in the recruiter modal.
     try {
       const vendorEmail = (req.vendor.email || '').toLowerCase();
       const listenerEmail = (recData.email || '').toLowerCase();
-      const NOTE_KEYS = ['exactPosition', 'sourcingTips', 'challenges',
-        'headhuntingTarget', 'assessmentQuestions', 'engagementPostSubmission'];
-      const LABELS = {
-        exactPosition: 'Understanding the Position',
-        sourcingTips: 'Sourcing Strategy',
-        challenges: 'Hiring Challenges',
-        headhuntingTarget: 'Head-hunting Strategy',
-        assessmentQuestions: 'Assessment Call',
-        engagementPostSubmission: 'Post-Submission Engagement',
-      };
       await Promise.all(positions.map(async (p) => {
         const pid = String(p.pos_id);
-        const [noteDoc, listenDoc] = await Promise.all([
+        const [briefDoc, listenDoc] = await Promise.all([
           db.collection('position_coach_briefing').doc(`${pid}__${vendorEmail}`).get(),
           db.collection('briefing_listens').doc(`${pid}__${vendorEmail}__${listenerEmail}`).get(),
         ]);
-        const note = noteDoc.exists ? noteDoc.data() : {};
-        const heard = listenDoc.exists ? (listenDoc.data().listenedKeys || {}) : {};
-        // One entry per question so the UI can show a light for each:
-        //   written=false      → red with a cross (vendor hasn't answered it)
-        //   written, !listened → red
-        //   written, listened  → green
-        p.noteQuestions = NOTE_KEYS.map(k => {
-          const text = String(note[k] || '').trim();
-          return {
-            key: k, label: LABELS[k], written: !!text, text,
-            listened: !!text && !!heard[k],
-            listenedAt: heard[k]?.toDate?.()?.toISOString?.() || null,
-          };
-        });
-        p.hasNotes = p.noteQuestions.some(q => q.written);
-        p.notesListened = p.noteQuestions.some(q => q.written && q.listened);
+        const b = briefDoc.exists ? briefDoc.data() : null;
+        const published = !!b && (b.status || 'draft') === 'ready';
+        p.briefingState = !b ? 'pending' : (published ? 'ready' : 'draft');
+        p.hasNotes = published;
+        p.notesListened = published && listenDoc.exists;
         p.notesListenedAt = listenDoc.exists
           ? (listenDoc.data().lastListenedAt?.toDate?.()?.toISOString() || null) : null;
-        p.notes = p.noteQuestions.filter(q => q.written).map(q => ({ label: q.label, text: q.text }));
+        p.briefingCoverage = Array.isArray(b?.coverage) ? b.coverage : [];
+        p.briefingWords = b?.wordCount || 0;
       }));
-    } catch (e) { console.error('notes/listen enrich failed:', e.message); }
+    } catch (e) { console.error('briefing enrich failed:', e.message); }
 
     return res.json({
       success: true,
@@ -798,147 +779,8 @@ router.get('/recruiter-detail', vendorAuth, async (req, res) => {
   }
 });
 
-// ─── Position notes / briefing (vendor → their own team) ─────────────────────
-// Mirrors the coach briefing: a vendor writes guidance against a position their
-// team works on, and only their assigned recruiters can read it. Stored in the
-// same `position_coach_briefing` collection, keyed `${posId}__${vendorEmail}`,
-// so the reader UI is shared.
-const VENDOR_BRIEFING_FIELDS = [
-  'exactPosition', 'sourcingTips', 'challenges',
-  'headhuntingTarget', 'assessmentQuestions', 'engagementPostSubmission',
-];
-
-
-
-// Is any recruiter of this vendor already on the position? Positions assigned to
-// the team before the self-assign-first rule existed still need notes, so this
-// keeps that path open for writing notes (never for assigning more recruiters).
-async function vendorTeamOnPosition(vendorEmail, posId) {
-  const recSnap = await db.collection('recruiter_db')
-    .where('vendorEmail', '==', (vendorEmail || '').toLowerCase()).get();
-  const emails = recSnap.docs.map(d => (d.data().email || '').toLowerCase()).filter(Boolean);
-  if (!emails.length) return false;
-  const positionAccess = require('../model_fire/positionAccessF');
-  for (const email of emails) {
-    try {
-      const reqs = await positionAccess.getRecruiterAssignments(email);
-      if ((reqs || []).some(r => String(r.positionId) === String(posId))) return true;
-    } catch (_) { /* keep checking the rest of the team */ }
-  }
-  return false;
-}
-
-// A vendor may write notes once the position is on their own account, or on a
-// position their team already holds.
-async function vendorCanWriteNotes(vendorEmail, posId) {
-  if (await vendorSelfAssigned(vendorEmail, posId)) return true;
-  return vendorTeamOnPosition(vendorEmail, posId);
-}
-
-// POST /vendor/position-briefing  { positionId, ...answers }
-router.post('/position-briefing', vendorAuth, async (req, res) => {
-  try {
-    const vendorEmail = (req.vendor.email || '').toLowerCase();
-    const positionId = String(req.body?.positionId || '');
-    if (!positionId) return res.status(400).json({ success: false, message: 'positionId is required' });
-
-    if (!await vendorCanWriteNotes(vendorEmail, positionId)) {
-      return res.status(403).json({
-        success: false, needsSelfAssign: true,
-        message: 'Assign this position to yourself first — then you can write notes for your team.',
-      });
-    }
-
-    const patch = {
-      positionId, vendorEmail,
-      coachEmail: vendorEmail,                       // shared reader keys off this
-      coachName: req.vendor.name || vendorEmail,
-      authorType: 'vendor',
-      updatedAt: new Date(),
-    };
-    VENDOR_BRIEFING_FIELDS.forEach(f => { patch[f] = String(req.body?.[f] || ''); });
-    await db.collection('position_coach_briefing').doc(`${positionId}__${vendorEmail}`).set(patch, { merge: true });
-    return res.json({ success: true, message: 'Notes saved for your team' });
-  } catch (e) {
-    console.error('vendor position-briefing save error:', e.message);
-    return res.status(500).json({ success: false, message: e.message });
-  }
-});
-
-// GET /vendor/position-briefing/:posId — the vendor's own notes (for editing).
-router.get('/position-briefing/:posId', vendorAuth, async (req, res) => {
-  try {
-    const vendorEmail = (req.vendor.email || '').toLowerCase();
-    const doc = await db.collection('position_coach_briefing')
-      .doc(`${String(req.params.posId)}__${vendorEmail}`).get();
-    const allowed = await vendorCanWriteNotes(vendorEmail, req.params.posId);
-    return res.json({
-      success: true, canEdit: allowed,
-      found: doc.exists, briefing: doc.exists ? doc.data() : null,
-    });
-  } catch (e) {
-    return res.status(500).json({ success: false, message: e.message });
-  }
-});
-
-// POST /vendor/assign-me — the vendor takes a position onto their own account so
-// they can submit candidates from their own login.
-//
-// Every downstream flow (position access, candidate submission, attribution) is
-// keyed on a recruiter_db record, so we lazily create a "self" recruiter profile
-// for the vendor the first time they do this. It is flagged isVendorSelf so it can
-// be told apart from the recruiters they register, and excluded from team lists.
-router.post('/assign-me', vendorAuth, async (req, res) => {
-  try {
-    const pos_id = String(req.body?.pos_id || '');
-    if (!pos_id) return res.status(400).json({ success: false, message: 'pos_id is required' });
-
-    const email = (req.vendor.email || '').toLowerCase();
-    const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', pos_id).limit(1).get();
-    if (posSnap.empty) return res.status(404).json({ success: false, message: 'Position not found' });
-
-    // Find or create the vendor's own recruiter profile.
-    let recId, recSnap = await db.collection('recruiter_db').where('email', '==', email).limit(1).get();
-    if (!recSnap.empty) {
-      recId = recSnap.docs[0].id;
-    } else {
-      const ref = await db.collection('recruiter_db').add({
-        name: req.vendor.name || email.split('@')[0],
-        email,
-        phone: req.vendor.phone || req.vendor.mobile || '',
-        roleCategory: 'Recruiter',
-        isVendorSelf: true,               // this IS the vendor, not one of their hires
-        vendorEmail: email,
-        vendorName: req.vendor.name || '',
-        isVerified: true,
-        accountStatus: 'approved',
-        agreementSigned: true,
-        planType: 1,
-        skillCategory: req.vendor.skillCategory || [],
-        createdAt: new Date(),
-        createdFromVendorSelfAssign: true,
-      });
-      recId = ref.id;
-    }
-
-    const positionAccess = require('../model_fire/positionAccessF');
-    const r = await positionAccess.createAssignRequest(
-      recId, email, pos_id, `Self-assigned by vendor ${req.vendor.name || email}`);
-
-    return res.json({
-      success: true,
-      status: r.status,
-      message: r.status === 'approved'
-        ? 'Position assigned to you — you can now submit candidates.'
-        : 'Assignment request sent — awaiting ClientSPOC approval.',
-    });
-  } catch (e) {
-    const msg = e.message || 'Failed to assign';
-    if (/already have/i.test(msg)) return res.status(400).json({ success: false, message: msg });
-    console.error('vendor/assign-me error:', msg);
-    return res.status(500).json({ success: false, message: msg });
-  }
-});
+// Position briefings moved to their own router (/api/briefing) and a single
+// free-text briefing per position; see Backend/router/briefing.js.
 
 // GET /vendor/position-access/:posId — does the vendor hold this position on
 // their own account? Drives Assign Me vs Submit Candidate on dash_view.

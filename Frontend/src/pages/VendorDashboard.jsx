@@ -981,201 +981,39 @@ const ReportsTab = () => {
 //  red glow    → answered by the vendor, not listened yet
 //  red + cross → the vendor hasn't answered that question
 const NotesLight = ({ pos }) => {
-  const qs = pos.noteQuestions || [];
-  if (!qs.length) return null;
-
+  const state = pos.briefingState || (pos.hasNotes ? 'ready' : 'pending');
+  if (state === 'pending') {
+    return (
+      <span title="You haven't briefed this position yet"
+        className="relative inline-flex items-center justify-center flex-shrink-0"
+        style={{ width: 14, height: 14 }} onClick={e => e.stopPropagation()}>
+        <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#ef4444',
+          boxShadow: '0 0 5px 1.5px #ef444499', animation: 'notesPulse 1.6s ease-in-out infinite' }} />
+        <svg viewBox="0 0 14 14" width="14" height="14" style={{ position: 'absolute', inset: 0 }}>
+          <line x1="3" y1="3" x2="11" y2="11" stroke="#7f1d1d" strokeWidth="2" strokeLinecap="round" />
+          <line x1="11" y1="3" x2="3" y2="11" stroke="#7f1d1d" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+        <style>{`@keyframes notesPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
+      </span>
+    );
+  }
+  const listened = !!pos.notesListened;
+  const colour = state === 'draft' ? '#f59e0b' : listened ? '#22c55e' : '#ef4444';
+  const tip = state === 'draft'
+    ? 'Briefing saved as draft — not published to your team yet'
+    : listened
+      ? `Listened${pos.notesListenedAt ? ' on ' + new Date(pos.notesListenedAt).toLocaleString('en-IN') : ''}`
+      : 'Briefing published — this recruiter has not listened yet';
   return (
-    <span className="inline-flex items-center gap-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
-      {qs.map((q, i) => {
-        const colour = q.listened ? '#22c55e' : '#ef4444';
-        const state = !q.written ? 'Not answered by you yet'
-          : q.listened ? `Listened${q.listenedAt ? ' on ' + new Date(q.listenedAt).toLocaleString('en-IN') : ''}`
-          : 'Not listened yet';
-        const tip = `${i + 1}. ${q.label}\n${state}` + (q.written ? `\n\n${q.text}` : '');
-        return (
-          <span key={q.key} title={tip}
-            className="relative inline-flex items-center justify-center"
-            style={{ width: 14, height: 14 }}>
-            <span style={{
-              width: 9, height: 9, borderRadius: '50%', background: colour,
-              boxShadow: `0 0 5px 1.5px ${colour}99`,
-              animation: 'notesPulse 1.6s ease-in-out infinite',
-            }} />
-            {!q.written && (
-              <svg viewBox="0 0 14 14" width="14" height="14" style={{ position: 'absolute', inset: 0 }}>
-                <line x1="3" y1="3" x2="11" y2="11" stroke="#7f1d1d" strokeWidth="2" strokeLinecap="round" />
-                <line x1="11" y1="3" x2="3" y2="11" stroke="#7f1d1d" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            )}
-          </span>
-        );
-      })}
+    <span title={tip} className="inline-flex items-center flex-shrink-0"
+      style={{ width: 14, height: 14 }} onClick={e => e.stopPropagation()}>
+      <span style={{ width: 9, height: 9, borderRadius: '50%', background: colour,
+        boxShadow: `0 0 5px 1.5px ${colour}99`, animation: 'notesPulse 1.6s ease-in-out infinite' }} />
       <style>{`@keyframes notesPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
     </span>
   );
 };
 
-// ── Vendor position notes (visible to that vendor's assigned recruiters) ─────
-const VENDOR_NOTE_QS = [
-  { key: 'exactPosition', label: 'Understanding the Position', desc: 'What exactly are we hiring for?' },
-  { key: 'sourcingTips', label: 'Sourcing Strategy', desc: 'What are the best sourcing tips for this position?' },
-  { key: 'challenges', label: 'Hiring Challenges', desc: 'What challenges should recruiters expect?' },
-  { key: 'headhuntingTarget', label: 'Head-hunting Strategy', desc: 'Who should we target and where?' },
-  { key: 'assessmentQuestions', label: 'Assessment Call', desc: 'What questions should we ask candidates?' },
-  { key: 'engagementPostSubmission', label: 'Post-Submission Engagement', desc: 'How do we keep candidates engaged after submission?' },
-];
-
-const VendorPositionNotes = ({ position, onClose }) => {
-  const empty = Object.fromEntries(VENDOR_NOTE_QS.map(q => [q.key, '']));
-  const [form, setForm] = useState(empty);
-  const [canEdit, setCanEdit] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState('');
-
-  useEffect(() => {
-    axios.get(`/vendor/position-briefing/${position.pos_id}`, { withCredentials: true })
-      .then(r => {
-        setCanEdit(r.data?.canEdit !== false);
-        const b = r.data?.briefing;
-        if (b) setForm(Object.fromEntries(VENDOR_NOTE_QS.map(q => [q.key, b[q.key] || ''])));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [position.pos_id]);
-
-  const save = async () => {
-    setSaving(true); setMsg('');
-    try {
-      await axios.post('/vendor/position-briefing',
-        { positionId: position.pos_id, ...form }, { withCredentials: true });
-      setMsg('ok');
-      setTimeout(onClose, 900);
-    } catch (e) {
-      setMsg(e.response?.data?.message || 'Could not save the notes.');
-    } finally { setSaving(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-5 rounded-t-2xl flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-lg font-bold text-white truncate">Notes for your team</h2>
-            <p className="text-white/80 text-sm truncate">{position.position} · {position.pos_id}</p>
-          </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white flex-shrink-0 text-xl leading-none">×</button>
-        </div>
-
-        <div className="p-5">
-          {loading ? (
-            <div className="py-12 text-center text-gray-400 text-sm">Loading…</div>
-          ) : !canEdit ? (
-            <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-              None of your recruiters are assigned to this position yet. Assign someone first, then you can add notes for them.
-            </div>
-          ) : (
-            <>
-              <p className="text-xs text-gray-500 mb-4">
-                Only recruiters in your team who are assigned to this position will see these notes — on the position page, and they can play them as audio.
-              </p>
-              {msg && msg !== 'ok' && <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{msg}</div>}
-              {msg === 'ok' && <div className="mb-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">Saved.</div>}
-
-              <div className="space-y-4">
-                {VENDOR_NOTE_QS.map((q, i) => (
-                  <div key={q.key}>
-                    <label className="block text-sm font-bold text-gray-900">{i + 1}. {q.label}</label>
-                    <p className="text-xs text-gray-500 mb-1.5">{q.desc}</p>
-                    <textarea rows={3} value={form[q.key]}
-                      onChange={e => setForm(f => ({ ...f, [q.key]: e.target.value }))}
-                      placeholder={q.desc}
-                      className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-purple-500 resize-vertical" />
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex justify-end gap-2 mt-5">
-                <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-300 rounded-xl">Cancel</button>
-                <button onClick={save} disabled={saving}
-                  className="px-5 py-2 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-xl disabled:opacity-60">
-                  {saving ? 'Saving…' : 'Save notes'}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-
-// ── Positions assigned to the vendor or their team ──────────────────────────
-const VendorAssignedPositionsTab = () => {
-  const navigate = useNavigate();
-  const [rows, setRows] = useState(null);
-  const load = () => axios.get('/vendor/assigned-positions', { withCredentials: true })
-    .then(r => setRows(r.data?.positions || [])).catch(() => setRows([]));
-  useEffect(() => { load(); }, []);
-
-  if (!rows) return <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>;
-  if (!rows.length) return <div className="py-16 text-center text-gray-400 text-sm">No positions assigned to you or your team yet. Assign one from Open Positions.</div>;
-
-  return (
-    <div>
-      <p className="text-sm text-gray-500 mb-4">
-        Positions you or your recruiters are working on. You can only submit candidates against a
-        position that is assigned to you — take it onto your own account first.
-      </p>
-      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        {rows.map(p => (
-          <div key={p.pos_id} className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col">
-            <div className="flex items-start justify-between gap-2">
-              <div className="font-bold text-gray-900 leading-snug">{p.position}</div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
-                (p.status || 'active').toLowerCase() === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                {p.status || 'active'}
-              </span>
-            </div>
-            <div className="text-xs text-gray-400 mt-0.5">#{p.pos_id}</div>
-            <div className="text-xs text-gray-600 mt-2 truncate">{p.client}</div>
-            <div className="text-xs text-gray-500 mt-0.5 truncate">
-              {Array.isArray(p.location) ? p.location.join(', ') : (p.location || '—')}
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {p.assignedTo.map(who => (
-                <span key={who} className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                  who === 'Self' ? 'bg-purple-100 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
-                  {who === 'Self' ? '👤 Self' : who}
-                </span>
-              ))}
-            </div>
-
-            {p.selfAssigned ? (
-              <button onClick={() => navigate(`/dash_view/${p.pos_id}?submit=1`)}
-                className="mt-4 w-full py-2 bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white text-xs font-bold rounded-xl">
-                Submit Candidate
-              </button>
-            ) : (
-              <button onClick={() => navigate(`/dash_view/${p.pos_id}`)}
-                className="mt-4 w-full py-2 border border-purple-300 text-purple-700 hover:bg-purple-50 text-xs font-bold rounded-xl">
-                Assign to me to submit
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// ── Positions the vendor posted (editable until the ClientSPOC approves) ────
-
-// Companies a vendor adds themselves, using the very same form the SuperAdmin
-// uses so the fields, validation and question editor stay identical. A SuperAdmin
-// must approve one before positions can be published against it.
 const VendorCompaniesTab = () => {
   const [rows, setRows] = useState(null);
   const [modal, setModal] = useState(null);   // { company, isNew }
@@ -1346,7 +1184,6 @@ const OpenPositionsTab = ({ recruiters }) => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedPos, setSelectedPos] = useState(null); // position detail modal
-  const [notesPos, setNotesPos] = useState(null);        // position whose team notes are being edited
   const [assignModal, setAssignModal] = useState(null); // { pos_id, posName }
   const [assigningId, setAssigningId] = useState(null); // recruiterId being assigned
   const [assignResults, setAssignResults] = useState({}); // recruiterId → { success, message }
@@ -1476,10 +1313,6 @@ const OpenPositionsTab = ({ recruiters }) => {
       )}
 
       {/* Position Detail Modal */}
-      {notesPos && (
-        <VendorPositionNotes position={notesPos} onClose={() => setNotesPos(null)} />
-      )}
-
       {selectedPos && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">

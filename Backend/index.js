@@ -145,6 +145,7 @@ app.use("/api/position-access", positionAccess);
 app.use("/api/recruiter-earnings", recruiterEarnings);
 app.use("/api/notifications", require("./router/notification"));
 app.use("/api/coach-expert", coachExpert);
+app.use("/api/briefing", require("./router/briefing"));
 console.log("Coach/Expert router mounted.");
 console.log("Coach/Expert stats route ready");
 app.use("/api/debug", require("./router/checkUser"));

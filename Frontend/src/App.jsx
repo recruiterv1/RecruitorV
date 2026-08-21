@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react'
+import MyBriefings from './pages/MyBriefings';
+import BriefingEntry from './pages/BriefingEntry';
 import axios from 'axios';
 import { installAuthInterceptor } from './lib/authToken';
 import { configureApiBase } from './lib/apiBase';
@@ -392,6 +394,8 @@ const App = () => {
           <ProfileGuard>
       <React.Suspense fallback={<div style={{ padding: 20 }}>Loading...</div>}>
       <Routes>
+            <Route path='/my-briefings' element={<MyBriefings/>}/>
+            <Route path='/briefing/:pos_id' element={<BriefingEntry/>}/>
             <Route  path='/' element={<HomeLanding/>}/>
             <Route path='/old-home' element={<Homepage/>}/>
             <Route path='/new-home' element={<HomepageV2/>}/>

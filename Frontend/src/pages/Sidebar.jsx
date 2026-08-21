@@ -15,6 +15,7 @@ import {
   User,
   TrendingUp,
   ClipboardList,
+  Mic,
   PlusCircle,
   DollarSign,
   BarChart3,
@@ -88,6 +89,14 @@ const buildRecruiterMenu = (planType) => [
 
 // ── Coach menu ────────────────────────────────────────────────────────────────
 const coachMenuItems = [
+  {
+    icon: Mic,
+    label: 'Position Briefings',
+    children: [
+      { icon: ClipboardList, label: 'My Briefings',  path: '/my-briefings' },
+      { icon: Mic,           label: 'Add Briefing',  path: '/my-briefings#pending' },
+    ],
+  },
   { icon: LayoutDashboard, label: 'Dashboard',           path: '/coach-dashboard' },
   { icon: Briefcase,       label: 'Open Positions',     path: '/coach-expert-positions' },
   { icon: Briefcase,       label: 'Assigned Positions', path: '/coach-expert-assigned-positions' },
@@ -118,6 +127,14 @@ const coachMenuItems = [
 
 // ── Expert menu ───────────────────────────────────────────────────────────────
 const expertMenuItems = [
+  {
+    icon: Mic,
+    label: 'Position Briefings',
+    children: [
+      { icon: ClipboardList, label: 'My Briefings',  path: '/my-briefings' },
+      { icon: Mic,           label: 'Add Briefing',  path: '/my-briefings#pending' },
+    ],
+  },
   { icon: LayoutDashboard, label: 'Dashboard',        path: '/expert-dashboard' },
   { icon: Briefcase,       label: 'Open Positions',   path: '/coach-expert-positions' },
   { icon: UserPlus,        label: 'Direct Candidates', path: '/coach-expert-direct-applicants' },
@@ -280,6 +297,14 @@ const Sidebar = () => {
           { icon: PlusCircle,    label: 'Add Position',       path: '/vendor-dashboard#add-position' },
           { icon: FolderOpen,    label: 'Added Positions',    path: '/vendor-dashboard#added-positions' },
           { icon: Building2,     label: 'Companies',          path: '/vendor-dashboard#companies' },
+        ],
+      },
+      {
+        icon: Mic,
+        label: 'Position Briefings',
+        children: [
+          { icon: ClipboardList, label: 'My Briefings', path: '/my-briefings' },
+          { icon: Mic,           label: 'Add Briefing', path: '/my-briefings#pending' },
         ],
       },
       { icon: BarChart3, label: 'Reports', path: '/vendor-dashboard#reports' },

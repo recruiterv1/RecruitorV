@@ -4,8 +4,21 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "Frontend", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "Frontend",
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "builder-landing",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-brandcatapult-Downloads-recruitervfeb26/39255074-fb01-46a6-9176-cfd2b8c76f58/scratchpad/static-server.js"
+      ],
+      "port": 5599
     }
   ]
 }
