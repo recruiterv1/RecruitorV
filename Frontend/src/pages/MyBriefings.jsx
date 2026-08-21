@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import DashShell from '../components/DashShell';
 import SpeakButton from '../components/SpeakButton';
 
 // Coach / Vendor briefing summary — every position they can brief on, what state
@@ -33,7 +34,7 @@ const StatCard = ({ icon, label, value, sub, accent, bar }) => (
   </div>
 );
 
-export default function MyBriefings() {
+function MyBriefingsInner() {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [stats, setStats] = useState({ pending: 0, draft: 0, ready: 0, total: 0, completion: 0 });
@@ -242,5 +243,13 @@ export default function MyBriefings() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function MyBriefings() {
+  return (
+    <DashShell>
+      <MyBriefingsInner />
+    </DashShell>
   );
 }

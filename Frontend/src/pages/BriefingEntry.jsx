@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import DashShell from '../components/DashShell';
 
 // Coach / Vendor briefing entry. One natural briefing per position instead of
 // the old six separate questions — the five areas are prompts, and coverage is
@@ -41,7 +42,7 @@ const Snapshot = ({ label, value }) => (
   </div>
 );
 
-export default function BriefingEntry() {
+function BriefingEntryInner() {
   const { pos_id } = useParams();
   const navigate = useNavigate();
 
@@ -114,9 +115,9 @@ export default function BriefingEntry() {
   }[status];
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-200 pb-28">
+    <div className="min-h-screen bg-neutral-950 text-neutral-200">
       {/* Progress strip */}
-      <div className="sticky top-0 z-20 bg-neutral-950/95 backdrop-blur border-b border-neutral-800">
+      <div className="sticky top-16 z-10 bg-neutral-950/95 backdrop-blur border-b border-neutral-800">
         <div className="max-w-3xl mx-auto px-5 py-2.5 flex items-center gap-4 flex-wrap text-[11px]">
           <span className="uppercase tracking-wider text-neutral-500">Your briefing progress</span>
           <div className="flex-1 min-w-[120px] h-1.5 bg-neutral-800 rounded-full overflow-hidden">
@@ -281,7 +282,7 @@ export default function BriefingEntry() {
       </div>
 
       {/* Sticky actions */}
-      <div className="fixed bottom-0 inset-x-0 z-20 bg-neutral-950/95 backdrop-blur border-t border-neutral-800">
+      <div className="sticky bottom-0 z-10 bg-neutral-950/95 backdrop-blur border-t border-neutral-800">
         <div className="max-w-3xl mx-auto px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div>
             <p className="text-[10px] uppercase tracking-wider text-neutral-600">Briefing coverage</p>
@@ -301,5 +302,13 @@ export default function BriefingEntry() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function BriefingEntry() {
+  return (
+    <DashShell>
+      <BriefingEntryInner />
+    </DashShell>
   );
 }

@@ -1014,6 +1014,65 @@ const NotesLight = ({ pos }) => {
   );
 };
 
+const VendorAssignedPositionsTab = () => {
+  const navigate = useNavigate();
+  const [rows, setRows] = useState(null);
+  const load = () => axios.get('/vendor/assigned-positions', { withCredentials: true })
+    .then(r => setRows(r.data?.positions || [])).catch(() => setRows([]));
+  useEffect(() => { load(); }, []);
+
+  if (!rows) return <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>;
+  if (!rows.length) return <div className="py-16 text-center text-gray-400 text-sm">No positions assigned to you or your team yet. Assign one from Open Positions.</div>;
+
+  return (
+    <div>
+      <p className="text-sm text-gray-500 mb-4">
+        Positions you or your recruiters are working on. You can only submit candidates against a
+        position that is assigned to you — take it onto your own account first.
+      </p>
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {rows.map(p => (
+          <div key={p.pos_id} className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col">
+            <div className="flex items-start justify-between gap-2">
+              <div className="font-bold text-gray-900 leading-snug">{p.position}</div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                (p.status || 'active').toLowerCase() === 'active' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                {p.status || 'active'}
+              </span>
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5">#{p.pos_id}</div>
+            <div className="text-xs text-gray-600 mt-2 truncate">{p.client}</div>
+            <div className="text-xs text-gray-500 mt-0.5 truncate">
+              {Array.isArray(p.location) ? p.location.join(', ') : (p.location || '—')}
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {p.assignedTo.map(who => (
+                <span key={who} className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                  who === 'Self' ? 'bg-purple-100 text-purple-700' : 'bg-blue-50 text-blue-700'}`}>
+                  {who === 'Self' ? '👤 Self' : who}
+                </span>
+              ))}
+            </div>
+
+            {p.selfAssigned ? (
+              <button onClick={() => navigate(`/dash_view/${p.pos_id}?submit=1`)}
+                className="mt-4 w-full py-2 bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white text-xs font-bold rounded-xl">
+                Submit Candidate
+              </button>
+            ) : (
+              <button onClick={() => navigate(`/dash_view/${p.pos_id}`)}
+                className="mt-4 w-full py-2 border border-purple-300 text-purple-700 hover:bg-purple-50 text-xs font-bold rounded-xl">
+                Assign to me to submit
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const VendorCompaniesTab = () => {
   const [rows, setRows] = useState(null);
   const [modal, setModal] = useState(null);   // { company, isNew }

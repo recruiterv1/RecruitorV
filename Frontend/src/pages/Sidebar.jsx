@@ -89,6 +89,9 @@ const buildRecruiterMenu = (planType) => [
 
 // ── Coach menu ────────────────────────────────────────────────────────────────
 const coachMenuItems = [
+  { icon: LayoutDashboard, label: 'Dashboard',           path: '/coach-dashboard' },
+  { icon: Briefcase,       label: 'Open Positions',     path: '/coach-expert-positions' },
+  { icon: Briefcase,       label: 'Assigned Positions', path: '/coach-expert-assigned-positions' },
   {
     icon: Mic,
     label: 'Position Briefings',
@@ -97,9 +100,6 @@ const coachMenuItems = [
       { icon: Mic,           label: 'Add Briefing',  path: '/my-briefings#pending' },
     ],
   },
-  { icon: LayoutDashboard, label: 'Dashboard',           path: '/coach-dashboard' },
-  { icon: Briefcase,       label: 'Open Positions',     path: '/coach-expert-positions' },
-  { icon: Briefcase,       label: 'Assigned Positions', path: '/coach-expert-assigned-positions' },
   { icon: UserPlus,        label: 'Direct Candidates',  path: '/coach-expert-direct-applicants' },
   { icon: Users,           label: 'Team',              path: '/coach-team' },
   {
@@ -127,6 +127,8 @@ const coachMenuItems = [
 
 // ── Expert menu ───────────────────────────────────────────────────────────────
 const expertMenuItems = [
+  { icon: LayoutDashboard, label: 'Dashboard',        path: '/expert-dashboard' },
+  { icon: Briefcase,       label: 'Open Positions',   path: '/coach-expert-positions' },
   {
     icon: Mic,
     label: 'Position Briefings',
@@ -135,8 +137,6 @@ const expertMenuItems = [
       { icon: Mic,           label: 'Add Briefing',  path: '/my-briefings#pending' },
     ],
   },
-  { icon: LayoutDashboard, label: 'Dashboard',        path: '/expert-dashboard' },
-  { icon: Briefcase,       label: 'Open Positions',   path: '/coach-expert-positions' },
   { icon: UserPlus,        label: 'Direct Candidates', path: '/coach-expert-direct-applicants' },
   { icon: BarChart3,       label: 'Recruiter Stats',  path: '/coach-recruiter-stats' },
   { icon: BarChart3,       label: 'My Position Stats', path: '/coach-expert-position-stats' },
