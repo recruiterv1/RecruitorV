@@ -1,9 +1,9 @@
-// Position briefings — a coach, expert or vendor records one briefing per
-// position, and only the recruiters on THEIR OWN team can read or hear it.
+// Position briefings — one answer per briefing area, recorded against a position
+// and played back item by item.
 //
-// This replaces the earlier six-question form. Authors now write a single
-// natural briefing; the five areas below are prompts, and coverage is detected
-// from what they wrote rather than being six separate inputs.
+// Two kinds, same items and same storage:
+//   • coach / expert / vendor — private to THEIR OWN team
+//   • clientspoc              — visible to everyone working the position
 //
 // Stored in `position_coach_briefing`, doc id `${positionId}__${authorEmail}`.
 
@@ -23,59 +23,56 @@ function authMiddleware(req, res, next) {
   }
 }
 
-// The five areas an author is prompted to think about. `match` drives automatic
-// coverage detection — an area counts as covered when the briefing mentions at
-// least two of its terms, which is a deliberately loose signal: coverage is
-// guidance for the author, never a gate on saving.
+// The five briefing areas. Each is its own input, saved under its own key and
+// played back by its own speaker.
 const BRIEFING_AREAS = [
   {
     key: 'requirement', icon: '🎯', n: '01',
     title: 'Understand the Real Requirement',
     prompt: 'What should recruiters understand beyond the JD?',
-    match: ['requirement', 'jd', 'role', 'actually', 'really', 'looking for', 'must have',
-      'background', 'profile', 'experience', 'client wants', 'expectation', 'mandate'],
   },
   {
     key: 'sourcing', icon: '🔎', n: '02',
     title: 'Sourcing & Head-hunting Strategy',
     prompt: 'Where should recruiters find the right candidates?',
-    match: ['source', 'sourcing', 'headhunt', 'head-hunt', 'target', 'competitor', 'company',
-      'linkedin', 'naukri', 'referral', 'portal', 'market', 'talent pool', 'poach', 'search'],
   },
   {
     key: 'watchouts', icon: '⚠️', n: '03',
     title: 'Hiring Watch-outs',
     prompt: 'What could make this position difficult to close?',
-    match: ['watch', 'avoid', 'careful', 'difficult', 'challenge', 'risk', 'reject', 'issue',
-      'problem', 'budget', 'notice period', 'location', 'constraint', 'red flag', 'do not'],
   },
   {
     key: 'assess', icon: '✅', n: '04',
     title: 'Assess & Decide',
     prompt: 'How should recruiters decide whether a candidate is worth submitting?',
-    match: ['assess', 'evaluate', 'screen', 'check', 'ask', 'question', 'judge', 'decide',
-      'submit', 'shortlist', 'criteria', 'benchmark', 'validate', 'probe'],
   },
   {
     key: 'engage', icon: '🤝', n: '05',
     title: 'Engage & Close',
     prompt: 'How should recruiters keep the candidate interested?',
-    match: ['engage', 'close', 'pitch', 'sell', 'convince', 'follow up', 'followup', 'interest',
-      'offer', 'counter', 'negotiat', 'growth', 'career', 'motivat', 'keep warm'],
   },
 ];
+
+// The optional closing item, stored alongside the five areas.
+const WINNING_TIP = {
+  key: 'winningTip', icon: '⭐', n: '06',
+  title: 'Your Winning Tip',
+  prompt: 'If you were personally recruiting this position, what is the ONE thing you would do differently?',
+  optional: true,
+};
 
 const AREA_KEYS = BRIEFING_AREAS.map(a => a.key);
 
 const countWords = (t) => String(t || '').trim().split(/\s+/).filter(Boolean).length;
 
-function detectCoverage(text) {
-  const t = String(text || '').toLowerCase();
-  if (!t.trim()) return [];
-  return BRIEFING_AREAS
-    .filter(a => a.match.filter(m => t.includes(m)).length >= 2)
-    .map(a => a.key);
-}
+// Every area the author actually filled in. No guessing any more: each area has
+// its own input, so "covered" simply means it has an answer.
+const coverageOf = (answers) =>
+  BRIEFING_AREAS.filter(a => String(answers?.[a.key] || '').trim()).map(a => a.key);
+
+const totalWords = (answers) =>
+  [...BRIEFING_AREAS.map(a => a.key), 'winningTip']
+    .reduce((n, k) => n + countWords(answers?.[k]), 0);
 
 // Spoken audio runs at roughly 150 words a minute; used for the duration shown
 // against a ready briefing.
@@ -96,7 +93,7 @@ const toDate = (v) => {
 
 // ── Who is calling, and what may they brief on? ───────────────────────────────
 
-// Resolves the caller to a briefing author: a coach, an expert, or a vendor.
+// Resolves the caller to a briefing author: coach, expert, vendor or clientspoc.
 async function resolveAuthor(email) {
   const e = (email || '').toLowerCase();
 
@@ -112,13 +109,23 @@ async function resolveAuthor(email) {
     const a = adminSnap.docs[0].data();
     const role = (a.roleCategory || a.role || '').toLowerCase().replace(/\s/g, '');
     if (role === 'vendor') return { email: e, name: a.name || '', type: 'vendor' };
+    if (role === 'clientspoc') return { email: e, name: a.name || '', type: 'clientspoc' };
   }
   return null;
 }
 
+// A ClientSPOC's briefing is not team-private — every recruiter, coach, expert
+// and vendor working that position can hear it.
+const isPublicAuthor = (type) => type === 'clientspoc';
+
 // Position ids the author may brief on. A coach/expert briefs positions they
 // hold; a vendor briefs positions they took onto their own account.
 async function authorPositionIds(author) {
+  if (author.type === 'clientspoc') {
+    const snap = await db.collection('admin_AddPos')
+      .where('clientspoc', '==', author.email).get();
+    return [...new Set(snap.docs.map(d => String(d.data().pos_id)).filter(Boolean))];
+  }
   if (author.type === 'vendor') {
     const positionAccess = require('../model_fire/positionAccessF');
     try {
@@ -189,16 +196,39 @@ async function authorsVisibleTo(recruiterEmail, positionId) {
 
 const shape = (data, id) => {
   if (!data) return null;
-  const words = data.wordCount || countWords(data.briefingText);
+  // Read-time migration so nothing written before this change disappears:
+  //  • the original six-question form  → mapped onto the five areas
+  //  • the interim single free-text blob → shown under the first area
+  let answers = data.answers;
+  if (!answers) {
+    answers = {};
+    const legacy = {
+      requirement: [data.exactPosition],
+      sourcing: [data.sourcingTips, data.headhuntingTarget],
+      watchouts: [data.challenges],
+      assess: [data.assessmentQuestions],
+      engage: [data.engagementPostSubmission],
+    };
+    Object.entries(legacy).forEach(([k, parts]) => {
+      const v = parts.map(x => String(x || '').trim()).filter(Boolean).join('\n\n');
+      if (v) answers[k] = v;
+    });
+    if (!Object.keys(answers).length && data.briefingText) {
+      answers.requirement = data.briefingText;
+    }
+  }
+  if (data.winningTip && !answers.winningTip) answers.winningTip = data.winningTip;
+
+  const words = totalWords(answers);
   return {
     id,
     positionId: data.positionId || '',
     authorEmail: data.authorEmail || data.coachEmail || data.vendorEmail || '',
     authorName: data.authorName || data.coachName || '',
     authorType: data.authorType || 'coach',
-    briefingText: data.briefingText || '',
-    winningTip: data.winningTip || '',
-    coverage: Array.isArray(data.coverage) ? data.coverage : [],
+    answers,
+    winningTip: answers.winningTip || '',
+    coverage: coverageOf(answers),
     wordCount: words,
     status: data.status || 'draft',
     durationSec: data.durationSec || estimateSeconds(words),
@@ -213,7 +243,8 @@ const shape = (data, id) => {
 router.get('/areas', (_req, res) => {
   res.json({
     success: true,
-    areas: BRIEFING_AREAS.map(({ key, icon, n, title, prompt }) => ({ key, icon, n, title, prompt })),
+    areas: [...BRIEFING_AREAS, WINNING_TIP].map(({ key, icon, n, title, prompt, optional }) =>
+      ({ key, icon, n, title, prompt, optional: !!optional })),
   });
 });
 
@@ -334,7 +365,8 @@ router.get('/position/:posId', authMiddleware, async (req, res) => {
         openings: p.no_of_positions || p.openings || '',
       },
       briefing: briefDoc.exists ? shape(briefDoc.data(), briefDoc.id) : null,
-      areas: BRIEFING_AREAS.map(({ key, icon, n, title, prompt }) => ({ key, icon, n, title, prompt })),
+      areas: [...BRIEFING_AREAS, WINNING_TIP].map(({ key, icon, n, title, prompt, optional }) =>
+        ({ key, icon, n, title, prompt, optional: !!optional })),
       progress: { ready, draft, pending: allowed.length - ready - draft, total: allowed.length },
     });
   } catch (err) {
@@ -343,12 +375,12 @@ router.get('/position/:posId', authMiddleware, async (req, res) => {
   }
 });
 
-// POST /api/briefing/position/:posId  { briefingText, winningTip, status }
-// status 'draft' saves privately; 'ready' publishes it to the author's own team.
+// POST /api/briefing/position/:posId  { answers: {areaKey: text}, status }
+// status 'draft' saves privately; 'ready' publishes it to whoever may hear it.
 router.post('/position/:posId', authMiddleware, async (req, res) => {
   try {
     const author = await resolveAuthor(req.user.email);
-    if (!author) return res.status(403).json({ success: false, message: 'Only a coach, expert or vendor can brief.' });
+    if (!author) return res.status(403).json({ success: false, message: 'Your role cannot record a briefing.' });
 
     const posId = String(req.params.posId);
     const allowed = await authorPositionIds(author);
@@ -356,15 +388,21 @@ router.post('/position/:posId', authMiddleware, async (req, res) => {
       return res.status(403).json({ success: false, message: 'This position is not assigned to you.' });
     }
 
-    const briefingText = String(req.body?.briefingText || '').trim();
-    const winningTip = String(req.body?.winningTip || '').trim();
+    const body = req.body?.answers || {};
+    const answers = {};
+    [...BRIEFING_AREAS.map(a => a.key), 'winningTip'].forEach(k => {
+      const v = String(body[k] || '').trim();
+      if (v) answers[k] = v;
+    });
+
     const status = req.body?.status === 'ready' ? 'ready' : 'draft';
-    if (status === 'ready' && countWords(briefingText) < 30) {
-      return res.status(400).json({ success: false, message: 'Write at least 30 words before creating the voice briefing.' });
+    const coverage = coverageOf(answers);
+    if (status === 'ready' && !coverage.length) {
+      return res.status(400).json({ success: false, message: 'Answer at least one briefing area before publishing.' });
     }
 
     const { FieldValue } = require('firebase-admin/firestore');
-    const wordCount = countWords(briefingText);
+    const wordCount = totalWords(answers);
     const patch = {
       positionId: posId,
       authorEmail: author.email,
@@ -374,10 +412,12 @@ router.post('/position/:posId', authMiddleware, async (req, res) => {
       // briefings off coachEmail.
       coachEmail: author.email,
       coachName: author.name,
-      briefingText, winningTip,
-      coverage: detectCoverage(`${briefingText} ${winningTip}`),
+      answers,
+      winningTip: answers.winningTip || '',
+      coverage,
       wordCount,
       durationSec: estimateSeconds(wordCount),
+      visibility: isPublicAuthor(author.type) ? 'all' : 'team',
       status,
       updatedAt: FieldValue.serverTimestamp(),
     };
@@ -387,9 +427,11 @@ router.post('/position/:posId', authMiddleware, async (req, res) => {
     res.json({
       success: true,
       status,
-      coverage: patch.coverage,
+      coverage,
       message: status === 'ready'
-        ? 'Voice briefing created — your team can hear it now.'
+        ? (isPublicAuthor(author.type)
+            ? 'Briefing published — everyone working this position can hear it.'
+            : 'Briefing published — your team can hear it now.')
         : 'Draft saved.',
     });
   } catch (err) {
@@ -400,29 +442,45 @@ router.post('/position/:posId', authMiddleware, async (req, res) => {
 
 // ── Team-facing route ─────────────────────────────────────────────────────────
 
-// GET /api/briefing/for-me/:posId — the briefing(s) a recruiter is entitled to
-// on this position. Only published ones, and only from their own coach/vendor.
+// GET /api/briefing/for-me/:posId — every briefing this viewer may hear on this
+// position: the ones from their own coach/vendor (team-private), plus the
+// ClientSPOC's briefing, which is open to everyone working the position.
 router.get('/for-me/:posId', authMiddleware, async (req, res) => {
   try {
     const me = (req.user.email || '').toLowerCase();
     const posId = String(req.params.posId);
 
-    const authors = await authorsVisibleTo(me, posId);
-    if (!authors.length) return res.json({ success: true, briefings: [] });
+    const authors = new Set(await authorsVisibleTo(me, posId));
 
-    const docs = await Promise.all(authors.map(a =>
+    // The position's own ClientSPOC — public to all.
+    try {
+      const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', posId).limit(1).get();
+      if (!posSnap.empty) {
+        const spoc = (posSnap.docs[0].data().clientspoc || '').toLowerCase();
+        if (spoc) authors.add(spoc);
+      }
+    } catch (_) { /* team briefings still apply */ }
+
+    if (!authors.size) return res.json({ success: true, briefings: [] });
+
+    const docs = await Promise.all([...authors].map(a =>
       db.collection('position_coach_briefing').doc(`${posId}__${a}`).get()));
 
     const briefings = docs
       .filter(d => d.exists && (d.data().status || 'draft') === 'ready')
       .map(d => {
         const b = shape(d.data(), d.id);
-        return {
-          ...b,
-          areas: BRIEFING_AREAS.filter(a => b.coverage.includes(a.key))
-            .map(({ key, icon, title }) => ({ key, icon, title })),
-        };
-      });
+        // One playable item per answered area, in the canonical order.
+        const items = [...BRIEFING_AREAS, WINNING_TIP]
+          .filter(a => String(b.answers[a.key] || '').trim())
+          .map(a => ({
+            key: a.key, icon: a.icon, n: a.n, title: a.title,
+            text: b.answers[a.key].trim(),
+          }));
+        return { ...b, items, isPublic: b.authorType === 'clientspoc' };
+      })
+      // The ClientSPOC's briefing is the client's own word — show it first.
+      .sort((a, b) => Number(b.isPublic) - Number(a.isPublic));
 
     res.json({ success: true, briefings });
   } catch (err) {
@@ -440,7 +498,13 @@ router.post('/for-me/:posId/listened', authMiddleware, async (req, res) => {
     const posId = String(req.params.posId);
     const author = String(req.body?.authorEmail || '').toLowerCase();
     if (!author) return res.status(400).json({ success: false, message: 'authorEmail is required' });
-    if (!(await recruiterMayRead(me, posId, author))) {
+    let mayRead = await recruiterMayRead(me, posId, author);
+    if (!mayRead) {
+      // The position's ClientSPOC briefing is open to everyone working it.
+      const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', posId).limit(1).get();
+      mayRead = !posSnap.empty && (posSnap.docs[0].data().clientspoc || '').toLowerCase() === author;
+    }
+    if (!mayRead) {
       return res.status(403).json({ success: false, message: 'This briefing is not shared with you.' });
     }
 

@@ -28,7 +28,7 @@ import {
   Award,
   Users as UsersIcon,
   FileText,
-  MessageSquare
+  MessageSquare, Mic
 } from 'lucide-react';
 import ChatPanel from './ChatPanel';
 import { useChatNotify } from '../context/ChatNotify';
@@ -36,6 +36,7 @@ import { useChatNotify } from '../context/ChatNotify';
 // Import your existing components
 import Ad_Data from '../pages/Ad_Data';
 import Ad_Candi from '../pages/Ad_Candi';
+import ClientSpocBriefings from '../pages/ClientSpocBriefings';
 import Ad_OpenPos from '../pages/Ad_OpenPos';
 import Ad_Pos from '../pages/Ad_Pos';
 import My_Positions from '../pages/My_Positions';
@@ -266,6 +267,15 @@ const Admin = () => {
       icon: PlusCircle,
       label: 'My Added Positions',
       component: <MyAddedPositions />,
+      clientspocOnly: true
+    }] : []),
+    // Position Briefings - Only visible for ClientSPOC. Their briefing is open to
+    // every recruiter, coach, expert and vendor working the position.
+    ...(isClientSpoc ? [{
+      id: 'position-briefings',
+      icon: Mic,
+      label: 'Position Briefings',
+      component: <ClientSpocBriefings />,
       clientspocOnly: true
     }] : []),
     // Coach/Expert Requests - Visible for ClientSPOC

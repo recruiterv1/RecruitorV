@@ -392,10 +392,20 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
                   </p>
                 </div>
               </div>
-              <button type="button" onClick={onClose}
-                className="p-2 bg-white/20 hover:bg-white/30 rounded-lg text-white transition-all">
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Brief the people working this position — same items as the
+                    coach/vendor briefing, but a SPOC's is open to everyone. */}
+                <button type="button"
+                  onClick={() => window.open(`/briefing/${position.pos_id}`, '_blank', 'noopener')}
+                  title="Add or edit the briefing for this position"
+                  className="px-3 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white text-xs font-bold transition-all whitespace-nowrap">
+                  🎙️ Position Briefing
+                </button>
+                <button type="button" onClick={onClose}
+                  className="p-2 bg-white/20 hover:bg-white/30 rounded-lg text-white transition-all">
+                  <X size={20} />
+                </button>
+              </div>
             </div>
           </div>
 

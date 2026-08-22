@@ -1468,39 +1468,33 @@ function DashViewV2Inner() {
 
           {/* Briefings shared with this recruiter by their own coach/vendor. The
               server only ever returns briefings the viewer is entitled to. */}
-          {!isTeamLead && teamBriefings.length > 0 && teamBriefings.map(b => (
+          {teamBriefings.length > 0 && teamBriefings.map(b => (
             <div className="card" style={{ marginBottom: 20 }} key={b.id}>
-              <h2>{b.authorType === 'vendor' ? 'Vendor Briefing' : 'Coach Briefing'}</h2>
+              <h2>
+                {b.isPublic ? 'Client Briefing'
+                  : b.authorType === 'vendor' ? 'Vendor Briefing' : 'Coach Briefing'}
+              </h2>
               <p className="card-sub">
-                {b.authorName || 'Your team lead'}'s guidance for this position — press play to hear it
-                (English/Hindi &amp; more).
+                {b.isPublic
+                  ? `${b.authorName || 'The Client SPOC'}'s briefing for this position — open to everyone working it.`
+                  : `${b.authorName || 'Your team lead'}'s guidance for your team.`}
+                {' '}Press a speaker to hear that item (English/Hindi &amp; more).
               </p>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 10 }}>
-                <SpeakButton
-                  text={[b.briefingText, b.winningTip && `One winning tip. ${b.winningTip}`].filter(Boolean).join('. ')}
-                  title="Play the briefing" tone="green"
-                  onPlay={() => markBriefingListened(b.authorEmail)} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap', margin: 0 }}>
-                    {b.briefingText}
-                  </p>
-                  {b.winningTip && (
-                    <p style={{ marginTop: 10, fontSize: 13, color: '#92400e', background: '#fffbeb',
-                      border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px' }}>
-                      ⭐ <b>Winning tip:</b> {b.winningTip}
-                    </p>
-                  )}
-                  {b.areas?.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-                      {b.areas.map(a => (
-                        <span key={a.key} style={{ fontSize: 11, fontWeight: 600, color: '#166534',
-                          background: '#dcfce7', borderRadius: 999, padding: '3px 9px' }}>
-                          {a.icon} {a.title}
-                        </span>
-                      ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                {(b.items || []).map(it => (
+                  <div key={it.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
+                    <span style={{ fontSize: 16, lineHeight: '20px', flexShrink: 0 }}>{it.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{it.title}</div>
+                      <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, whiteSpace: 'pre-wrap', marginTop: 2 }}>
+                        {it.text}
+                      </div>
                     </div>
-                  )}
-                </div>
+                    <SpeakButton text={`${it.title}. ${it.text}`} title={`Play: ${it.title}`}
+                      tone="green" compact onPlay={() => markBriefingListened(b.authorEmail)} />
+                  </div>
+                ))}
               </div>
             </div>
           ))}

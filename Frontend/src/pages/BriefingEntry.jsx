@@ -7,31 +7,6 @@ import DashShell from '../components/DashShell';
 // the old six separate questions — the five areas are prompts, and coverage is
 // detected live from what the author writes.
 
-const WORD_MIN = 150;
-const WORD_MAX = 300;
-
-// Same detection the server runs on save, so the live chips and the stored
-// coverage agree. Kept in step with BRIEFING_AREAS in Backend/router/briefing.js.
-const AREA_MATCH = {
-  requirement: ['requirement', 'jd', 'role', 'actually', 'really', 'looking for', 'must have',
-    'background', 'profile', 'experience', 'client wants', 'expectation', 'mandate'],
-  sourcing: ['source', 'sourcing', 'headhunt', 'head-hunt', 'target', 'competitor', 'company',
-    'linkedin', 'naukri', 'referral', 'portal', 'market', 'talent pool', 'poach', 'search'],
-  watchouts: ['watch', 'avoid', 'careful', 'difficult', 'challenge', 'risk', 'reject', 'issue',
-    'problem', 'budget', 'notice period', 'location', 'constraint', 'red flag', 'do not'],
-  assess: ['assess', 'evaluate', 'screen', 'check', 'ask', 'question', 'judge', 'decide',
-    'submit', 'shortlist', 'criteria', 'benchmark', 'validate', 'probe'],
-  engage: ['engage', 'close', 'pitch', 'sell', 'convince', 'follow up', 'followup', 'interest',
-    'offer', 'counter', 'negotiat', 'growth', 'career', 'motivat', 'keep warm'],
-};
-
-const detectCoverage = (text) => {
-  const t = String(text || '').toLowerCase();
-  if (!t.trim()) return [];
-  return Object.entries(AREA_MATCH)
-    .filter(([, terms]) => terms.filter(m => t.includes(m)).length >= 2)
-    .map(([key]) => key);
-};
 
 const countWords = (t) => String(t || '').trim().split(/\s+/).filter(Boolean).length;
 
@@ -49,9 +24,7 @@ function BriefingEntryInner() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [text, setText] = useState('');
-  const [tip, setTip] = useState('');
-  const [open, setOpen] = useState(null);       // expanded prompt card
+  const [answers, setAnswers] = useState({});   // areaKey -> text
   const [saving, setSaving] = useState('');     // 'draft' | 'ready'
   const [toast, setToast] = useState('');
 
@@ -61,24 +34,29 @@ function BriefingEntryInner() {
       .then(r => {
         if (!live) return;
         setData(r.data);
-        setText(r.data?.briefing?.briefingText || '');
-        setTip(r.data?.briefing?.winningTip || '');
+        setAnswers(r.data?.briefing?.answers || {});
       })
       .catch(e => setError(e.response?.data?.message || 'Could not load this briefing.'))
       .finally(() => live && setLoading(false));
     return () => { live = false; };
   }, [pos_id]);
 
-  const coverage = useMemo(() => detectCoverage(`${text} ${tip}`), [text, tip]);
-  const words = countWords(text);
   const areas = data?.areas || [];
+  const required = areas.filter(a => !a.optional);
+  // Covered simply means answered — no guessing from prose any more.
+  const coverage = useMemo(
+    () => required.filter(a => String(answers[a.key] || '').trim()).map(a => a.key),
+    [answers, required]);
+  const words = useMemo(
+    () => Object.values(answers).reduce((n, v) => n + countWords(v), 0), [answers]);
+  const setAnswer = (key, v) => setAnswers(a => ({ ...a, [key]: v }));
 
   const save = useCallback(async (status) => {
     setSaving(status);
     setToast('');
     try {
       const r = await axios.post(`/api/briefing/position/${pos_id}`,
-        { briefingText: text, winningTip: tip, status }, { withCredentials: true });
+        { answers, status }, { withCredentials: true });
       setToast(r.data?.message || 'Saved');
       if (status === 'ready') setTimeout(() => navigate('/my-briefings'), 1200);
     } catch (e) {
@@ -87,7 +65,7 @@ function BriefingEntryInner() {
       setSaving('');
       setTimeout(() => setToast(''), 4000);
     }
-  }, [pos_id, text, tip, navigate]);
+  }, [pos_id, answers, navigate]);
 
   if (loading) {
     return <div className="min-h-screen bg-neutral-950 flex items-center justify-center text-neutral-500">Loading…</div>;
@@ -171,72 +149,69 @@ function BriefingEntryInner() {
           </div>
         </div>
 
-        {/* Prompts */}
-        <h2 className="mt-8 text-lg font-bold text-white">Before you brief your team</h2>
+        {/* One input per briefing area */}
+        <h2 className="mt-8 text-lg font-bold text-white">Brief your team</h2>
         <p className="text-sm text-neutral-500 mt-1">
-          Think about these {areas.length} areas. You don't need to answer each one separately —
-          use them as prompts to structure your thoughts.
+          Answer each area separately. Every answer gets its own speaker, so recruiters
+          can play just the part they need.
         </p>
 
-        <div className="mt-4 rounded-2xl border border-neutral-800 overflow-hidden divide-y divide-neutral-800">
+        <div className="mt-4 space-y-3">
           {areas.map(a => {
-            const covered = coverage.includes(a.key);
-            const isOpen = open === a.key;
+            const val = answers[a.key] || '';
+            const filled = !!val.trim();
+            const optional = a.optional;
             return (
-              <div key={a.key} className="bg-neutral-900/40">
-                <button type="button" onClick={() => setOpen(isOpen ? null : a.key)}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-neutral-900">
+              <div key={a.key}
+                className={`rounded-2xl border p-4 ${optional
+                  ? 'border-amber-500/30 bg-amber-500/5'
+                  : filled ? 'border-green-500/30 bg-neutral-900/50' : 'border-neutral-800 bg-neutral-900/40'}`}>
+                <div className="flex items-start gap-3">
                   <span className="text-lg flex-shrink-0">{a.icon}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="text-[11px] text-neutral-600 mr-2">{a.n}</span>
-                    <span className="text-sm font-semibold text-neutral-100">{a.title}</span>
-                    <span className="block text-xs text-neutral-500 mt-0.5">{a.prompt}</span>
-                  </span>
-                  <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
-                    covered ? 'bg-green-500/10 text-green-300 border border-green-500/30'
-                            : 'bg-neutral-800 text-neutral-500 border border-neutral-700'}`}>
-                    {covered ? '✓ Covered' : 'Not covered'}
-                  </span>
-                  <span className="text-neutral-600 text-xs">{isOpen ? '▴' : '▾'}</span>
-                </button>
-                {isOpen && (
-                  <div className="px-4 pb-4 pl-14 text-xs text-neutral-400 leading-relaxed">
-                    {a.prompt} Mention it anywhere in your briefing below — this area marks itself
-                    covered once you have written about it.
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {!optional && <span className="text-[11px] text-neutral-600">{a.n}</span>}
+                      <span className={`text-sm font-semibold ${optional ? 'text-amber-300' : 'text-neutral-100'}`}>
+                        {a.title}
+                      </span>
+                      {optional && (
+                        <span className="text-[10px] uppercase tracking-wider text-neutral-500 border border-neutral-700 rounded px-1.5 py-0.5">
+                          Optional
+                        </span>
+                      )}
+                      <span className={`ml-auto text-[11px] font-semibold px-2.5 py-1 rounded-full ${
+                        filled ? 'bg-green-500/10 text-green-300 border border-green-500/30'
+                               : 'bg-neutral-800 text-neutral-500 border border-neutral-700'}`}>
+                        {filled ? '✓ Covered' : 'Not covered'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-neutral-500 mt-1">{a.prompt}</p>
+                    <textarea
+                      value={val}
+                      onChange={(e) => setAnswer(a.key, e.target.value)}
+                      rows={3}
+                      placeholder={a.prompt}
+                      className="mt-3 w-full bg-neutral-950/60 border border-neutral-800 rounded-xl p-3 text-sm text-neutral-200 placeholder-neutral-600 leading-relaxed focus:border-amber-500/50 outline-none resize-y"
+                    />
+                    {filled && (
+                      <p className="text-[11px] text-neutral-600 mt-1">{countWords(val)} words</p>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             );
           })}
-        </div>
-
-        {/* Winning tip */}
-        <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
-          <div className="flex items-center gap-2">
-            <span>⭐</span>
-            <span className="text-sm font-semibold text-amber-300">Your Winning Tip</span>
-            <span className="text-[10px] uppercase tracking-wider text-neutral-500 border border-neutral-700 rounded px-1.5 py-0.5">Optional</span>
-          </div>
-          <p className="text-xs text-neutral-400 mt-2">
-            If you were personally recruiting this position, what is the ONE thing you would do differently?
-          </p>
-          <textarea
-            value={tip}
-            onChange={(e) => setTip(e.target.value)}
-            rows={2}
-            placeholder="Share the practical insight that comes from your experience."
-            className="mt-3 w-full bg-neutral-950/60 border border-neutral-800 rounded-xl p-3 text-sm text-neutral-200 placeholder-neutral-600 focus:border-amber-500/50 outline-none resize-y"
-          />
         </div>
 
         {/* Coverage */}
         <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-semibold text-neutral-200">Briefing Coverage</span>
-            <span className="text-sm font-bold text-amber-400">{coverage.length}/{areas.length}</span>
+            <span className="text-sm font-bold text-amber-400">{coverage.length}/{required.length}</span>
+            <span className="text-xs text-neutral-600 ml-auto">{words} words in total</span>
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
-            {areas.map(a => {
+            {required.map(a => {
               const covered = coverage.includes(a.key);
               return (
                 <span key={a.key} className={`text-[11px] px-2.5 py-1 rounded-full border ${
@@ -248,37 +223,6 @@ function BriefingEntryInner() {
             })}
           </div>
         </div>
-
-        {/* The briefing itself */}
-        <h2 className="mt-8 text-lg font-bold text-white flex items-center gap-2">
-          <span>🎙️</span> Brief Your Team
-        </h2>
-        <p className="text-sm text-neutral-500 mt-1">
-          You don't need to answer each question separately. Just share your thoughts naturally.
-          <span className="text-amber-400"> RecruiterV will automatically convert your briefing into a voice briefing.</span>
-        </p>
-        <p className="text-xs text-neutral-600 mt-1">
-          Recommended: {WORD_MIN}–{WORD_MAX} words · Approx. 1–2 minutes
-        </p>
-
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={12}
-          placeholder="Start with what makes this position important or difficult. Then share where to find the right candidates, what to check during the assessment call, what to avoid, and any tips that will help recruiters close the position."
-          className="mt-3 w-full bg-neutral-900/60 border border-neutral-800 rounded-2xl p-4 text-sm text-neutral-200 placeholder-neutral-600 leading-relaxed focus:border-amber-500/50 outline-none resize-y"
-        />
-        <div className="flex items-center justify-between mt-2">
-          <span className={`text-xs ${
-            words === 0 ? 'text-neutral-600'
-              : words < WORD_MIN ? 'text-amber-400'
-              : words > WORD_MAX ? 'text-amber-400' : 'text-green-400'}`}>
-            {words} / {WORD_MAX} words
-          </span>
-          {words > 0 && words < 30 && (
-            <span className="text-xs text-neutral-500">At least 30 words to create the voice briefing</span>
-          )}
-        </div>
       </div>
 
       {/* Sticky actions */}
@@ -286,7 +230,7 @@ function BriefingEntryInner() {
         <div className="max-w-3xl mx-auto px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div>
             <p className="text-[10px] uppercase tracking-wider text-neutral-600">Briefing coverage</p>
-            <p className="text-sm font-bold text-amber-400">{coverage.length}/{areas.length}</p>
+            <p className="text-sm font-bold text-amber-400">{coverage.length}/{required.length}</p>
           </div>
           {toast && <span className="text-xs text-neutral-300 flex-1 text-center">{toast}</span>}
           <div className="flex items-center gap-2">
@@ -294,7 +238,7 @@ function BriefingEntryInner() {
               className="px-4 py-2.5 text-sm font-semibold text-neutral-200 border border-neutral-700 rounded-xl hover:bg-neutral-900 disabled:opacity-50">
               {saving === 'draft' ? 'Saving…' : 'Save as Draft'}
             </button>
-            <button onClick={() => save('ready')} disabled={!!saving || words < 30}
+            <button onClick={() => save('ready')} disabled={!!saving || coverage.length === 0}
               className="px-5 py-2.5 text-sm font-bold text-neutral-900 bg-amber-500 hover:bg-amber-400 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed">
               {saving === 'ready' ? 'Creating…' : 'Create Voice Briefing 🎙️'}
             </button>
