@@ -657,6 +657,25 @@ let {
           read: false,
         });
         console.log(`📥 In-app inbox message saved for ClientSPOC ${position.clientspoc}`);
+
+        // Internal chat message to the ClientSPOC — only when the SuperAdmin has
+        // made that template live.
+        try {
+          const { notify } = require('../utils/internalMessage');
+          await notify('candidateSubmitted', {
+            fromEmail: news.email,
+            toEmail: position.clientspoc,
+            vars: {
+              spocName: clientspocName || '',
+              recruiterName,
+              recruiterRole: news.roleCategory || 'Recruiter',
+              candidateName: candidate,
+              positionName: position.position || '',
+              positionId: pos_id,
+              clientName: position.client || '',
+            },
+          });
+        } catch (_) { /* never block the submission */ }
       }
     } catch (notificationError) {
       console.error("❌ Error sending notification/email:", notificationError);
@@ -1050,6 +1069,30 @@ router.patch("/update/status/:id", async (req, res) => {
       changedBy, changedByName,
       rejectReason: isReject ? String(rejectReason).trim() : '',
     });
+
+    // ── Internal message to the recruiter (only if the SuperAdmin made that
+    //    template live) ────────────────────────────────────────────────────────
+    try {
+      const { notify } = require('../utils/internalMessage');
+      const toRec = updated.recEmail || updated.recruiterEmail;
+      if (toRec && changedBy) {
+        notify('candidateStatusChanged', {
+          fromEmail: changedBy,
+          toEmail: toRec,
+          vars: {
+            recruiterName: updated.recName || updated.recruiterName || 'there',
+            spocName: changedByName || '',
+            candidateName: updated.candidate || updated.candidateName || '',
+            positionName: updated.pos_name || '',
+            positionId: updated.pos_id || '',
+            clientName: updated.client || '',
+            oldStatus: updated.previousStatus || '',
+            newStatus: statusa,
+            reason: isReject ? String(rejectReason).trim() : '',
+          },
+        }).catch(() => {});
+      }
+    } catch (_) { /* never block the status change */ }
 
     // ── Send email to recruiter about status change ──────────────────────────
     try {

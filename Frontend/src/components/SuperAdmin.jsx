@@ -60,6 +60,7 @@ import SuperAdminCoachExpertRequests from '../pages/SuperAdminCoachExpertRequest
 import CoachRecruiterAssignmentsAdmin from '../pages/CoachRecruiterAssignmentsAdmin';
 import { PendingUsersPanel, VendorManagement } from './AdminDashboard';
 import AllVendors from '../pages/AllVendors';
+import InternalMessageTemplates from '../pages/InternalMessageTemplates';
 import { AllCandidatesPanel, DirectCandidatesPanel, ActiveCandidatesPanel } from '../pages/SuperAdminCandidates';
 import SuperAdminAssignedPositions from '../pages/SuperAdminAssignedPositions';
 import CoachVendorRequests from '../pages/CoachVendorRequests';
@@ -442,6 +443,12 @@ const SuperAdmin = () => {
       icon: Mail,
       label: 'Email Templates',
       component: <SuperAdminEmailTemplates />
+    },
+    {
+      id: 'internal-message-templates',
+      icon: MessageSquare,
+      label: 'Internal Message Templates',
+      component: <InternalMessageTemplates />
     },
     {
       id: 'inbox-access',

@@ -1945,6 +1945,25 @@ router.post('/recruiter-assignment', authMiddleware, async (req, res) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
+    // Internal chat message to the recruiter — only when the SuperAdmin has made
+    // that template live.
+    try {
+      const { notify } = require('../utils/internalMessage');
+      await notify('positionAssigned', {
+        fromEmail: coachEmail,
+        toEmail: recData.email,
+        vars: {
+          recruiterName: recData.name || 'there',
+          assignerName: coachData.name || '',
+          assignerRole: coachData.userType || 'Coach',
+          positionName: posData.position || '',
+          positionId,
+          clientName: posData.client || '',
+          location: Array.isArray(posData.location) ? posData.location.join(', ') : (posData.location || ''),
+        },
+      });
+    } catch (_) { /* never block the assignment */ }
+
     // Email to recruiter
     try {
       const { sendEmailFull, templates, renderEmail } = require('../utils/email');
@@ -2530,6 +2549,21 @@ router.post('/team/send-request', authMiddleware, async (req, res) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
+    // Internal chat message — only when the SuperAdmin has made it live.
+    try {
+      const { notify } = require('../utils/internalMessage');
+      await notify('teamJoinRequest', {
+        fromEmail: coachEmail,
+        toEmail: recData.email,
+        vars: {
+          recipientName: recData.name || 'there',
+          senderName: coachData.name || '',
+          senderRole: coachData.userType || 'Coach',
+          direction: 'invited you to join their team',
+        },
+      });
+    } catch (_) { /* never block the request */ }
+
     return res.json({ success: true, message: 'Request sent to recruiter' });
   } catch (err) {
     console.error('team/send-request error:', err.message);
@@ -2913,6 +2947,21 @@ router.post('/team/recruiter-join-request', authMiddleware, async (req, res) => 
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    // Internal chat message the other way round — recruiter asking to join.
+    try {
+      const { notify } = require('../utils/internalMessage');
+      await notify('teamJoinRequest', {
+        fromEmail: recData.email,
+        toEmail: cData.email || coachEmail,
+        vars: {
+          recipientName: cData.name || 'there',
+          senderName: recData.name || '',
+          senderRole: 'Recruiter',
+          direction: 'has asked to join your team',
+        },
+      });
+    } catch (_) { /* never block the request */ }
 
     return res.json({ success: true, message: 'Join request sent successfully' });
   } catch (err) {
