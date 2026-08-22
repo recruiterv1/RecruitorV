@@ -12,7 +12,8 @@ const jwt = require('jsonwebtoken');
 const { db } = require('./firebase_ad');
 const {
   TRIGGERS, TRIGGER_MAP, substitute, sendInternalMessage,
-  AUDIENCES, AUDIENCE_MAP, CUSTOM_VARIABLES, audienceMembers, varsFor,
+  AUDIENCES, AUDIENCE_MAP, CUSTOM_VARIABLES, CUSTOM_VARIABLE_GROUPS,
+  audienceMembers, varsFor,
 } = require('../utils/internalMessage');
 
 const lc = (s) => (s || '').toString().toLowerCase().trim();
@@ -83,6 +84,7 @@ router.get('/', managerAuth, async (req, res) => {
       success: true, templates, custom,
       audiences: AUDIENCES.map(({ key, label }) => ({ key, label })),
       customVariables: CUSTOM_VARIABLES,
+      variableGroups: CUSTOM_VARIABLE_GROUPS,
     });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -239,6 +241,16 @@ router.post('/custom/:key/send', managerAuth, async (req, res) => {
     const people = await audienceMembers(c.audience, c.recipients || []);
     if (!people.length) return res.status(400).json({ success: false, message: 'That audience has nobody in it.' });
 
+    // Who the message comes from, for {{senderName}} / {{senderEmail}}.
+    const { personFrom } = require('../utils/internalMessage');
+    let senderInfo = { name: 'RecruiterV', email: req.managerEmail };
+    try {
+      for (const col of ['admin_db', 'recruiter_db']) {
+        const snap = await db.collection(col).where('email', '==', lc(req.managerEmail)).limit(1).get();
+        if (!snap.empty) { senderInfo = personFrom(snap.docs[0].data()); break; }
+      }
+    } catch (_) { /* fall back to the email alone */ }
+
     const offset = Math.max(0, parseInt(req.body?.offset, 10) || 0);
     const slice = people.slice(offset, offset + SEND_CHUNK);
 
@@ -250,7 +262,7 @@ router.post('/custom/:key/send', managerAuth, async (req, res) => {
         sendInternalMessage({
           fromEmail: req.managerEmail,
           toEmail: p.email,
-          text: substitute(c.body, varsFor(p)),
+          text: substitute(c.body, varsFor(p, senderInfo)),
         }).catch(() => false)));
       results.forEach(ok => (ok ? sent++ : failed++));
     }

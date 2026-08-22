@@ -7,6 +7,36 @@ import { MessageSquare, RefreshCw, Send, Eye, Plus, Trash2, Users } from 'lucide
 // the template is written AND switched live here.
 
 // What each token resolves to, shown next to the insert buttons.
+// Every variable a custom message can use, grouped so a long list stays
+// readable. Clicking one appends it to the message being written.
+const VariablePicker = ({ groups, onInsert }) => {
+  const [open, setOpen] = useState(groups[0]?.group || '');
+  if (!groups.length) return null;
+  return (
+    <div className="mt-3 border border-gray-200 rounded-xl overflow-hidden">
+      <div className="flex flex-wrap gap-1 bg-gray-50 border-b border-gray-200 px-2 py-1.5">
+        {groups.map(g => (
+          <button key={g.group} type="button" onClick={() => setOpen(g.group)}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors ${
+              open === g.group ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-200'}`}>
+            {g.group} <span className="opacity-60">({g.variables.length})</span>
+          </button>
+        ))}
+      </div>
+      <div className="p-2.5 grid sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+        {(groups.find(g => g.group === open)?.variables || []).map(v => (
+          <button key={v.key} type="button" onClick={() => onInsert(v.key)}
+            title={`Insert {{${v.key}}} — ${v.label}`}
+            className="text-left border border-blue-100 bg-blue-50/60 hover:bg-blue-100 rounded-lg px-2 py-1.5">
+            <span className="block text-[11px] font-mono text-blue-700">{`{{${v.key}}}`}</span>
+            <span className="block text-[10px] text-gray-500 truncate">{v.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const VAR_HELP = {
   name: "the person's full name",
   firstName: 'their first name',
@@ -16,11 +46,32 @@ const VAR_HELP = {
 
 // The tokens a custom message supports. Mirrors CUSTOM_VARIABLES in
 // Backend/utils/internalMessage.js; used when the API list has not arrived yet.
-const FALLBACK_VARS = ['name', 'firstName', 'email', 'role'];
+const FALLBACK_GROUPS = [
+  { group: 'Recipient', variables: [
+    { key: 'name', label: 'Full name' }, { key: 'firstName', label: 'First name' },
+    { key: 'email', label: 'Email address' }, { key: 'role', label: 'Role' },
+  ] },
+];
 
+// Sample values for the live preview — mirrors what varsFor() produces on the
+// server, so the preview reads like the real thing.
 const SAMPLE_PERSON = {
-  name: 'Rahul Sharma', firstName: 'Rahul',
-  email: 'rahul.sharma@example.com', role: 'recruiter',
+  name: 'Rahul Sharma', firstName: 'Rahul', lastName: 'Sharma',
+  email: 'rahul.sharma@example.com', phone: '98765 43210', role: 'recruiter',
+  location: 'Pune, Maharashtra', skillCategory: 'Technology',
+  experienceCategory: 'Experienced', company: 'Acme Consulting',
+  designation: 'Senior Recruiter', joinedDate: '12 Mar 2026',
+  siteUrl: 'https://www.recruiterv.com',
+  loginUrl: 'https://www.recruiterv.com/log_rec',
+  dashboardUrl: 'https://www.recruiterv.com/dash_rec',
+  positionsUrl: 'https://www.recruiterv.com/dash_position',
+  appDownloadUrl: 'https://www.recruiterv.com/get-app',
+  profileUrl: 'https://www.recruiterv.com/dash_form',
+  senderName: 'Super Admin', senderEmail: 'admin@recruiterv.com',
+  platformName: 'RecruiterV', supportEmail: 'support@recruiterv.com',
+  today: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+  currentMonth: new Date().toLocaleDateString('en-IN', { month: 'long' }),
+  currentYear: String(new Date().getFullYear()),
 };
 
 // Fill {{tokens}} with the sample person, matching what the server does per
@@ -104,7 +155,8 @@ const TemplateCard = ({ t, onSaved }) => {
         <div className="flex flex-wrap items-center gap-1.5 mt-2">
           <span className="text-[11px] text-gray-400 mr-1">Insert:</span>
           {t.variables.map(v => (
-            <button key={v} type="button" onClick={() => insertVar(v)}
+            <button key={v} type="button"
+              onClick={() => insertVar(v)}
               className="text-[11px] font-mono bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-100">
               {`{{${v}}}`}
             </button>
@@ -147,7 +199,7 @@ const TemplateCard = ({ t, onSaved }) => {
 
 // A template the SuperAdmin wrote themselves. No event fires it, so it is sent
 // by hand to a chosen audience.
-const CustomCard = ({ t, audiences, variables, onChanged }) => {
+const CustomCard = ({ t, audiences, variableGroups, onChanged }) => {
   const [name, setName] = useState(t.name);
   const [body, setBody] = useState(t.body);
   const [audience, setAudience] = useState(t.audience || 'recruiters');
@@ -244,17 +296,8 @@ const CustomCard = ({ t, audiences, variables, onChanged }) => {
         <textarea value={body} onChange={e => setBody(e.target.value)} rows={4}
           className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none resize-y" />
 
-        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-          <span className="text-[11px] text-gray-400 mr-1">Insert:</span>
-          {variables.map(v => (
-            <button key={v} type="button"
-              onClick={() => setBody(b => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${v}}}`)}
-              title={VAR_HELP[v] || ''}
-              className="text-[11px] font-mono bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-100">
-              {`{{${v}}}`}
-            </button>
-          ))}
-        </div>
+        <VariablePicker groups={variableGroups}
+          onInsert={(k) => setBody(b => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${k}}}`)} />
 
         {body.trim() && (
           <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-3">
@@ -313,7 +356,7 @@ export default function InternalMessageTemplates() {
   const [templates, setTemplates] = useState([]);
   const [custom, setCustom] = useState([]);
   const [audiences, setAudiences] = useState([]);
-  const [customVars, setCustomVars] = useState(FALLBACK_VARS);
+  const [variableGroups, setVariableGroups] = useState(FALLBACK_GROUPS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
@@ -328,7 +371,7 @@ export default function InternalMessageTemplates() {
         setTemplates(r.data?.templates || []);
         setCustom(r.data?.custom || []);
         setAudiences(r.data?.audiences || []);
-        setCustomVars(r.data?.customVariables?.length ? r.data.customVariables : FALLBACK_VARS);
+        setVariableGroups(r.data?.variableGroups?.length ? r.data.variableGroups : FALLBACK_GROUPS);
         setError('');
       })
       .catch(e => setError(e.response?.data?.message || 'Could not load templates.'))
@@ -407,22 +450,8 @@ export default function InternalMessageTemplates() {
                 placeholder="Hi {{firstName}}, …"
                 className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-blue-500 outline-none resize-y" />
 
-              {/* Same click-to-insert tokens as the saved cards, so the variables
-                  are visible while the message is being written. */}
-              <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                <span className="text-[11px] text-gray-400 mr-1">Insert:</span>
-                {customVars.map(v => (
-                  <button key={v} type="button"
-                    onClick={() => setNewBody(b => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${v}}}`)}
-                    title={VAR_HELP[v] || ''}
-                    className="text-[11px] font-mono bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-100">
-                    {`{{${v}}}`}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] text-gray-400 mt-1.5">
-                {customVars.map(v => `{{${v}}} = ${VAR_HELP[v] || v}`).join(' · ')}
-              </p>
+              <VariablePicker groups={variableGroups}
+                onInsert={(k) => setNewBody(b => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${k}}}`)} />
 
               {newBody.trim() && (
                 <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-3">
@@ -452,7 +481,7 @@ export default function InternalMessageTemplates() {
           ) : (
             <div className="space-y-4">
               {custom.map(t => (
-                <CustomCard key={t.key} t={t} audiences={audiences} variables={customVars} onChanged={load} />
+                <CustomCard key={t.key} t={t} audiences={audiences} variableGroups={variableGroups} onChanged={load} />
               ))}
             </div>
           )}

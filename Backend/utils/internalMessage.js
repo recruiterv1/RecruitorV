@@ -200,17 +200,68 @@ async function notify(key, { fromEmail, toEmail, vars = {} }) {
 
 // Audiences a custom message can be sent to.
 const AUDIENCES = [
-  { key: 'recruiters', label: 'All Recruiters', collection: 'recruiter_db' },
-  { key: 'coaches',    label: 'All Coaches',    collection: 'coach_db' },
-  { key: 'experts',    label: 'All Experts',    collection: 'expert_db' },
-  { key: 'vendors',    label: 'All Vendors',    collection: 'admin_db', roleCategory: 'vendor' },
-  { key: 'clientspocs',label: 'All ClientSPOCs',collection: 'admin_db', roleCategory: 'clientspoc' },
+  { key: 'recruiters', label: 'All Recruiters', collection: 'recruiter_db', role: 'recruiter' },
+  { key: 'coaches',    label: 'All Coaches',    collection: 'coach_db',     role: 'coach' },
+  { key: 'experts',    label: 'All Experts',    collection: 'expert_db',    role: 'expert' },
+  { key: 'vendors',    label: 'All Vendors',    collection: 'admin_db', roleCategory: 'vendor',     role: 'vendor' },
+  { key: 'clientspocs',label: 'All ClientSPOCs',collection: 'admin_db', roleCategory: 'clientspoc', role: 'clientspoc' },
   { key: 'custom',     label: 'Specific people (enter emails)', collection: null },
 ];
 const AUDIENCE_MAP = Object.fromEntries(AUDIENCES.map(a => [a.key, a]));
 
-// Variables a custom template may use. Resolved per recipient at send time.
-const CUSTOM_VARIABLES = ['name', 'firstName', 'email', 'role'];
+// Variables a custom template may use, grouped for the designer. Everything here
+// resolves per recipient at send time, so one template reads personally to each
+// person who gets it.
+const CUSTOM_VARIABLE_GROUPS = [
+  {
+    group: 'Recipient',
+    variables: [
+      { key: 'name',               label: 'Full name' },
+      { key: 'firstName',          label: 'First name' },
+      { key: 'lastName',           label: 'Last name' },
+      { key: 'email',              label: 'Email address' },
+      { key: 'phone',              label: 'Phone number' },
+      { key: 'role',               label: 'Role (recruiter, coach, …)' },
+      { key: 'location',           label: 'Location on their profile' },
+      { key: 'skillCategory',      label: 'Skill categories' },
+      { key: 'experienceCategory', label: 'Experience category' },
+      { key: 'company',            label: 'Company (ClientSPOC / vendor)' },
+      { key: 'designation',        label: 'Designation' },
+      { key: 'joinedDate',         label: 'Date they registered' },
+    ],
+  },
+  {
+    group: 'Links',
+    variables: [
+      { key: 'siteUrl',         label: 'recruiterv.com' },
+      { key: 'loginUrl',        label: 'Login page' },
+      { key: 'dashboardUrl',    label: 'Their dashboard' },
+      { key: 'positionsUrl',    label: 'Open positions page' },
+      { key: 'appDownloadUrl',  label: 'Android app download' },
+      { key: 'profileUrl',      label: 'Their profile page' },
+    ],
+  },
+  {
+    group: 'Sender & platform',
+    variables: [
+      { key: 'senderName',   label: 'Who is sending (you)' },
+      { key: 'senderEmail',  label: 'Your email' },
+      { key: 'platformName', label: 'RecruiterV' },
+      { key: 'supportEmail', label: 'Support email address' },
+    ],
+  },
+  {
+    group: 'Date',
+    variables: [
+      { key: 'today',        label: "Today's date" },
+      { key: 'currentMonth', label: 'Current month' },
+      { key: 'currentYear',  label: 'Current year' },
+    ],
+  },
+];
+
+// Flat list of keys, for validation and the fallback in the designer.
+const CUSTOM_VARIABLES = CUSTOM_VARIABLE_GROUPS.flatMap(g => g.variables.map(v => v.key));
 
 /**
  * Everyone in an audience. Only active, non-blocked accounts with an email.
@@ -224,7 +275,13 @@ async function audienceMembers(audienceKey, explicitEmails = []) {
     const out = [];
     for (const raw of explicitEmails) {
       const e = lc(raw);
-      if (e && !out.some(x => x.email === e)) out.push(await resolveBasic(e));
+      if (!e || out.some(x => x.email === e)) continue;
+      let doc = null;
+      for (const col of ['recruiter_db', 'coach_db', 'expert_db', 'admin_db']) {
+        const snap = await db.collection(col).where('email', '==', e).limit(1).get();
+        if (!snap.empty) { doc = snap.docs[0].data(); break; }
+      }
+      out.push(doc ? personFrom(doc) : personFrom({ email: e }));
     }
     return out;
   }
@@ -239,22 +296,72 @@ async function audienceMembers(audienceKey, explicitEmails = []) {
       if (wanted) return lc(u.roleCategory || u.role || '').replace(/\s/g, '') === wanted;
       return true;
     })
-    .map(u => ({
-      email: lc(u.email),
-      name: u.name || lc(u.email).split('@')[0],
-      role: lc(u.roleCategory || u.role || ''),
-    }));
+    .map(u => personFrom(u, a.role));
 }
 
-/** Per-recipient variable values for a custom send. */
-const varsFor = (person) => ({
-  name: person.name || '',
-  firstName: (person.name || '').split(' ')[0] || '',
-  email: person.email || '',
-  role: person.role || '',
-});
+// Normalise a user document into the fields the variables draw on.
+const personFrom = (u, fallbackRole = '') => {
+  const asText = (v) => Array.isArray(v) ? v.filter(Boolean).join(', ') : String(v || '');
+  const when = (v) => {
+    if (!v) return '';
+    const d = v._seconds ? new Date(v._seconds * 1000) : (v.toDate ? v.toDate() : new Date(v));
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+  return {
+    email: lc(u.email || ''),
+    name: u.name || lc(u.email || '').split('@')[0],
+    role: lc(u.roleCategory || u.role || fallbackRole),
+    phone: u.phone || u.mobile || u.contact || '',
+    location: asText(u.location),
+    skillCategory: asText(u.skillCategory || u.skill_category || u.specialization),
+    experienceCategory: asText(u.experienceCategory),
+    company: u.company || u.vendorName || '',
+    designation: u.designation || u.currentTitle || '',
+    joinedDate: when(u.registrationDate || u.createdAt),
+  };
+};
+
+// Where each role lands after signing in — used by {{dashboardUrl}}.
+const SITE = (process.env.FRONTURL || 'https://www.recruiterv.com').replace(/\/$/, '');
+const DASHBOARD_BY_ROLE = {
+  recruiter: '/dash_rec', coach: '/coach-dashboard', expert: '/expert-dashboard',
+  vendor: '/vendor-dashboard', clientspoc: '/ad_panel#dashboard',
+};
+
+/**
+ * Per-recipient variable values for a custom send.
+ * @param person  a record from personFrom()
+ * @param sender  { name, email } of the SuperAdmin sending
+ */
+const varsFor = (person, sender = {}) => {
+  const now = new Date();
+  const role = lc(person.role || '').replace(/\s/g, '');
+  const parts = String(person.name || '').trim().split(/\s+/);
+  return {
+    ...person,
+    firstName: parts[0] || '',
+    lastName: parts.length > 1 ? parts[parts.length - 1] : '',
+
+    siteUrl: SITE,
+    loginUrl: `${SITE}/log_rec`,
+    dashboardUrl: SITE + (DASHBOARD_BY_ROLE[role] || '/dash_rec'),
+    positionsUrl: `${SITE}/dash_position`,
+    appDownloadUrl: `${SITE}/get-app`,
+    profileUrl: `${SITE}/dash_form`,
+
+    senderName: sender.name || 'RecruiterV',
+    senderEmail: sender.email || '',
+    platformName: 'RecruiterV',
+    supportEmail: 'support@recruiterv.com',
+
+    today: now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+    currentMonth: now.toLocaleDateString('en-IN', { month: 'long' }),
+    currentYear: String(now.getFullYear()),
+  };
+};
 
 module.exports = {
   TRIGGERS, TRIGGER_MAP, substitute, renderInternal, sendInternalMessage, notify,
-  AUDIENCES, AUDIENCE_MAP, CUSTOM_VARIABLES, audienceMembers, varsFor, resolveBasic,
+  AUDIENCES, AUDIENCE_MAP, CUSTOM_VARIABLES, CUSTOM_VARIABLE_GROUPS,
+  audienceMembers, varsFor, personFrom, resolveBasic,
 };
