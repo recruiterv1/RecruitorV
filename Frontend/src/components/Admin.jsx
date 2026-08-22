@@ -93,7 +93,8 @@ const Admin = () => {
         'clientspoc-my-positions', 'my-added-positions', 'position-stats',
         'access-requests', 'add-position', 'add-coach', 'add-expert',
         'all-coaches', 'all-experts', 'all-recruiters', 'coach-expert-requests',
-        'direct-coach-expert-requests', 'coach-recruiter-assignments'
+        'direct-coach-expert-requests', 'coach-recruiter-assignments',
+        'position-briefings'
       ];
       // Recruiter tabs
       const recruiterTabs = [

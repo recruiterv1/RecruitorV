@@ -53,26 +53,28 @@ const BRIEFING_AREAS = [
   },
 ];
 
-// The optional closing item, stored alongside the five areas.
+// The closing item. Counted towards coverage and required to publish, like the
+// five areas above it.
 const WINNING_TIP = {
   key: 'winningTip', icon: '⭐', n: '06',
   title: 'Your Winning Tip',
   prompt: 'If you were personally recruiting this position, what is the ONE thing you would do differently?',
-  optional: true,
 };
+
+// Every briefing item, in order — the five areas plus the Winning Tip.
+const BRIEFING_ITEMS = [...BRIEFING_AREAS, WINNING_TIP];
 
 const AREA_KEYS = BRIEFING_AREAS.map(a => a.key);
 
 const countWords = (t) => String(t || '').trim().split(/\s+/).filter(Boolean).length;
 
-// Every area the author actually filled in. No guessing any more: each area has
+// Every item the author actually filled in. No guessing any more: each item has
 // its own input, so "covered" simply means it has an answer.
 const coverageOf = (answers) =>
-  BRIEFING_AREAS.filter(a => String(answers?.[a.key] || '').trim()).map(a => a.key);
+  BRIEFING_ITEMS.filter(a => String(answers?.[a.key] || '').trim()).map(a => a.key);
 
 const totalWords = (answers) =>
-  [...BRIEFING_AREAS.map(a => a.key), 'winningTip']
-    .reduce((n, k) => n + countWords(answers?.[k]), 0);
+  BRIEFING_ITEMS.reduce((n, a) => n + countWords(answers?.[a.key]), 0);
 
 // Spoken audio runs at roughly 150 words a minute; used for the duration shown
 // against a ready briefing.
@@ -243,8 +245,7 @@ const shape = (data, id) => {
 router.get('/areas', (_req, res) => {
   res.json({
     success: true,
-    areas: [...BRIEFING_AREAS, WINNING_TIP].map(({ key, icon, n, title, prompt, optional }) =>
-      ({ key, icon, n, title, prompt, optional: !!optional })),
+    areas: BRIEFING_ITEMS.map(({ key, icon, n, title, prompt }) => ({ key, icon, n, title, prompt })),
   });
 });
 
@@ -365,8 +366,7 @@ router.get('/position/:posId', authMiddleware, async (req, res) => {
         openings: p.no_of_positions || p.openings || '',
       },
       briefing: briefDoc.exists ? shape(briefDoc.data(), briefDoc.id) : null,
-      areas: [...BRIEFING_AREAS, WINNING_TIP].map(({ key, icon, n, title, prompt, optional }) =>
-        ({ key, icon, n, title, prompt, optional: !!optional })),
+      areas: BRIEFING_ITEMS.map(({ key, icon, n, title, prompt }) => ({ key, icon, n, title, prompt })),
       progress: { ready, draft, pending: allowed.length - ready - draft, total: allowed.length },
     });
   } catch (err) {
@@ -390,15 +390,19 @@ router.post('/position/:posId', authMiddleware, async (req, res) => {
 
     const body = req.body?.answers || {};
     const answers = {};
-    [...BRIEFING_AREAS.map(a => a.key), 'winningTip'].forEach(k => {
+    BRIEFING_ITEMS.forEach(({ key: k }) => {
       const v = String(body[k] || '').trim();
       if (v) answers[k] = v;
     });
 
     const status = req.body?.status === 'ready' ? 'ready' : 'draft';
     const coverage = coverageOf(answers);
-    if (status === 'ready' && !coverage.length) {
-      return res.status(400).json({ success: false, message: 'Answer at least one briefing area before publishing.' });
+    if (status === 'ready' && coverage.length < BRIEFING_ITEMS.length) {
+      const missing = BRIEFING_ITEMS.filter(a => !coverage.includes(a.key)).map(a => a.title);
+      return res.status(400).json({
+        success: false,
+        message: `Answer all ${BRIEFING_ITEMS.length} items before publishing. Still missing: ${missing.join(', ')}.`,
+      });
     }
 
     const { FieldValue } = require('firebase-admin/firestore');
@@ -471,7 +475,7 @@ router.get('/for-me/:posId', authMiddleware, async (req, res) => {
       .map(d => {
         const b = shape(d.data(), d.id);
         // One playable item per answered area, in the canonical order.
-        const items = [...BRIEFING_AREAS, WINNING_TIP]
+        const items = BRIEFING_ITEMS
           .filter(a => String(b.answers[a.key] || '').trim())
           .map(a => ({
             key: a.key, icon: a.icon, n: a.n, title: a.title,

@@ -42,7 +42,7 @@ function BriefingEntryInner() {
   }, [pos_id]);
 
   const areas = data?.areas || [];
-  const required = areas.filter(a => !a.optional);
+  const required = areas;                       // every item counts now
   // Covered simply means answered — no guessing from prose any more.
   const coverage = useMemo(
     () => required.filter(a => String(answers[a.key] || '').trim()).map(a => a.key),
@@ -152,33 +152,31 @@ function BriefingEntryInner() {
         {/* One input per briefing area */}
         <h2 className="mt-8 text-lg font-bold text-white">Brief your team</h2>
         <p className="text-sm text-neutral-500 mt-1">
-          Answer each item separately — {required.length} core areas plus an optional Winning Tip.
-          Every answer gets its own speaker, so recruiters can play just the part they need.
+          Answer all {areas.length} items. Every answer gets its own speaker, so recruiters
+          can play just the part they need.
         </p>
 
         <div className="mt-4 space-y-3">
           {areas.map(a => {
             const val = answers[a.key] || '';
             const filled = !!val.trim();
-            const optional = a.optional;
+            // The Winning Tip keeps its amber accent as the closing item, but it is
+            // no longer optional — every item counts and is required to publish.
+            const isTip = a.key === 'winningTip';
             return (
               <div key={a.key}
-                className={`rounded-2xl border p-4 ${optional
-                  ? 'border-amber-500/30 bg-amber-500/5'
-                  : filled ? 'border-green-500/30 bg-neutral-900/50' : 'border-neutral-800 bg-neutral-900/40'}`}>
+                className={`rounded-2xl border p-4 ${
+                  filled ? 'border-green-500/30 bg-neutral-900/50'
+                  : isTip ? 'border-amber-500/30 bg-amber-500/5'
+                  : 'border-neutral-800 bg-neutral-900/40'}`}>
                 <div className="flex items-start gap-3">
                   <span className="text-lg flex-shrink-0">{a.icon}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {!optional && <span className="text-[11px] text-neutral-600">{a.n}</span>}
-                      <span className={`text-sm font-semibold ${optional ? 'text-amber-300' : 'text-neutral-100'}`}>
+                      <span className="text-[11px] text-neutral-600">{a.n}</span>
+                      <span className={`text-sm font-semibold ${isTip ? 'text-amber-300' : 'text-neutral-100'}`}>
                         {a.title}
                       </span>
-                      {optional && (
-                        <span className="text-[10px] uppercase tracking-wider text-neutral-500 border border-neutral-700 rounded px-1.5 py-0.5">
-                          Optional
-                        </span>
-                      )}
                       <span className={`ml-auto text-[11px] font-semibold px-2.5 py-1 rounded-full ${
                         filled ? 'bg-green-500/10 text-green-300 border border-green-500/30'
                                : 'bg-neutral-800 text-neutral-500 border border-neutral-700'}`}>
@@ -207,10 +205,8 @@ function BriefingEntryInner() {
         <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-semibold text-neutral-200">Briefing Coverage</span>
-            <span className="text-sm font-bold text-amber-400">{coverage.length}/{required.length}</span>
-            <span className="text-xs text-neutral-600">
-              core areas · Winning Tip is optional and not counted
-            </span>
+            <span className="text-sm font-bold text-amber-400">{coverage.length}/{areas.length}</span>
+            <span className="text-xs text-neutral-600">all items required to publish</span>
             <span className="text-xs text-neutral-600 ml-auto">{words} words in total</span>
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
@@ -232,8 +228,8 @@ function BriefingEntryInner() {
       <div className="sticky bottom-0 z-10 bg-neutral-950/95 backdrop-blur border-t border-neutral-800">
         <div className="max-w-3xl mx-auto px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-neutral-600">Core areas covered</p>
-            <p className="text-sm font-bold text-amber-400">{coverage.length}/{required.length}</p>
+            <p className="text-[10px] uppercase tracking-wider text-neutral-600">Briefing coverage</p>
+            <p className="text-sm font-bold text-amber-400">{coverage.length}/{areas.length}</p>
           </div>
           {toast && <span className="text-xs text-neutral-300 flex-1 text-center">{toast}</span>}
           <div className="flex items-center gap-2">
@@ -241,7 +237,9 @@ function BriefingEntryInner() {
               className="px-4 py-2.5 text-sm font-semibold text-neutral-200 border border-neutral-700 rounded-xl hover:bg-neutral-900 disabled:opacity-50">
               {saving === 'draft' ? 'Saving…' : 'Save as Draft'}
             </button>
-            <button onClick={() => save('ready')} disabled={!!saving || coverage.length === 0}
+            <button onClick={() => save('ready')}
+              disabled={!!saving || coverage.length < areas.length}
+              title={coverage.length < areas.length ? 'Answer all items to publish' : ''}
               className="px-5 py-2.5 text-sm font-bold text-neutral-900 bg-amber-500 hover:bg-amber-400 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed">
               {saving === 'ready' ? 'Creating…' : 'Create Voice Briefing 🎙️'}
             </button>
