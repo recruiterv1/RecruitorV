@@ -474,6 +474,19 @@ router.post("/otp_verify", async (req, res) => {
         let _r = await renderEmail(roleKey, vars, { subject: '', htmlContent: '' });
         if (!_r.htmlContent) _r = await renderEmail('registrationPending', vars, fallback);
         await sendEmailFull({ to: toEmail, subject: _r.subject, htmlContent: _r.htmlContent, fromEmail: 'noreply@recruiterv.com', fromName: 'RecruiterV' });
+
+        try {
+          const { notify } = require('../utils/internalMessage');
+          await notify('registrationReceived', {
+            fromEmail: 'support@recruiterv.com',
+            toEmail,
+            vars: {
+              name: name || 'there', firstName: String(name || '').split(' ')[0],
+              email: toEmail, role: role || '',
+            },
+            recipientRole: String(role || '').toLowerCase().replace(/\s/g, ''),
+          });
+        } catch (_) { /* never block registration */ }
       } catch (err) { console.error('Registration pending email failed:', err); }
     };
 

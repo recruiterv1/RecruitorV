@@ -113,6 +113,16 @@ router.post('/submit', async (req, res) => {
           </div>`,
         });
         await sendEmailFull({ to: data.posterEmail, toName: vars.posterName, subject: _r.subject, htmlContent: _r.htmlContent });
+
+      try {
+        const { notify } = require('../utils/internalMessage');
+        await notify('employerSubmissionReceived', {
+          fromEmail: 'support@recruiterv.com', toEmail: data.posterEmail,
+          vars: { name: vars.posterName || 'there', clientName: data.companyName || '',
+                  positionName: data.position || '', positionId: created.pos_id || '' },
+          recipientRole: 'company',
+        });
+      } catch (_) { /* never block the flow */ }
       }
     } catch (mailErr) { console.error('employer confirmation email failed:', mailErr.message); }
 
@@ -252,6 +262,15 @@ router.post('/admin/approve/:id', managerAuth, async (req, res) => {
         });
       await sendEmailFull({ to: lc(companyEmail), toName: companyName, subject: _c.subject, htmlContent: _c.htmlContent });
 
+      try {
+        const { notify } = require('../utils/internalMessage');
+        await notify('companyApproved', {
+          fromEmail: 'support@recruiterv.com', toEmail: lc(companyEmail),
+          vars: { name: companyName || '', clientName: companyName || '', email: lc(companyEmail) },
+          recipientRole: 'company',
+        });
+      } catch (_) { /* never block the flow */ }
+
       for (const s of clientspocs) {
         const postedBy = `${pos.posterName || '—'}${pos.posterPhone ? ' · ' + pos.posterPhone : ''}${pos.posterEmail ? ' · ' + pos.posterEmail : ''}`;
         const _s = await renderEmail('companySpocAssigned',
@@ -268,6 +287,16 @@ router.post('/admin/approve/:id', managerAuth, async (req, res) => {
             </div>`,
           });
         await sendEmailFull({ to: s.email, toName: s.name || 'Client SPOC', subject: _s.subject, htmlContent: _s.htmlContent });
+
+      try {
+        const { notify } = require('../utils/internalMessage');
+        await notify('companySpocAssigned', {
+            fromEmail: 'support@recruiterv.com', toEmail: s.email,
+            vars: { name: s.name || 'there', spocName: s.name || '',
+                    clientName: companyName || '', email: s.email },
+            recipientRole: 'clientspoc',
+          });
+      } catch (_) { /* never block the flow */ }
       }
     } catch (mailErr) { console.error('approve emails failed:', mailErr.message); }
 
@@ -314,6 +343,17 @@ router.post('/admin/reject/:id', managerAuth, async (req, res) => {
           </div>`,
         });
         await sendEmailFull({ to: lc(pos.posterEmail), toName: vars.posterName, subject: _r.subject, htmlContent: _r.htmlContent });
+
+      try {
+        const { notify } = require('../utils/internalMessage');
+        await notify('employerSubmissionRejected', {
+          fromEmail: 'support@recruiterv.com', toEmail: lc(pos.posterEmail),
+          vars: { name: vars.posterName || 'there', clientName: pos.companyName || '',
+                  positionName: pos.position || '', positionId: pos.pos_id || '',
+                  reason: reason || '' },
+          recipientRole: 'company',
+        });
+      } catch (_) { /* never block the flow */ }
       }
     } catch (mailErr) { console.error('rejection email failed:', mailErr.message); }
 

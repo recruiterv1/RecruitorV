@@ -299,6 +299,19 @@ router.post('/register-recruiter', vendorAuth, async (req, res) => {
         vendorName: req.vendor?.name || 'your vendor',
       }, { subject: 'Your RecruiterV Recruiter Account is Ready', htmlContent: _fallbackHtml });
       await sendEmailFull({ to: email.toLowerCase().trim(), subject: _v.subject, htmlContent: _v.htmlContent });
+
+      try {
+        const { notify } = require('../utils/internalMessage');
+        await notify('vendorRegisteredRecruiter', {
+          fromEmail: req.vendor?.email || 'support@recruiterv.com',
+          toEmail: email.toLowerCase().trim(),
+          vars: {
+            name: name || 'there', firstName: String(name || '').split(' ')[0],
+            email: email.toLowerCase().trim(), senderName: req.vendor?.name || '',
+          },
+          senderRole: 'vendor', recipientRole: 'recruiter',
+        });
+      } catch (_) { /* never block registration */ }
     } catch (emailErr) { console.error('Vendor register-recruiter email failed:', emailErr.message); }
 
     return res.json({ success: true, message: 'Recruiter registered successfully', data: { id: newRecruiter.id, name, email: email.toLowerCase().trim() } });

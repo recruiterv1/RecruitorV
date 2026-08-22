@@ -340,6 +340,21 @@ router.put('/:id/status', authMiddleware, async (req, res) => {
       await sendEmail(r.coachExpertEmail, _r.subject, _r.htmlContent);
     } catch (e) { console.error('Coach/Expert status email failed:', e.message); }
 
+    try {
+      const { notify } = require('../utils/internalMessage');
+      await notify('positionAccessDecided', {
+        fromEmail: 'support@recruiterv.com',
+        toEmail: r.coachExpertEmail,
+        vars: {
+          recruiterName: r.coachExpertName || 'there',
+          positionName: r.positionTitle || '', positionId: r.positionId || '',
+          clientName: r.client || '', newStatus: statusLabel, reason: r.reason || '',
+        },
+        senderRole: 'clientspoc',
+        recipientRole: (r.coachExpertType || 'coach').toLowerCase().replace(/\s/g, ''),
+      });
+    } catch (_) { /* never block the decision */ }
+
     res.json({ success: true, message: `Request ${statusLabel.toLowerCase()} successfully.` });
   } catch (error) {
     console.error('Error updating direct request status:', error);

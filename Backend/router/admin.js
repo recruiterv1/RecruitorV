@@ -890,6 +890,19 @@ router.patch('/user-account-status', adminAuthMiddleware, async (req, res) => {
             { subject: `Your ${typeLabel} Application on RecruiterV — Update`, htmlContent: templates.accountRejected(userData.name || 'there', typeLabel) });
           await sendEmailFull({ to: userData.email, subject: _r.subject, htmlContent: _r.htmlContent });
         } catch (emailErr) { console.error('Rejection email failed:', emailErr.message); }
+
+        try {
+          const { notify } = require('../utils/internalMessage');
+          await notify('accountRejected', {
+            fromEmail: req.managerEmail || 'support@recruiterv.com',
+            toEmail: userData.email,
+            vars: {
+              name: userData.name || 'there', firstName: (userData.name || '').split(' ')[0],
+              email: userData.email, role: userType, reason: req.body?.reason || '',
+            },
+            recipientRole: String(userType).toLowerCase(),
+          });
+        } catch (_) { /* never block the rejection */ }
       }
       await docRef.delete();
       return res.json({ success: true, message: 'User rejected and removed' });
@@ -915,6 +928,20 @@ router.patch('/user-account-status', adminAuthMiddleware, async (req, res) => {
           { subject: `🎉 Your ${typeLabel} Account is Approved — RecruiterV`, htmlContent: templates.accountApproved(userData.name || 'there', typeLabel, loginUrlMap[userType]) });
         await sendEmailFull({ to: userData.email, subject: _r.subject, htmlContent: _r.htmlContent });
       } catch (emailErr) { console.error('Approval email failed:', emailErr.message); }
+
+      // Internal message, if a live template covers this event.
+      try {
+        const { notify } = require('../utils/internalMessage');
+        await notify('accountApproved', {
+          fromEmail: req.managerEmail || 'support@recruiterv.com',
+          toEmail: userData.email,
+          vars: {
+            name: userData.name || 'there', firstName: (userData.name || '').split(' ')[0],
+            email: userData.email, role: userType,
+          },
+          recipientRole: String(userType).toLowerCase(),
+        });
+      } catch (_) { /* never block the approval */ }
     }
 
     return res.json({ success: true, message: `Account ${newStatus}`, accountStatus: newStatus });

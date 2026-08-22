@@ -67,7 +67,7 @@ async function runAutoScreenReject({ dryRun = false } = {}) {
     const ts = lastTouched(c);
     if (!ts) { skippedNoTimestamp++; return; }        // never auto-reject on unknown age
     const cut = status === 'Applied' ? appliedCut : submittedCut;
-    if (ts <= cut) due.push({ ref: d.ref, from: status });
+    if (ts <= cut) due.push({ ref: d.ref, from: status, data: c });
   });
 
   const counts = { applied: 0, submitted: 0 };
@@ -98,6 +98,36 @@ async function runAutoScreenReject({ dryRun = false } = {}) {
     }
     // The Resume Bank pool is cached — refresh so these people show up immediately.
     try { require('./resumeBankMatch').invalidateCache(); } catch (_) {}
+
+    // Tell each submitting recruiter their candidate was auto-rejected, if a live
+    // template covers it. Best-effort and de-duplicated per recruiter+position so
+    // a big sweep cannot flood one inbox.
+    try {
+      const { notify } = require('./internalMessage');
+      const seen = new Set();
+      for (const { from, data: c } of due) {
+        const to = (c.recEmail || c.recruiterEmail || '').toLowerCase();
+        if (!to) continue;
+        const dedupe = `${to}__${c.pos_id || ''}`;
+        if (seen.has(dedupe)) continue;
+        seen.add(dedupe);
+        await notify('candidateAutoRejected', {
+          fromEmail: 'support@recruiterv.com',
+          toEmail: to,
+          vars: {
+            recruiterName: c.recName || c.recruiterName || 'there',
+            candidateName: c.candidate || '',
+            positionName: c.pos_name || '',
+            positionId: c.pos_id || '',
+            clientName: c.client || '',
+            newStatus: 'Screen Reject',
+            oldStatus: from,
+          },
+          senderRole: 'clientspoc',
+          recipientRole: (c.recRole || 'recruiter').toLowerCase().replace(/\s/g, ''),
+        });
+      }
+    } catch (e) { console.error('auto-reject internal message failed:', e.message); }
   }
 
   return {
