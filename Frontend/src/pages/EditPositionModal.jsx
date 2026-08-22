@@ -298,6 +298,26 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
     setForm(prev => ({ ...prev, expert_ids: newValue }));
   };
 
+  // Position briefing, edited inline so it can be added or changed on an
+  // already-posted position. Same six items as the standalone briefing page.
+  const [briefingItems, setBriefingItems] = useState([]);
+  const [briefingAnswers, setBriefingAnswers] = useState({});
+  const [briefingLoaded, setBriefingLoaded] = useState(false);
+  const setBriefingAnswer = (k, v) => setBriefingAnswers(a => ({ ...a, [k]: v }));
+  const briefedCount = briefingItems.filter(a => String(briefingAnswers[a.key] || '').trim()).length;
+
+  useEffect(() => {
+    let live = true;
+    axios.get('/api/briefing/areas', { withCredentials: true })
+      .then(r => { if (live) setBriefingItems(r.data?.areas || []); })
+      .catch(() => { if (live) setBriefingItems([]); });
+    axios.get(`/api/briefing/position/${position.pos_id}`, { withCredentials: true })
+      .then(r => { if (live) setBriefingAnswers(r.data?.briefing?.answers || {}); })
+      .catch(() => { /* none yet, or not this user's position to brief */ })
+      .finally(() => { if (live) setBriefingLoaded(true); });
+    return () => { live = false; };
+  }, [position.pos_id]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submit) return;
@@ -337,6 +357,18 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
         certifications: form.certifications.join(', '),
         num_interview_rounds: form.interview_rounds.length,
       };
+
+      // Best-effort: a briefing failure must never look like the position failed.
+      if (briefingLoaded && briefedCount > 0) {
+        try {
+          await axios.post(`/api/briefing/position/${position.pos_id}`, {
+            answers: briefingAnswers,
+            status: briefedCount === briefingItems.length ? 'ready' : 'draft',
+          }, { withCredentials: true });
+        } catch (err) {
+          console.warn('Briefing not saved:', err.response?.data?.message || err.message);
+        }
+      }
 
       const res = await axios.put(`/candidate/pos/modify/${position.id}`, payload, {
         withCredentials: true
@@ -1035,6 +1067,61 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
                 onChange={(qs) => setForm(prev => ({ ...prev, client_questions: qs }))}
               />
             </div>
+
+            {/* Position Briefing — same items as the Add Position wizard and the
+                standalone briefing page, so an existing position can be briefed. */}
+            {briefingItems.length > 0 && (
+              <div className="mb-8">
+                <div className="flex items-center gap-2 mb-1">
+                  <Users size={18} className="text-blue-600" />
+                  <h4 className="text-base sm:text-lg font-bold text-gray-900">Position Briefing</h4>
+                </div>
+                <p className="text-xs text-gray-500 mb-4">
+                  Brief the recruiters, coaches, experts and vendors working this position. Each
+                  answer gets its own speaker on the position page. Saved when you save the position.
+                </p>
+                <div className="space-y-3">
+                  {briefingItems.map(a => {
+                    const val = briefingAnswers[a.key] || '';
+                    const filled = !!val.trim();
+                    return (
+                      <div key={a.key}
+                        className={`rounded-xl border-2 p-3 sm:p-4 transition-colors ${
+                          filled ? 'border-green-200 bg-green-50/40' : 'border-gray-200 bg-white'}`}>
+                        <div className="flex items-start gap-2 sm:gap-3">
+                          <span className="text-lg flex-shrink-0">{a.icon}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] text-gray-400">{a.n}</span>
+                              <span className="text-sm font-bold text-gray-900">{a.title}</span>
+                              {filled && (
+                                <span className="ml-auto text-[11px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
+                                  ✓ Covered
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">{a.prompt}</p>
+                            <textarea
+                              value={val}
+                              rows={3}
+                              onChange={(e) => setBriefingAnswer(a.key, e.target.value)}
+                              placeholder={a.prompt}
+                              className="mt-2 w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all resize-y outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs text-gray-500">
+                    {briefedCount} of {briefingItems.length} answered
+                    {briefedCount > 0 && briefedCount < briefingItems.length &&
+                      ' — saved as a draft; answer all of them to publish it.'}
+                    {briefedCount === briefingItems.length && ' — this will be published.'}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Submit Buttons */}
             <div className="flex flex-col sm:flex-row justify-end gap-3 sm:gap-4 pt-4 sm:pt-6 border-t-2 border-gray-200">

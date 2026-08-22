@@ -129,11 +129,23 @@ async function authorPositionIds(author) {
     return [...new Set(snap.docs.map(d => String(d.data().pos_id)).filter(Boolean))];
   }
   if (author.type === 'vendor') {
-    const positionAccess = require('../model_fire/positionAccessF');
+    const ids = new Set();
+    // Positions the vendor posted themselves — briefable straight away, which is
+    // what lets the briefing be captured on the Add Position form.
     try {
+      const own = await db.collection('admin_AddPos')
+        .where('postedByVendor', '==', author.email).get();
+      own.docs.forEach(d => ids.add(String(d.data().pos_id)));
+    } catch (_) { /* fall through to assignments */ }
+    // Plus anything they took onto their own account.
+    try {
+      const positionAccess = require('../model_fire/positionAccessF');
       const reqs = await positionAccess.getRecruiterAssignments(author.email) || [];
-      return [...new Set(reqs.map(r => String(r.positionId)).filter(Boolean))];
-    } catch (_) { return []; }
+      reqs.forEach(r => ids.add(String(r.positionId)));
+    } catch (_) { /* own positions still apply */ }
+    ids.delete('undefined');
+    ids.delete('');
+    return [...ids];
   }
   const [directSnap, assignSnap] = await Promise.all([
     db.collection('coach_expert_direct_requests').where('coachExpertEmail', '==', author.email).get(),

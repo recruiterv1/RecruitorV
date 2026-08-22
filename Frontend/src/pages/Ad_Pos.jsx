@@ -174,8 +174,19 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
   });
 
   // ── Wizard state + new-field helpers ──
-  const WIZARD_STEPS = ["Role basics", "Client & pay", "Experience & education", "Role details", "Recruitment process", "Client requirements", "Candidate Instructions"];
+  const WIZARD_STEPS = ["Role basics", "Client & pay", "Experience & education", "Role details", "Recruitment process", "Client requirements", "Candidate Instructions", "Position Briefing"];
   const [step, setStep] = useState(0);
+  // Position briefing captured with the position and saved right after it is
+  // created. Same six items as /briefing/:pos_id — fetched so the two never drift.
+  const [briefingItems, setBriefingItems] = useState([]);
+  const [briefingAnswers, setBriefingAnswers] = useState({});
+  const setBriefingAnswer = (k, v) => setBriefingAnswers(a => ({ ...a, [k]: v }));
+  const briefedCount = briefingItems.filter(a => String(briefingAnswers[a.key] || '').trim()).length;
+  useEffect(() => {
+    axios.get('/api/briefing/areas', { withCredentials: true })
+      .then(r => setBriefingItems(r.data?.areas || []))
+      .catch(() => setBriefingItems([]));
+  }, []);
   const [certInput, setCertInput] = useState("");
   const addCert = () => {
     const v = certInput.trim();
@@ -593,6 +604,25 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
         res = await axios.post(postUrl, submitData, { withCredentials: true });
       }
       console.log("Server Response:", res.data);
+
+      // Save the briefing captured on the last step against the new position.
+      // Best-effort: the position is already created, so a briefing failure must
+      // never look like the position failed — it can be added later from
+      // Position Briefings.
+      if (briefedCount > 0 && !editData) {
+        const newPosId = res.data?.pos_id || res.data?.data?.pos_id || form.pos_id;
+        if (newPosId) {
+          try {
+            await axios.post(`/api/briefing/position/${newPosId}`, {
+              answers: briefingAnswers,
+              status: briefedCount === briefingItems.length ? 'ready' : 'draft',
+            }, { withCredentials: true });
+          } catch (err) {
+            console.warn('Briefing not saved:', err.response?.data?.message || err.message);
+          }
+        }
+      }
+
       if (publicMode && typeof publicMode.onPosted === 'function') { try { publicMode.onPosted(res.data); } catch (_) {} }
       if (companyMode && typeof companyMode.onPosted === 'function') { try { companyMode.onPosted(); } catch (_) {} }
       if (vendorMode && typeof vendorMode.onPosted === 'function') { try { vendorMode.onPosted(); } catch (_) {} }
@@ -1698,6 +1728,67 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
                 </label>
               </div>
             )}
+            </>)}
+
+            {step === 7 && (<>
+            {/* Position Briefing — same items as the standalone briefing page. Saved
+                against the position as soon as it is created. */}
+            <div className="mb-6 sm:mb-8">
+              <div className="flex items-center gap-2 mb-1">
+                <Users size={18} className="sm:w-5 sm:h-5 text-blue-600" />
+                <h4 className="text-base sm:text-lg font-bold text-gray-900">Position Briefing</h4>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">
+                Brief the recruiters, coaches, experts and vendors who will work this position.
+                Each answer gets its own speaker on the position page, so they can play just the
+                part they need. Optional — you can also add it later from Position Briefings.
+              </p>
+
+              {!briefingItems.length ? (
+                <p className="text-sm text-gray-400">Loading briefing items…</p>
+              ) : (
+                <div className="space-y-3">
+                  {briefingItems.map(a => {
+                    const val = briefingAnswers[a.key] || '';
+                    const filled = !!val.trim();
+                    return (
+                      <div key={a.key}
+                        className={`rounded-xl border-2 p-3 sm:p-4 transition-colors ${
+                          filled ? 'border-green-200 bg-green-50/40' : 'border-gray-200 bg-white'}`}>
+                        <div className="flex items-start gap-2 sm:gap-3">
+                          <span className="text-lg flex-shrink-0">{a.icon}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] text-gray-400">{a.n}</span>
+                              <span className="text-sm font-bold text-gray-900">{a.title}</span>
+                              {filled && (
+                                <span className="ml-auto text-[11px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
+                                  ✓ Covered
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">{a.prompt}</p>
+                            <textarea
+                              value={val}
+                              rows={3}
+                              onChange={(e) => setBriefingAnswer(a.key, e.target.value)}
+                              placeholder={a.prompt}
+                              className="mt-2 w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all resize-y outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs text-gray-500">
+                    {briefedCount} of {briefingItems.length} answered
+                    {briefedCount > 0 && briefedCount < briefingItems.length &&
+                      ' — a partial briefing is saved as a draft; answer all of them to publish it.'}
+                    {briefedCount === briefingItems.length && ' — this will be published with the position.'}
+                  </p>
+                </div>
+              )}
+            </div>
             </>)}
 
             {/* Wizard navigation */}
