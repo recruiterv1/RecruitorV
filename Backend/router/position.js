@@ -174,11 +174,11 @@ router.get('/pos/show-for-user', authMiddleware, async (req, res) => {
         .filter(Boolean);
 
       if (userCats.length) {
-        show = show.filter(pos => {
-          const posCat = (pos.skill_category || '').toLowerCase().trim();
-          // Strict match: position must have a skill_category AND it must be in the user's list
-          return posCat && userCats.includes(posCat);
-        });
+        // Shared matcher: exact, synonym family (Finance ↔ Banking, IT ↔
+        // Technology) or the position's sub-category. Exact-only matching left
+        // anyone whose profile wording differed with an empty list.
+        const { positionMatchesSkills } = require('../utils/skillMatch');
+        show = show.filter(pos => positionMatchesSkills(pos, userCats));
       }
     }
 

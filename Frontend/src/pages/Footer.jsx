@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { Linkedin, Twitter, Facebook, Mail, Phone, MapPin, ArrowRight } from 'lucide-react'
+import { Linkedin, Twitter, Facebook, Mail, Phone, MapPin, ArrowRight, Smartphone } from 'lucide-react'
 
 const Footer = () => {
   return (
@@ -148,6 +148,15 @@ const Footer = () => {
                 aria-label="Facebook"
               >
                 <Facebook size={22} className="text-blue-500 group-hover:text-white transition-colors" />
+              </a>
+              {/* Android app download */}
+              <a
+                href="/get-app"
+                className="group bg-green-600/20 hover:bg-green-600 p-3 rounded-xl transition-all duration-300 transform hover:scale-110 hover:shadow-lg hover:shadow-green-500/50"
+                aria-label="Get the Android app"
+                title="Get the Android app"
+              >
+                <Smartphone size={22} className="text-green-400 group-hover:text-white transition-colors" />
               </a>
             </div>
 

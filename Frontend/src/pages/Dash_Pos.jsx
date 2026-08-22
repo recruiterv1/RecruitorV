@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { positionMatchesSkills } from '../utils/skillMatch';
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Briefcase, MapPin, IndianRupee, BadgePercent, Calendar, TrendingUp, AlertCircle, CheckCircle, Check, Send, Clock, Ban, Zap, Building2, Search, X, RefreshCw, Filter, ChevronDown } from 'lucide-react';
@@ -195,14 +196,13 @@ const Dash_Pos= () => {
   // Positions for the active tab (before search/filters).
   const tabJobs = useMemo(() => {
     if (mainTab === 'all') return availableJobs;
-    const cat = (matchCat || '').toLowerCase().trim();
-    if (!cat) return [];
-    return availableJobs.filter(j => (j.skill_category || '').toLowerCase().trim() === cat);
+    if (!matchCat) return [];
+    return availableJobs.filter(j => positionMatchesSkills(j, [matchCat]));
   }, [availableJobs, mainTab, matchCat]);
   // Count of matching positions per skill category (for the sub-tab badges).
   const matchCounts = useMemo(() => {
     const m = {};
-    skillCats.forEach(c => { const cl = c.toLowerCase().trim(); m[c] = availableJobs.filter(j => (j.skill_category || '').toLowerCase().trim() === cl).length; });
+    skillCats.forEach(c => { m[c] = availableJobs.filter(j => positionMatchesSkills(j, [c])).length; });
     return m;
   }, [availableJobs, skillCats]);
 
@@ -444,6 +444,25 @@ const Dash_Pos= () => {
             ))}
           </div>
         )
+      )}
+
+      {/* A genuinely empty Skill Fit means there is no open position in that
+          field right now — say so, rather than showing a blank page. */}
+      {mainTab === 'matching' && skillCats.length > 0 && tabJobs.length === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5">
+          <p className="text-sm text-amber-900 font-semibold">
+            No open position in {matchCat} right now.
+          </p>
+          <p className="text-xs text-amber-800 mt-1">
+            {skillCats.some(c => (matchCounts[c] || 0) > 0)
+              ? 'Try one of your other skill categories above, or browse every open position.'
+              : 'Nothing matches your profile categories at the moment. Browse every open position, or add more categories to your profile.'}
+          </p>
+          <button onClick={() => setMainTab('all')}
+            className="mt-2 text-xs font-bold text-amber-900 underline underline-offset-2">
+            Browse all {availableJobs.length} open positions →
+          </button>
+        </div>
       )}
 
       {/* Filter panel */}

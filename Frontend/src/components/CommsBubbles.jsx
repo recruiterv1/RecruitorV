@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mail, MessageSquare } from 'lucide-react';
+import { Mail, MessageSquare, Smartphone } from 'lucide-react';
 import { UserStateContext } from '../context/AuthPro';
 import { useChatNotify } from '../context/ChatNotify';
 
@@ -39,7 +39,7 @@ export default function CommsBubbles() {
     ? (location.pathname === '/ad_panel' && location.hash === '#messages')
     : location.pathname === links.chat;
 
-  const Bubble = ({ label, active, onClick, children, badge }) => (
+  const Bubble = ({ label, active, onClick, children, badge, tone }) => (
     <button
       onClick={onClick}
       title={label}
@@ -47,7 +47,9 @@ export default function CommsBubbles() {
       className={`relative w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105 focus:outline-none ${
         active ? 'ring-2 ring-offset-2 ring-blue-400' : ''
       }`}
-      style={{ background: 'linear-gradient(135deg,#2563eb,#f97316)' }}
+      style={{ background: tone === 'android'
+        ? 'linear-gradient(135deg,#16a34a,#65a30d)'
+        : 'linear-gradient(135deg,#2563eb,#f97316)' }}
     >
       <span className="text-white">{children}</span>
       {badge > 0 && (
@@ -65,6 +67,12 @@ export default function CommsBubbles() {
       </Bubble>
       <Bubble label="Chat" active={onChat} badge={chatUnread} onClick={() => go(links.chat)}>
         <MessageSquare size={22} />
+      </Bubble>
+      {/* Android app — sits after Chat, in its own colour so it reads as an
+          app download rather than another comms channel. */}
+      <Bubble label="Get the Android app" active={location.pathname === '/get-app'}
+        onClick={() => go('/get-app')} tone="android">
+        <Smartphone size={22} />
       </Bubble>
     </div>
   );

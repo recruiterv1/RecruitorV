@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
+import { positionMatchesSkills } from '../utils/skillMatch';
 import Sidebar from '../pages/Sidebar';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -167,13 +168,12 @@ const OpenPositionsContent = () => {
 
   const tabJobs = useMemo(() => {
     if (mainTab === 'all') return openJobs;
-    const cat = (matchCat || '').toLowerCase().trim();
-    if (!cat) return [];
-    return openJobs.filter(j => (j.skill_category || '').toLowerCase().trim() === cat);
+    if (!matchCat) return [];
+    return openJobs.filter(j => positionMatchesSkills(j, [matchCat]));
   }, [openJobs, mainTab, matchCat]);
   const matchCounts = useMemo(() => {
     const m = {};
-    skillCats.forEach(c => { const cl = c.toLowerCase().trim(); m[c] = openJobs.filter(j => (j.skill_category || '').toLowerCase().trim() === cl).length; });
+    skillCats.forEach(c => { m[c] = openJobs.filter(j => positionMatchesSkills(j, [c])).length; });
     return m;
   }, [openJobs, skillCats]);
 
