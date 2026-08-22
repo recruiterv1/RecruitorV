@@ -181,360 +181,208 @@ const SuperAdmin = () => {
   };
 
   const menuItems = [
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', component: <Dashboard /> },
     {
-      id: 'dashboard',
-      icon: LayoutDashboard,
-      label: 'Dashboard',
-      component: <Dashboard />
-    },
-    {
-      id: 'ai-reports',
-      icon: Sparkles,
-      label: 'AI Reports',
-      component: <SuperAdminAIReports />
-    },
-    {
-      id: 'users',
-      icon: Users,
-      label: 'Users',
+      id: 'menu-people', icon: Users, label: 'People',
       children: [
-        {
-          id: 'users-all-experts',
-          icon: User,
-          label: 'All Experts',
-          component: <AllExperts embedded />
-        },
-        {
-          id: 'users-all-coaches',
-          icon: UserCheck,
-          label: 'All Coach',
-          component: <AllCoaches embedded />
-        },
-        {
-          id: 'users-all-recruiters',
-          icon: Users,
-          label: 'All Recruiter',
-          component: <AllRecruiters embedded />
-        },
-        {
-          id: 'users-all-clientspocs',
-          icon: Building2,
-          label: 'All ClientSPOC',
-          component: <AllClientSpocs embedded />
-        },
-        {
-          id: 'users-all-vendors',
-          icon: Store,
-          label: 'All Vendor',
-          component: <AllVendors embedded />
-        },
+      {
+        id: 'grp-all-users', icon: Users, label: 'All Users',
+        children: [
+        { id: 'users-all-recruiters', icon: Users, label: 'All Recruiter', component: <AllRecruiters embedded /> },
+        { id: 'users-all-coaches', icon: UserCheck, label: 'All Coach', component: <AllCoaches embedded /> },
+        { id: 'users-all-experts', icon: User, label: 'All Experts', component: <AllExperts embedded /> },
+        { id: 'users-all-clientspocs', icon: Building2, label: 'All ClientSPOC', component: <AllClientSpocs embedded /> },
+        { id: 'users-all-vendors', icon: Store, label: 'All Vendor', component: <AllVendors embedded /> },
+        ]
+      },
+      {
+        id: 'grp-newly', icon: UserPlus, label: 'Newly Registered',
+        children: [
+        { id: 'newly-registered-recruiters', icon: Users, label: 'Recruiters', component: <PendingUsersPanel userType="recruiter" /> },
+        { id: 'newly-registered-coaches', icon: UserCheck, label: 'Coaches', component: <PendingUsersPanel userType="coach" /> },
+        { id: 'newly-registered-experts', icon: User, label: 'Experts', component: <PendingUsersPanel userType="expert" /> },
+        ]
+      },
+      {
+        id: 'grp-requests', icon: ClipboardList, label: 'Requests & Assignments',
+        children: [
+        { id: 'superadmin-coach-expert-requests', icon: ClipboardList, label: 'Coach/Expert Request', component: <SuperAdminCoachExpertRequests /> },
+        { id: 'vendor-upgrade-requests', icon: Crown, label: 'New Vendor Request', component: <CoachVendorRequests /> },
+        { id: 'coach-recruiter-assignments', icon: UserCheck, label: 'Coach→Recruiter Assignments', component: <CoachRecruiterAssignmentsAdmin /> },
+        ]
+      },
+      { id: 'teams', icon: Users, label: 'Teams', component: <SuperAdminTeams /> },
+      { id: 'employees', icon: BadgeCheck, label: 'Employees', component: <SuperAdminEmployees /> },
+      { id: 'clientspoc', icon: PlusCircle, label: 'Add User', component: <ClientSpocAdd /> },
       ]
     },
     {
-      id: 'newly-registered',
-      icon: UserPlus,
-      label: 'Newly Registered',
+      id: 'menu-candidates', icon: UserCheck, label: 'Candidates',
       children: [
-        {
-          id: 'newly-registered-experts',
-          icon: User,
-          label: 'Experts',
-          component: <PendingUsersPanel userType="expert" />
-        },
-        {
-          id: 'newly-registered-coaches',
-          icon: UserCheck,
-          label: 'Coaches',
-          component: <PendingUsersPanel userType="coach" />
-        },
-        {
-          id: 'newly-registered-recruiters',
-          icon: Users,
-          label: 'Recruiters',
-          component: <PendingUsersPanel userType="recruiter" />
-        },
+      { id: 'candidates-all', icon: Users, label: 'All Candidates', component: <AllCandidatesPanel /> },
+      { id: 'candidates-direct', icon: UserPlus, label: 'Direct Candidate', component: <DirectCandidatesPanel /> },
+      { id: 'candidates-active', icon: Briefcase, label: 'Active Candidates', component: <ActiveCandidatesPanel /> },
+      { id: 'direct-applicants', icon: UserPlus, label: 'Direct Applicants', component: <DirectApplicants /> },
       ]
     },
     {
-      id: 'vendor-management',
-      icon: Store,
-      label: 'Vendor Management',
-      component: <VendorManagement />
-    },
-    {
-      id: 'vendor-upgrade-requests',
-      icon: Crown,
-      label: 'New Vendor Request',
-      component: <CoachVendorRequests />
-    },
-    {
-      id: 'statistics',
-      icon: Database,
-      label: 'Statistics',
+      id: 'menu-positions', icon: Briefcase, label: 'Positions',
       children: [
-        {
-          id: 'candidatestats',
-          icon: Users,
-          label: 'Candidate Statistics',
-          component: <CandidateStats />
-        },
-        {
-          id: 'recruiterstats',
-          icon: Database,
-          label: 'Recruiter Statistics',
-          component: <RecruiterStats />
-        },
-        {
-          id: 'clientstats',
-          icon: Building2,
-          label: 'Client Statistics',
-          component: <ClientStats />
-        },
-        {
-          id: 'positionstats',
-          icon: Briefcase,
-          label: 'Position Statistics',
-          component: <PositionStats />
-        },
-        {
-          id: 'coach-expert-stats',
-          icon: UserCheck,
-          label: 'Coach & Expert Stats',
-          component: <CoachExpertStats />
-        }
+      { id: 'all-positions', icon: Briefcase, label: 'All Positions', component: <AllPositions /> },
+      { id: 'assigned-positions', icon: Users, label: 'All Assigned Positions', component: <SuperAdminAssignedPositions /> },
       ]
     },
     {
-      id: 'candidates',
-      icon: Users,
-      label: 'Candidates',
+      id: 'menu-clients', icon: Building2, label: 'Clients & Vendors',
       children: [
-        {
-          id: 'candidates-all',
-          icon: Users,
-          label: 'All Candidates',
-          component: <AllCandidatesPanel />
-        },
-        {
-          id: 'candidates-direct',
-          icon: UserPlus,
-          label: 'Direct Candidate',
-          component: <DirectCandidatesPanel />
-        },
-        {
-          id: 'candidates-active',
-          icon: Briefcase,
-          label: 'Active Candidates',
-          component: <ActiveCandidatesPanel />
-        },
+      {
+        id: 'grp-companies', icon: Building2, label: 'Companies',
+        children: [
+        { id: 'company-add', icon: PlusCircle, label: 'Add New Company', component: <ClientSpocCompany/> },
+        { id: 'company-all', icon: Building2, label: 'All Companies', component: <AllCompanies/> },
+        ]
+      },
+      { id: 'vendor-management', icon: Store, label: 'Vendor Management', component: <VendorManagement /> },
+      { id: 'consulting-firms', icon: Landmark, label: 'Consulting Firms', component: <SuperAdminConsultingFirms /> },
+      { id: 'public-jobs', icon: Briefcase, label: 'Public Job Requests', component: <SuperAdminPublicJobs /> },
+      { id: 'company-access', icon: Building2, label: 'Company Access', component: <SuperAdminCompanyAccess /> },
       ]
     },
     {
-      id: 'all-positions',
-      icon: Briefcase,
-      label: 'All Positions',
-      component: <AllPositions />
-    },
-    {
-      id: 'assigned-positions',
-      icon: Users,
-      label: 'All Assigned Positions',
-      component: <SuperAdminAssignedPositions />
-    },
-    {
-      id: 'direct-applicants',
-      icon: UserPlus,
-      label: 'Direct Applicants',
-      component: <DirectApplicants />
-    },
-    {
-      id: 'reports',
-      icon: BarChart2,
-      label: 'Reports',
+      id: 'menu-analytics', icon: BarChart2, label: 'Analytics & Reports',
       children: [
-        {
-          id: 'report-candidate',
-          icon: FileBarChart2,
-          label: 'Candidate Report',
-          component: <SuperAdminReports />
-        },
-        {
-          id: 'report-recruiter',
-          icon: FileBarChart2,
-          label: 'Recruiter Report',
-          component: <RecruiterReport />
-        },
-        {
-          id: 'report-coach',
-          icon: FileBarChart2,
-          label: 'Coach Report',
-          component: <CoachReport />
-        },
-        {
-          id: 'report-expert',
-          icon: FileBarChart2,
-          label: 'Expert Report',
-          component: <ExpertReport />
-        },
-        {
-          id: 'report-clientspoc',
-          icon: FileBarChart2,
-          label: 'Client SPOC Report',
-          component: <ClientSpocReport />
-        },
-        {
-          id: 'report-position',
-          icon: FileBarChart2,
-          label: 'Position Report',
-          component: <PositionReport />
-        },
-        {
-          id: 'report-admin',
-          icon: FileBarChart2,
-          label: 'Admin Report',
-          component: <AdminRegistrationReport />
-        },
-        {
-          id: 'report-vendor',
-          icon: FileBarChart2,
-          label: 'Vendor Report',
-          component: <VendorReport />
-        },
+      { id: 'ai-reports', icon: Sparkles, label: 'AI Reports', component: <SuperAdminAIReports /> },
+      {
+        id: 'grp-stats', icon: BarChart2, label: 'Statistics',
+        children: [
+        { id: 'candidatestats', icon: Users, label: 'Candidate Statistics', component: <CandidateStats /> },
+        { id: 'recruiterstats', icon: Database, label: 'Recruiter Statistics', component: <RecruiterStats /> },
+        { id: 'clientstats', icon: Building2, label: 'Client Statistics', component: <ClientStats /> },
+        { id: 'positionstats', icon: Briefcase, label: 'Position Statistics', component: <PositionStats /> },
+        { id: 'coach-expert-stats', icon: UserCheck, label: 'Coach & Expert Stats', component: <CoachExpertStats /> },
+        ]
+      },
+      {
+        id: 'grp-reports', icon: FileBarChart2, label: 'Reports',
+        children: [
+        { id: 'report-candidate', icon: FileBarChart2, label: 'Candidate Report', component: <SuperAdminReports /> },
+        { id: 'report-recruiter', icon: FileBarChart2, label: 'Recruiter Report', component: <RecruiterReport /> },
+        { id: 'report-coach', icon: FileBarChart2, label: 'Coach Report', component: <CoachReport /> },
+        { id: 'report-expert', icon: FileBarChart2, label: 'Expert Report', component: <ExpertReport /> },
+        { id: 'report-clientspoc', icon: FileBarChart2, label: 'Client SPOC Report', component: <ClientSpocReport /> },
+        { id: 'report-position', icon: FileBarChart2, label: 'Position Report', component: <PositionReport /> },
+        { id: 'report-admin', icon: FileBarChart2, label: 'Admin Report', component: <AdminRegistrationReport /> },
+        { id: 'report-vendor', icon: FileBarChart2, label: 'Vendor Report', component: <VendorReport /> },
+        ]
+      },
       ]
     },
     {
-      id: 'blogs',
-      icon: BookOpen,
-      label: 'Blog Management',
-      component: <BlogManagement />
-    },
-    {
-      id: 'superadmin-coach-expert-requests',
-      icon: ClipboardList,
-      label: 'Coach/Expert Request',
-      component: <SuperAdminCoachExpertRequests />
-    },
-    {
-      id: 'coach-recruiter-assignments',
-      icon: UserCheck,
-      label: 'Coach→Recruiter Assignments',
-      component: <CoachRecruiterAssignmentsAdmin />
-    },
-    {
-      id: 'teams',
-      icon: Users,
-      label: 'Teams',
-      component: <SuperAdminTeams />
-    },
-    {
-      id: 'employees',
-      icon: BadgeCheck,
-      label: 'Employees',
-      component: <SuperAdminEmployees />
-    },
-    {
-      id: 'send-email',
-      icon: Mail,
-      label: 'Send Email',
-      component: <SuperAdminSendEmail />
-    },
-    {
-      id: 'email-templates',
-      icon: Mail,
-      label: 'Email Templates',
-      component: <SuperAdminEmailTemplates />
-    },
-    {
-      id: 'internal-message-templates',
-      icon: MessageSquare,
-      label: 'Internal Message Templates',
-      component: <InternalMessageTemplates />
-    },
-    {
-      id: 'inbox-access',
-      icon: Inbox,
-      label: 'Inbox Access',
-      component: <SuperAdminInboxAccess />
-    },
-    {
-      id: 'company-access',
-      icon: Building2,
-      label: 'Company Access',
-      component: <SuperAdminCompanyAccess />
-    },
-    {
-      id: 'public-jobs',
-      icon: Briefcase,
-      label: 'Public Job Requests',
-      component: <SuperAdminPublicJobs />
-    },
-    {
-      id: 'consulting-firms',
-      icon: Landmark,
-      label: 'Consulting Firms',
-      component: <SuperAdminConsultingFirms />
-    },
-    {
-      id: 'company',
-      icon: Building2,
-      label: 'Company',
+      id: 'menu-comms', icon: MessageSquare, label: 'Communication',
       children: [
-        {
-          id: 'company-add',
-          icon: PlusCircle,
-          label: 'Add New Company',
-          component: <ClientSpocCompany/>
-        },
-        {
-          id: 'company-all',
-          icon: Building2,
-          label: 'All Companies',
-          component: <AllCompanies/>
-        },
-      ],
-    },
-    {
-      id: 'clientspoc',
-      icon: PlusCircle,
-      label: 'Add User',
-      component: <ClientSpocAdd />
-    },
-    {
-      id: 'admin-tools',
-      icon: Wrench,
-      label: 'Admin Tools',
-      component: <AdminTools />
-    },
-    {
-      id: 'messages',
-      icon: MessageSquare,
-      label: 'Messages',
-      component: <ChatPanel />
-    },
-    {
-      id: 'category',
-      icon: Layers,
-      label: 'Category',
-      children: [
-        {
-          id: 'category-create',
-          icon: PlusCircle,
-          label: 'Create Menu',
-          component: <CategoryCreate />
-        },
-        {
-          id: 'category-list',
-          icon: List,
-          label: 'All Menu',
-          component: <CategoryList />
-        },
+      { id: 'messages', icon: MessageSquare, label: 'Messages', component: <ChatPanel /> },
+      { id: 'send-email', icon: Mail, label: 'Send Email', component: <SuperAdminSendEmail /> },
+      { id: 'email-templates', icon: Mail, label: 'Email Templates', component: <SuperAdminEmailTemplates /> },
+      { id: 'internal-message-templates', icon: MessageSquare, label: 'Internal Message Templates', component: <InternalMessageTemplates /> },
+      { id: 'inbox-access', icon: Inbox, label: 'Inbox Access', component: <SuperAdminInboxAccess /> },
       ]
     },
+    {
+      id: 'menu-content', icon: Layers, label: 'Content & Menus',
+      children: [
+      { id: 'blogs', icon: BookOpen, label: 'Blog Management', component: <BlogManagement /> },
+      { id: 'category-create', icon: PlusCircle, label: 'Create Menu', component: <CategoryCreate /> },
+      { id: 'category-list', icon: List, label: 'All Menu', component: <CategoryList /> },
+      ]
+    },
+    { id: 'admin-tools', icon: Wrench, label: 'Admin Tools', component: <AdminTools /> },
   ];
 
 
 
-  const activeMenuItem = menuItems.find(item => item.id === activeTab);
+  // Walk the whole tree, at any depth, to find the selected item.
+  const findNode = (nodes, id) => {
+    for (const n of nodes || []) {
+      if (n.id === id) return n;
+      const hit = findNode(n.children, id);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const activeMenuItem = findNode(menuItems, activeTab);
+
+  // Sidebar nodes render recursively so the menu can nest to three levels:
+  // Menu → sub-menu → child. A node with `children` is a collapsible group at
+  // any depth; anything else is a selectable leaf.
+  const renderNode = (item, depth = 0, index = 0) => {
+    const Icon = item.icon;
+    const pad = depth === 0 ? '' : depth === 1 ? 'ml-3' : 'ml-6';
+
+    if (item.children && Array.isArray(item.children)) {
+      const isOpen = !!openGroups[item.id];
+      return (
+        <li key={item.id} className={pad}>
+          <button
+            onClick={() => setOpenGroups(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+            className={`w-full flex items-center gap-3 px-3 ${depth === 0 ? 'py-2' : 'py-1.5'} rounded-lg text-blue-100 hover:bg-blue-700/50 hover:text-white transition-all ${!showExpanded ? 'justify-center' : ''}`}
+          >
+            <Icon size={depth === 0 ? 18 : 16} className="flex-shrink-0" />
+            {showExpanded && (
+              <span className={`${depth === 0 ? 'font-semibold text-sm' : 'text-[13px]'} flex-1 truncate text-left`}>
+                {item.label}
+              </span>
+            )}
+            {showExpanded && <span className="text-xs">{isOpen ? '▾' : '▸'}</span>}
+          </button>
+          <ul className={`mt-1 space-y-1 ${isOpen ? '' : 'hidden'}`}>
+            {item.children.map((child, i) => renderNode(child, depth + 1, i))}
+          </ul>
+        </li>
+      );
+    }
+
+    const active = activeTab === item.id;
+    return (
+      <li key={item.id} className={pad}>
+        <button
+          onClick={() => { setActiveTab(item.id); setIsMobileSidebarOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 ${depth === 0 ? 'py-3' : 'py-2'} rounded-lg transition-all duration-200 group relative ${
+            active
+              ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg'
+              : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
+          } ${!showExpanded ? 'justify-center' : ''}`}
+        >
+          <span className="relative flex-shrink-0">
+            <Icon size={depth === 0 ? 20 : 17} />
+            {item.id === 'messages' && chatUnread > 0 && (
+              <>
+                <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
+                <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
+              </>
+            )}
+          </span>
+          {showExpanded && (
+            <span
+              className={`${depth === 0 ? 'font-medium text-sm' : 'text-[13px]'} flex-1 truncate text-left opacity-0 animate-fadeIn`}
+              style={{ animationDelay: `${200 + index * 30}ms` }}
+            >
+              {item.label}
+            </span>
+          )}
+          {item.id === 'messages' && chatUnread > 0 && showExpanded && (
+            <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center animate-chat-blink">{chatUnread}</span>
+          )}
+          {!showExpanded && !isHovered && (
+            <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none shadow-xl">
+              {item.label}
+            </div>
+          )}
+        </button>
+      </li>
+    );
+  };
+
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-orange-50/30">
@@ -603,110 +451,7 @@ const SuperAdmin = () => {
         {/* Navigation Menu */}
         <nav className="flex-1 min-h-0 py-6 px-3 overflow-y-auto scrollbar-thin scrollbar-thumb-blue-700 scrollbar-track-blue-900">
           <ul className="space-y-2">
-            {menuItems.map((item, index) => {
-              if (item.children && Array.isArray(item.children)) {
-                const Icon = item.icon;
-                const isOpen = !!openGroups[item.id];
-                return (
-                  <li key={item.id}>
-                    <button
-                      onClick={() => setOpenGroups(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-blue-100 hover:bg-blue-700/50 hover:text-white transition-all ${!showExpanded ? 'justify-center' : ''}`}
-                    >
-                      <Icon size={18} className="flex-shrink-0" />
-                      {showExpanded && (
-                        <span className="font-semibold text-sm flex-1 truncate text-left">
-                          {item.label}
-                        </span>
-                      )}
-                      {showExpanded && (
-                        <span className="text-xs">{isOpen ? '▾' : '▸'}</span>
-                      )}
-                    </button>
-                    <ul className={`mt-1 space-y-1 ${isOpen ? '' : 'hidden'}`}>
-                      {item.children.map((child, cidx) => {
-                        const ChildIcon = child.icon;
-                        const active = activeTab === child.id;
-                        return (
-                          <li key={child.id}>
-                            <button
-                              onClick={() => {
-                                setActiveTab(child.id);
-                                setIsMobileSidebarOpen(false);
-                              }}
-                              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative ${
-                                active
-                                  ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg'
-                                  : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
-                              } ${!showExpanded ? 'justify-center' : ''}`}
-                            >
-                              <ChildIcon size={18} className="flex-shrink-0" />
-                              {showExpanded && (
-                                <span 
-                                  className="text-sm flex-1 truncate text-left opacity-0 animate-fadeIn" 
-                                  style={{ animationDelay: `${220 + cidx * 30}ms` }}
-                                >
-                                  {child.label}
-                                </span>
-                              )}
-                              {!showExpanded && !isHovered && (
-                                <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none shadow-xl">
-                                  {child.label}
-                                </div>
-                              )}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </li>
-                );
-              } else {
-                const Icon = item.icon;
-                const active = activeTab === item.id;
-                return (
-                  <li key={item.id}>
-                    <button
-                      onClick={() => {
-                        setActiveTab(item.id);
-                        setIsMobileSidebarOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg transition-all duration-200 group relative ${
-                        active
-                          ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg'
-                          : 'text-blue-100 hover:bg-blue-700/50 hover:text-white'
-                      } ${!showExpanded ? 'justify-center' : ''}`}
-                    >
-                      <span className="relative flex-shrink-0">
-                        <Icon size={20} />
-                        {item.id === 'messages' && chatUnread > 0 && (
-                          <>
-                            <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
-                            <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full" />
-                          </>
-                        )}
-                      </span>
-                      {showExpanded && (
-                        <span
-                          className="font-medium text-sm flex-1 truncate text-left opacity-0 animate-fadeIn"
-                          style={{ animationDelay: `${200 + index * 30}ms` }}
-                        >
-                          {item.label}
-                        </span>
-                      )}
-                      {item.id === 'messages' && chatUnread > 0 && showExpanded && (
-                        <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center animate-chat-blink">{chatUnread}</span>
-                      )}
-                      {!showExpanded && !isHovered && (
-                        <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 pointer-events-none shadow-xl">
-                          {item.label}
-                        </div>
-                      )}
-                    </button>
-                  </li>
-                );
-              }
-            })}
+            {menuItems.map((item, index) => renderNode(item, 0, index))}
           </ul>
         </nav>
 
@@ -865,7 +610,7 @@ const SuperAdmin = () => {
 
         {/* Main Content Area */}
         <main className="min-h-screen">
-          {(activeMenuItem?.component) || (menuItems.filter(mi => mi.children).flatMap(mi => mi.children).find(ch => ch.id === activeTab)?.component)}
+          {activeMenuItem?.component}
         </main>
 
         {/* Footer */}
