@@ -152,8 +152,8 @@ function BriefingEntryInner() {
         {/* One input per briefing area */}
         <h2 className="mt-8 text-lg font-bold text-white">Brief your team</h2>
         <p className="text-sm text-neutral-500 mt-1">
-          Answer each area separately. Every answer gets its own speaker, so recruiters
-          can play just the part they need.
+          Answer each item separately — {required.length} core areas plus an optional Winning Tip.
+          Every answer gets its own speaker, so recruiters can play just the part they need.
         </p>
 
         <div className="mt-4 space-y-3">
@@ -208,6 +208,9 @@ function BriefingEntryInner() {
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-semibold text-neutral-200">Briefing Coverage</span>
             <span className="text-sm font-bold text-amber-400">{coverage.length}/{required.length}</span>
+            <span className="text-xs text-neutral-600">
+              core areas · Winning Tip is optional and not counted
+            </span>
             <span className="text-xs text-neutral-600 ml-auto">{words} words in total</span>
           </div>
           <div className="flex flex-wrap gap-2 mt-3">
@@ -229,7 +232,7 @@ function BriefingEntryInner() {
       <div className="sticky bottom-0 z-10 bg-neutral-950/95 backdrop-blur border-t border-neutral-800">
         <div className="max-w-3xl mx-auto px-5 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-neutral-600">Briefing coverage</p>
+            <p className="text-[10px] uppercase tracking-wider text-neutral-600">Core areas covered</p>
             <p className="text-sm font-bold text-amber-400">{coverage.length}/{required.length}</p>
           </div>
           {toast && <span className="text-xs text-neutral-300 flex-1 text-center">{toast}</span>}

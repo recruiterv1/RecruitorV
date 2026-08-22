@@ -13,6 +13,10 @@ const fmtDate = (v) => {
   return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
 };
 
+// The briefing has six items: five core areas plus an optional Winning Tip,
+// which is deliberately excluded from the coverage score.
+const CORE_AREA_COUNT = 5;
+
 const STATE = {
   pending: { dot: '🔴', label: 'Pending', cls: 'bg-red-100 text-red-700' },
   draft: { dot: '🟡', label: 'Draft', cls: 'bg-amber-100 text-amber-700' },
@@ -115,7 +119,7 @@ export default function ClientSpocBriefings() {
               <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
                 <th className="px-4 py-3 font-semibold">Position</th>
                 <th className="px-4 py-3 font-semibold">Client</th>
-                <th className="px-4 py-3 font-semibold">Covered</th>
+                <th className="px-4 py-3 font-semibold" title="Core areas answered; the optional Winning Tip is not counted">Core areas</th>
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">Updated</th>
                 <th className="px-4 py-3 font-semibold text-right">Action</th>
@@ -140,7 +144,7 @@ export default function ClientSpocBriefings() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{r.client || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">
-                      {r.briefingState === 'pending' ? '—' : `${(r.coverage || []).length}/5`}
+                      {r.briefingState === 'pending' ? '—' : `${(r.coverage || []).length}/${CORE_AREA_COUNT}`}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${st.cls}`}>
