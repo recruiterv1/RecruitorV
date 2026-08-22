@@ -6,6 +6,29 @@ import { MessageSquare, RefreshCw, Send, Eye, Plus, Trash2, Users } from 'lucide
 // Four in-app events can send an automatic chat message. Nothing is sent until
 // the template is written AND switched live here.
 
+// What each token resolves to, shown next to the insert buttons.
+const VAR_HELP = {
+  name: "the person's full name",
+  firstName: 'their first name',
+  email: 'their email address',
+  role: 'their role (recruiter, coach, …)',
+};
+
+// The tokens a custom message supports. Mirrors CUSTOM_VARIABLES in
+// Backend/utils/internalMessage.js; used when the API list has not arrived yet.
+const FALLBACK_VARS = ['name', 'firstName', 'email', 'role'];
+
+const SAMPLE_PERSON = {
+  name: 'Rahul Sharma', firstName: 'Rahul',
+  email: 'rahul.sharma@example.com', role: 'recruiter',
+};
+
+// Fill {{tokens}} with the sample person, matching what the server does per
+// recipient at send time.
+const previewWith = (body) =>
+  String(body || '').replace(/\{\{\s*([\w.]+)\s*\}\}/g,
+    (_, k) => (SAMPLE_PERSON[k] !== undefined ? SAMPLE_PERSON[k] : ''));
+
 const TemplateCard = ({ t, onSaved }) => {
   const [body, setBody] = useState(t.body || '');
   const [enabled, setEnabled] = useState(t.enabled === true);
@@ -226,11 +249,19 @@ const CustomCard = ({ t, audiences, variables, onChanged }) => {
           {variables.map(v => (
             <button key={v} type="button"
               onClick={() => setBody(b => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${v}}}`)}
+              title={VAR_HELP[v] || ''}
               className="text-[11px] font-mono bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-100">
               {`{{${v}}}`}
             </button>
           ))}
         </div>
+
+        {body.trim() && (
+          <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-3">
+            <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-1">Preview with sample data</p>
+            <p className="text-sm text-gray-800 whitespace-pre-wrap">{previewWith(body)}</p>
+          </div>
+        )}
 
         <div className="mt-4 grid sm:grid-cols-2 gap-3">
           <div>
@@ -282,7 +313,7 @@ export default function InternalMessageTemplates() {
   const [templates, setTemplates] = useState([]);
   const [custom, setCustom] = useState([]);
   const [audiences, setAudiences] = useState([]);
-  const [customVars, setCustomVars] = useState([]);
+  const [customVars, setCustomVars] = useState(FALLBACK_VARS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [creating, setCreating] = useState(false);
@@ -297,7 +328,7 @@ export default function InternalMessageTemplates() {
         setTemplates(r.data?.templates || []);
         setCustom(r.data?.custom || []);
         setAudiences(r.data?.audiences || []);
-        setCustomVars(r.data?.customVariables || []);
+        setCustomVars(r.data?.customVariables?.length ? r.data.customVariables : FALLBACK_VARS);
         setError('');
       })
       .catch(e => setError(e.response?.data?.message || 'Could not load templates.'))
@@ -375,6 +406,31 @@ export default function InternalMessageTemplates() {
               <textarea value={newBody} onChange={e => setNewBody(e.target.value)} rows={3}
                 placeholder="Hi {{firstName}}, …"
                 className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-blue-500 outline-none resize-y" />
+
+              {/* Same click-to-insert tokens as the saved cards, so the variables
+                  are visible while the message is being written. */}
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                <span className="text-[11px] text-gray-400 mr-1">Insert:</span>
+                {customVars.map(v => (
+                  <button key={v} type="button"
+                    onClick={() => setNewBody(b => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${v}}}`)}
+                    title={VAR_HELP[v] || ''}
+                    className="text-[11px] font-mono bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-100">
+                    {`{{${v}}}`}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1.5">
+                {customVars.map(v => `{{${v}}} = ${VAR_HELP[v] || v}`).join(' · ')}
+              </p>
+
+              {newBody.trim() && (
+                <div className="mt-3 bg-gray-50 border border-gray-200 rounded-xl p-3">
+                  <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-1">Preview with sample data</p>
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{previewWith(newBody)}</p>
+                </div>
+              )}
+
               {createErr && <p className="mt-2 text-xs font-semibold text-red-600">{createErr}</p>}
               <div className="flex gap-2 mt-3">
                 <button onClick={createTemplate} disabled={!newName.trim() || !newBody.trim()}
