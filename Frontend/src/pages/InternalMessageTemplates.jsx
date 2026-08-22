@@ -199,10 +199,13 @@ const TemplateCard = ({ t, onSaved }) => {
 
 // A template the SuperAdmin wrote themselves. No event fires it, so it is sent
 // by hand to a chosen audience.
-const CustomCard = ({ t, audiences, variableGroups, onChanged }) => {
+const CustomCard = ({ t, audiences, variableGroups, roles, events, onChanged }) => {
+  const roleLabel = (k) => roles.find(r => r.key === k)?.label || k || '—';
+  const eventLabel = (k) => events.find(e => e.key === k)?.label || 'Only when I send it by hand';
   const [name, setName] = useState(t.name);
   const [body, setBody] = useState(t.body);
   const [audience, setAudience] = useState(t.audience || 'recruiters');
+  const [enabled, setEnabled] = useState(t.enabled === true);
   const [recipients, setRecipients] = useState((t.recipients || []).join(', '));
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -210,10 +213,12 @@ const CustomCard = ({ t, audiences, variableGroups, onChanged }) => {
   const [count, setCount] = useState(null);
 
   const dirty = name !== t.name || body !== t.body || audience !== (t.audience || 'recruiters')
+    || enabled !== (t.enabled === true)
     || recipients !== (t.recipients || []).join(', ');
 
   const payload = () => ({
-    name, body, audience,
+    name, body, audience, enabled,
+    senderRole: t.senderRole, recipientRole: t.recipientRole, event: t.event,
     recipients: recipients.split(',').map(x => x.trim()).filter(Boolean),
   });
 
@@ -279,16 +284,30 @@ const CustomCard = ({ t, audiences, variableGroups, onChanged }) => {
         <div className="min-w-0 flex-1">
           <input value={name} onChange={e => setName(e.target.value)}
             className="font-bold text-gray-900 border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none w-full max-w-md" />
-          <p className="text-[11px] text-gray-400 mt-1">
-            Sent by hand · {t.lastSentAt
-              ? `last sent to ${t.lastSentCount} on ${new Date(t.lastSentAt).toLocaleDateString('en-IN')}`
-              : 'never sent'}
+          <p className="text-[11px] text-gray-500 mt-1">
+            <b>{roleLabel(t.senderRole)}</b> → <b>{roleLabel(t.recipientRole)}</b> · {eventLabel(t.event)}
+          </p>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            {t.event === 'manual'
+              ? (t.lastSentAt
+                  ? `Sent by hand · last sent to ${t.lastSentCount} on ${new Date(t.lastSentAt).toLocaleDateString('en-IN')}`
+                  : 'Sent by hand · never sent')
+              : (t.enabled ? 'Live — sending automatically' : 'Not live — nothing is being sent')}
           </p>
         </div>
-        <button onClick={remove} title="Delete template"
-          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-          <Trash2 size={16} />
-        </button>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {t.event !== 'manual' && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)}
+                className="w-4 h-4 accent-green-600" />
+              <span className="text-xs font-semibold text-gray-700">Live</span>
+            </label>
+          )}
+          <button onClick={remove} title="Delete template"
+            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
 
       <div className="p-5">
@@ -306,6 +325,7 @@ const CustomCard = ({ t, audiences, variableGroups, onChanged }) => {
           </div>
         )}
 
+        {t.event === 'manual' && (
         <div className="mt-4 grid sm:grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-semibold text-gray-600 block mb-1.5">Send to</label>
@@ -323,6 +343,7 @@ const CustomCard = ({ t, audiences, variableGroups, onChanged }) => {
             </div>
           )}
         </div>
+        )}
 
         {count && (
           <p className="mt-3 text-xs text-gray-600">
@@ -337,6 +358,7 @@ const CustomCard = ({ t, audiences, variableGroups, onChanged }) => {
             className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-40">
             {saving ? 'Saving…' : 'Save'}
           </button>
+          {t.event === 'manual' && (<>
           <button onClick={checkAudience}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50">
             <Users size={13} /> Check audience
@@ -346,6 +368,7 @@ const CustomCard = ({ t, audiences, variableGroups, onChanged }) => {
             className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl disabled:opacity-40">
             <Send size={13} /> {sending ? 'Sending…' : 'Send now'}
           </button>
+          </>)}
         </div>
       </div>
     </div>
@@ -362,7 +385,34 @@ export default function InternalMessageTemplates() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newBody, setNewBody] = useState('');
+  const [newEvent, setNewEvent] = useState('candidateSubmitted');
+  const [newSender, setNewSender] = useState('');
+  const [newRecipient, setNewRecipient] = useState('');
   const [createErr, setCreateErr] = useState('');
+  const [roles, setRoles] = useState([]);
+  const [events, setEvents] = useState([]);
+
+  const roleLabel = (k) => roles.find(r => r.key === k)?.label || k;
+
+  // An event only runs between certain roles, so the dropdowns offer just those.
+  const allowedRoles = (eventKey, side) => {
+    const ev = events.find(e => e.key === eventKey);
+    if (!ev) return roles;
+    const allowed = side === 'sender' ? ev.sender : ev.recipient;
+    return roles.filter(r => (allowed || []).includes(r.key));
+  };
+
+  // Show the variables that make sense for the chosen event first.
+  const pickerGroups = (eventKey) => {
+    const ev = events.find(e => e.key === eventKey);
+    if (!ev || !ev.variables?.length) return variableGroups;
+    const forEvent = variableGroups
+      .flatMap(g => g.variables)
+      .filter(v => ev.variables.includes(v.key));
+    return forEvent.length
+      ? [{ group: 'For this event', variables: forEvent }, ...variableGroups]
+      : variableGroups;
+  };
 
   const load = () => {
     setLoading(true);
@@ -372,6 +422,8 @@ export default function InternalMessageTemplates() {
         setCustom(r.data?.custom || []);
         setAudiences(r.data?.audiences || []);
         setVariableGroups(r.data?.variableGroups?.length ? r.data.variableGroups : FALLBACK_GROUPS);
+        setRoles(r.data?.roles || []);
+        setEvents(r.data?.events || []);
         setError('');
       })
       .catch(e => setError(e.response?.data?.message || 'Could not load templates.'))
@@ -381,12 +433,21 @@ export default function InternalMessageTemplates() {
 
   const liveCount = templates.filter(t => t.enabled).length;
 
+  useEffect(() => {
+    const ev = events.find(e => e.key === newEvent);
+    if (!ev) return;
+    if (newSender && !(ev.sender || []).includes(newSender)) setNewSender('');
+    if (newRecipient && !(ev.recipient || []).includes(newRecipient)) setNewRecipient('');
+  }, [newEvent, events, newSender, newRecipient]);
+
   const createTemplate = async () => {
     setCreateErr('');
     try {
-      await axios.post('/api/internal-templates/custom',
-        { name: newName, body: newBody, audience: 'recruiters' }, { withCredentials: true });
-      setNewName(''); setNewBody(''); setCreating(false);
+      await axios.post('/api/internal-templates/custom', {
+        name: newName, body: newBody, event: newEvent,
+        senderRole: newSender, recipientRole: newRecipient,
+      }, { withCredentials: true });
+      setNewName(''); setNewBody(''); setNewSender(''); setNewRecipient(''); setCreating(false);
       load();
     } catch (e) { setCreateErr(e.response?.data?.message || 'Could not create the template.'); }
   };
@@ -441,16 +502,58 @@ export default function InternalMessageTemplates() {
 
           {creating && (
             <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-sm p-5 mb-4">
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Template name</label>
+              <label className="text-xs font-semibold text-gray-600 block mb-1.5">
+                Title <span className="text-gray-400">— what this template is for</span>
+              </label>
               <input value={newName} onChange={e => setNewName(e.target.value)}
-                placeholder="e.g. Monthly reminder to update profiles"
-                className="w-full h-9 border-2 border-gray-200 rounded-lg px-3 text-sm focus:border-blue-500 outline-none mb-3" />
+                placeholder="e.g. Candidate submitted to ClientSPOC"
+                className="w-full h-9 border-2 border-gray-200 rounded-lg px-3 text-sm focus:border-blue-500 outline-none mb-4" />
+
+              <div className="grid sm:grid-cols-3 gap-3 mb-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">Sent when</label>
+                  <select value={newEvent} onChange={e => setNewEvent(e.target.value)}
+                    className="w-full h-9 border-2 border-gray-200 rounded-lg px-2 text-sm bg-white focus:border-blue-500 outline-none">
+                    {events.map(ev => <option key={ev.key} value={ev.key}>{ev.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">
+                    From <span className="text-gray-400">(sender)</span>
+                  </label>
+                  <select value={newSender} onChange={e => setNewSender(e.target.value)}
+                    className="w-full h-9 border-2 border-gray-200 rounded-lg px-2 text-sm bg-white focus:border-blue-500 outline-none">
+                    <option value="">Select role…</option>
+                    {allowedRoles(newEvent, 'sender').map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 block mb-1.5">
+                    To <span className="text-gray-400">(recipient)</span>
+                  </label>
+                  <select value={newRecipient} onChange={e => setNewRecipient(e.target.value)}
+                    className="w-full h-9 border-2 border-gray-200 rounded-lg px-2 text-sm bg-white focus:border-blue-500 outline-none">
+                    <option value="">Select role…</option>
+                    {allowedRoles(newEvent, 'recipient').map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {newSender && newRecipient && (
+                <p className="text-xs text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 mb-4">
+                  Sent <b>from the {roleLabel(newSender)}’s identity</b> to the <b>{roleLabel(newRecipient)}</b>
+                  {newEvent === 'manual'
+                    ? ', when you send it by hand.'
+                    : `, automatically when ${(events.find(e => e.key === newEvent)?.label || '').toLowerCase()}.`}
+                </p>
+              )}
+
               <label className="text-xs font-semibold text-gray-600 block mb-1.5">Message</label>
               <textarea value={newBody} onChange={e => setNewBody(e.target.value)} rows={3}
-                placeholder="Hi {{firstName}}, …"
+                placeholder="Hi {{spocName}}, {{recruiterName}} has submitted {{candidateName}} for {{positionName}}."
                 className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-blue-500 outline-none resize-y" />
 
-              <VariablePicker groups={variableGroups}
+              <VariablePicker groups={pickerGroups(newEvent)}
                 onInsert={(k) => setNewBody(b => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${k}}}`)} />
 
               {newBody.trim() && (
@@ -462,7 +565,8 @@ export default function InternalMessageTemplates() {
 
               {createErr && <p className="mt-2 text-xs font-semibold text-red-600">{createErr}</p>}
               <div className="flex gap-2 mt-3">
-                <button onClick={createTemplate} disabled={!newName.trim() || !newBody.trim()}
+                <button onClick={createTemplate}
+                  disabled={!newName.trim() || !newBody.trim() || !newSender || !newRecipient}
                   className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-40">
                   Create
                 </button>
@@ -481,7 +585,8 @@ export default function InternalMessageTemplates() {
           ) : (
             <div className="space-y-4">
               {custom.map(t => (
-                <CustomCard key={t.key} t={t} audiences={audiences} variableGroups={variableGroups} onChanged={load} />
+                <CustomCard key={t.key} t={t} audiences={audiences} variableGroups={variableGroups}
+                  roles={roles} events={events} onChanged={load} />
               ))}
             </div>
           )}

@@ -1961,6 +1961,8 @@ router.post('/recruiter-assignment', authMiddleware, async (req, res) => {
           clientName: posData.client || '',
           location: Array.isArray(posData.location) ? posData.location.join(', ') : (posData.location || ''),
         },
+        senderRole: (coachData.userType || 'coach').toLowerCase().replace(/\s/g, ''),
+        recipientRole: 'recruiter',
       });
     } catch (_) { /* never block the assignment */ }
 
@@ -2561,6 +2563,8 @@ router.post('/team/send-request', authMiddleware, async (req, res) => {
           senderRole: coachData.userType || 'Coach',
           direction: 'invited you to join their team',
         },
+        senderRole: (coachData.userType || 'coach').toLowerCase().replace(/\s/g, ''),
+        recipientRole: 'recruiter',
       });
     } catch (_) { /* never block the request */ }
 
@@ -2960,6 +2964,8 @@ router.post('/team/recruiter-join-request', authMiddleware, async (req, res) => 
           senderRole: 'Recruiter',
           direction: 'has asked to join your team',
         },
+        senderRole: 'recruiter',
+        recipientRole: (coachRole || 'coach').toLowerCase().replace(/\s/g, ''),
       });
     } catch (_) { /* never block the request */ }
 

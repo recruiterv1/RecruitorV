@@ -674,6 +674,8 @@ let {
               positionId: pos_id,
               clientName: position.client || '',
             },
+            senderRole: (news.roleCategory || 'recruiter').toLowerCase().replace(/\s/g, ''),
+            recipientRole: 'clientspoc',
           });
         } catch (_) { /* never block the submission */ }
       }
@@ -1090,6 +1092,8 @@ router.patch("/update/status/:id", async (req, res) => {
             newStatus: statusa,
             reason: isReject ? String(rejectReason).trim() : '',
           },
+          senderRole: 'clientspoc',
+          recipientRole: (updated.recRole || 'recruiter').toLowerCase().replace(/\s/g, ''),
         }).catch(() => {});
       }
     } catch (_) { /* never block the status change */ }

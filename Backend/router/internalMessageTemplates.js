@@ -13,6 +13,7 @@ const { db } = require('./firebase_ad');
 const {
   TRIGGERS, TRIGGER_MAP, substitute, sendInternalMessage,
   AUDIENCES, AUDIENCE_MAP, CUSTOM_VARIABLES, CUSTOM_VARIABLE_GROUPS,
+  ROLE_TYPES, ROLE_MAP, TEMPLATE_EVENTS, EVENT_MAP,
   audienceMembers, varsFor,
 } = require('../utils/internalMessage');
 
@@ -70,6 +71,9 @@ router.get('/', managerAuth, async (req, res) => {
       const c = d.data();
       return {
         key: d.id, name: c.name || 'Untitled', body: c.body || '',
+        senderRole: c.senderRole || '', recipientRole: c.recipientRole || '',
+        event: c.event || 'manual',
+        enabled: c.enabled === true,
         audience: c.audience || 'recruiters',
         recipients: Array.isArray(c.recipients) ? c.recipients : [],
         custom: true,
@@ -85,6 +89,9 @@ router.get('/', managerAuth, async (req, res) => {
       audiences: AUDIENCES.map(({ key, label }) => ({ key, label })),
       customVariables: CUSTOM_VARIABLES,
       variableGroups: CUSTOM_VARIABLE_GROUPS,
+      roles: ROLE_TYPES.map(({ key, label }) => ({ key, label })),
+      events: TEMPLATE_EVENTS.map(({ key, label, sender, recipient, variables }) =>
+        ({ key, label, sender, recipient, variables })),
     });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -150,16 +157,21 @@ router.post('/custom', managerAuth, async (req, res) => {
   try {
     const name = String(req.body?.name || '').trim().slice(0, 80);
     const body = String(req.body?.body || '').trim();
+    const senderRole = ROLE_MAP[req.body?.senderRole] ? req.body.senderRole : '';
+    const recipientRole = ROLE_MAP[req.body?.recipientRole] ? req.body.recipientRole : '';
+    const event = EVENT_MAP[req.body?.event] ? req.body.event : 'manual';
     const audience = AUDIENCE_MAP[req.body?.audience] ? req.body.audience : 'recruiters';
     const recipients = Array.isArray(req.body?.recipients)
       ? req.body.recipients.map(e => lc(e)).filter(Boolean) : [];
-    if (!name) return res.status(400).json({ success: false, message: 'Give the template a name.' });
+    if (!name) return res.status(400).json({ success: false, message: 'Give the template a title.' });
     if (!body) return res.status(400).json({ success: false, message: 'Write the message.' });
+    if (!recipientRole) return res.status(400).json({ success: false, message: 'Choose who receives this message.' });
+    if (!senderRole) return res.status(400).json({ success: false, message: 'Choose who it comes from.' });
 
     const { FieldValue } = require('firebase-admin/firestore');
     const key = slugKey(name);
     await db.collection('internal_message_templates').doc(key).set({
-      key, name, body, audience, recipients,
+      key, name, body, senderRole, recipientRole, event, audience, recipients,
       custom: true, enabled: false,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -179,11 +191,15 @@ router.put('/custom/:key', managerAuth, async (req, res) => {
     }
     const name = String(req.body?.name || '').trim().slice(0, 80);
     const body = String(req.body?.body || '').trim();
-    if (!name || !body) return res.status(400).json({ success: false, message: 'Name and message are both required.' });
+    if (!name || !body) return res.status(400).json({ success: false, message: 'Title and message are both required.' });
 
     const { FieldValue } = require('firebase-admin/firestore');
     await ref.set({
       name, body,
+      senderRole: ROLE_MAP[req.body?.senderRole] ? req.body.senderRole : (doc.data().senderRole || ''),
+      recipientRole: ROLE_MAP[req.body?.recipientRole] ? req.body.recipientRole : (doc.data().recipientRole || ''),
+      event: EVENT_MAP[req.body?.event] ? req.body.event : (doc.data().event || 'manual'),
+      enabled: req.body?.enabled === true,
       audience: AUDIENCE_MAP[req.body?.audience] ? req.body.audience : (doc.data().audience || 'recruiters'),
       recipients: Array.isArray(req.body?.recipients) ? req.body.recipients.map(e => lc(e)).filter(Boolean) : [],
       updatedAt: FieldValue.serverTimestamp(), updatedBy: req.managerEmail,
@@ -238,8 +254,14 @@ router.post('/custom/:key/send', managerAuth, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Template not found.' });
     }
     const c = doc.data();
-    const people = await audienceMembers(c.audience, c.recipients || []);
-    if (!people.length) return res.status(400).json({ success: false, message: 'That audience has nobody in it.' });
+    // A role-pair template goes to everyone holding the recipient role, unless
+    // specific emails were entered.
+    const audienceKey = (c.audience === 'custom')
+      ? 'custom'
+      : ({ recruiter: 'recruiters', coach: 'coaches', expert: 'experts',
+           vendor: 'vendors', clientspoc: 'clientspocs' }[c.recipientRole] || c.audience);
+    const people = await audienceMembers(audienceKey, c.recipients || []);
+    if (!people.length) return res.status(400).json({ success: false, message: 'Nobody holds that role yet.' });
 
     // Who the message comes from, for {{senderName}} / {{senderEmail}}.
     const { personFrom } = require('../utils/internalMessage');

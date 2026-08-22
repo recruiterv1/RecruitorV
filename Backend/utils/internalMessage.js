@@ -94,6 +94,27 @@ async function renderInternal(key, vars = {}) {
   }
 }
 
+
+/**
+ * Every live template for an event. A template may pin itself to a sender and/or
+ * recipient role — when it does, it only applies to matching parties, which is
+ * what "from whom, to whom" means in the designer.
+ */
+async function templatesForEvent(eventKey, { senderRole = '', recipientRole = '' } = {}) {
+  try {
+    const snap = await db.collection('internal_message_templates')
+      .where('event', '==', eventKey).get();
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(t => t.enabled === true && String(t.body || '').trim())
+      .filter(t => !t.senderRole || !senderRole || lc(t.senderRole) === lc(senderRole))
+      .filter(t => !t.recipientRole || !recipientRole || lc(t.recipientRole) === lc(recipientRole));
+  } catch (e) {
+    console.error('templatesForEvent(' + eventKey + '):', e.message);
+    return [];
+  }
+}
+
 const pairKeyOf = (a, b) => [lc(a), lc(b)].sort().join('|');
 
 // Minimal user lookup for the conversation's name/role maps. Kept local so this
@@ -186,12 +207,78 @@ async function sendInternalMessage({ fromEmail, toEmail, text }) {
  * Render a trigger's live template and deliver it. Silently does nothing when
  * the SuperAdmin has not made that template live.
  */
-async function notify(key, { fromEmail, toEmail, vars = {} }) {
-  const text = await renderInternal(key, vars);
-  if (!text) return false;
-  return sendInternalMessage({ fromEmail, toEmail, text });
+async function notify(key, { fromEmail, toEmail, vars = {}, senderRole = '', recipientRole = '' }) {
+  let delivered = false;
+
+  // The built-in template for this event, if the SuperAdmin made it live.
+  const builtIn = await renderInternal(key, vars);
+  if (builtIn) delivered = await sendInternalMessage({ fromEmail, toEmail, text: builtIn }) || delivered;
+
+  // Plus any templates they wrote themselves for this event and role pair.
+  const extra = await templatesForEvent(key, { senderRole, recipientRole });
+  for (const t of extra) {
+    const text = substitute(t.body, vars).trim();
+    if (text) delivered = await sendInternalMessage({ fromEmail, toEmail, text }) || delivered;
+  }
+  return delivered;
 }
 
+
+
+// ── Role types ───────────────────────────────────────────────────────────────
+// A template is defined as "from this role, to that role". These are the roles
+// that exist on the platform and can hold a Messages inbox.
+const ROLE_TYPES = [
+  { key: 'recruiter',      label: 'Recruiter',       collection: 'recruiter_db' },
+  { key: 'coach',          label: 'Coach',           collection: 'coach_db' },
+  { key: 'expert',         label: 'Expert',          collection: 'expert_db' },
+  { key: 'clientspoc',     label: 'ClientSPOC',      collection: 'admin_db', roleCategory: 'clientspoc' },
+  { key: 'vendor',         label: 'Vendor',          collection: 'admin_db', roleCategory: 'vendor' },
+  { key: 'company',        label: 'Company',         collection: 'admin_db', roleCategory: 'company' },
+  { key: 'consultingfirm', label: 'Consulting Firm', collection: 'consulting_firms' },
+];
+const ROLE_MAP = Object.fromEntries(ROLE_TYPES.map(r => [r.key, r]));
+
+// ── When a template is delivered ─────────────────────────────────────────────
+// A role pair says who talks to whom, but not when. Each event below names the
+// moment the message goes out and the roles it naturally runs between; 'manual'
+// means the SuperAdmin sends it by hand.
+const TEMPLATE_EVENTS = [
+  {
+    key: 'candidateSubmitted',
+    label: 'A candidate is submitted against a position',
+    sender: ['recruiter', 'coach', 'expert', 'vendor'], recipient: ['clientspoc'],
+    variables: ['recruiterName', 'recruiterRole', 'spocName', 'candidateName',
+                'positionName', 'positionId', 'clientName'],
+  },
+  {
+    key: 'candidateStatusChanged',
+    label: "A candidate's status is changed",
+    sender: ['clientspoc'], recipient: ['recruiter', 'coach', 'expert', 'vendor'],
+    variables: ['recruiterName', 'spocName', 'candidateName', 'positionName',
+                'positionId', 'clientName', 'oldStatus', 'newStatus', 'reason'],
+  },
+  {
+    key: 'positionAssigned',
+    label: 'A position is assigned to a recruiter',
+    sender: ['coach', 'expert', 'vendor'], recipient: ['recruiter'],
+    variables: ['recruiterName', 'assignerName', 'assignerRole', 'positionName',
+                'positionId', 'clientName', 'location'],
+  },
+  {
+    key: 'teamJoinRequest',
+    label: 'A team join request is sent',
+    sender: ['coach', 'expert', 'recruiter'], recipient: ['recruiter', 'coach', 'expert'],
+    variables: ['recipientName', 'senderName', 'senderRole', 'direction'],
+  },
+  {
+    key: 'manual',
+    label: 'Only when I send it by hand',
+    sender: ROLE_TYPES.map(r => r.key), recipient: ROLE_TYPES.map(r => r.key),
+    variables: [],
+  },
+];
+const EVENT_MAP = Object.fromEntries(TEMPLATE_EVENTS.map(e => [e.key, e]));
 
 // ── Custom templates ─────────────────────────────────────────────────────────
 // The four triggers above fire on an event. A SuperAdmin can also write their
@@ -214,7 +301,33 @@ const AUDIENCE_MAP = Object.fromEntries(AUDIENCES.map(a => [a.key, a]));
 // person who gets it.
 const CUSTOM_VARIABLE_GROUPS = [
   {
-    group: 'Recipient',
+    group: 'Position & candidate',
+    variables: [
+      { key: 'candidateName', label: 'Candidate name' },
+      { key: 'positionName',  label: 'Position name' },
+      { key: 'positionId',    label: 'Position ID' },
+      { key: 'clientName',    label: 'Client / company name' },
+      { key: 'oldStatus',     label: 'Previous status' },
+      { key: 'newStatus',     label: 'New status' },
+      { key: 'reason',        label: 'Reason (on a rejection)' },
+      { key: 'location',      label: 'Position location' },
+    ],
+  },
+  {
+    group: 'People in this message',
+    variables: [
+      { key: 'recruiterName', label: 'Recruiter name' },
+      { key: 'recruiterRole', label: 'Recruiter / coach / expert' },
+      { key: 'spocName',      label: 'ClientSPOC name' },
+      { key: 'assignerName',  label: 'Who assigned the position' },
+      { key: 'assignerRole',  label: 'Their role' },
+      { key: 'recipientName', label: 'Who receives this message' },
+      { key: 'senderRole',    label: "Sender's role" },
+      { key: 'direction',     label: 'What the request says' },
+    ],
+  },
+  {
+    group: 'Recipient profile',
     variables: [
       { key: 'name',               label: 'Full name' },
       { key: 'firstName',          label: 'First name' },
@@ -363,5 +476,6 @@ const varsFor = (person, sender = {}) => {
 module.exports = {
   TRIGGERS, TRIGGER_MAP, substitute, renderInternal, sendInternalMessage, notify,
   AUDIENCES, AUDIENCE_MAP, CUSTOM_VARIABLES, CUSTOM_VARIABLE_GROUPS,
-  audienceMembers, varsFor, personFrom, resolveBasic,
+  ROLE_TYPES, ROLE_MAP, TEMPLATE_EVENTS, EVENT_MAP,
+  audienceMembers, varsFor, personFrom, resolveBasic, templatesForEvent,
 };
