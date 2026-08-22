@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { isSuccessMessage } from '../utils/messageTone';
 import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, Mail, Lock, Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
@@ -82,7 +83,7 @@ const Ad_login = () => {
           {/* Message Display */}
           {message && (
             <div className={`text-center text-sm mb-6 p-3 rounded-xl font-medium border-2 ${
-              message.includes("Success") || message.includes("Verified")
+              isSuccessMessage(message)
                 ? "bg-green-50 text-green-700 border-green-200"
                 : "bg-red-50 text-red-700 border-red-200"
             }`}>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isSuccessMessage } from '../utils/messageTone';
 import axios from "axios";
 import { Eye, EyeOff, Mail, User, Lock, ChevronDown, Hash } from "lucide-react";
 
@@ -77,7 +78,7 @@ const ClientSpocAdd = () => {
         <div className="p-6 sm:p-8">
           {message && (
             <div className={`mb-4 p-4 rounded-xl ${
-              message.includes("successfully")
+              isSuccessMessage(message)
                 ? "bg-green-50 text-green-700 border-2 border-green-200"
                 : "bg-red-50 text-red-700 border-2 border-red-200"
             }`}>

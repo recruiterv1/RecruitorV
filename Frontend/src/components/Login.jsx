@@ -1,4 +1,5 @@
 import { useContext, useState, useEffect } from "react";
+import { isSuccessMessage } from '../utils/messageTone';
 import axios from "axios";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { FcGoogle } from "react-icons/fc";
@@ -252,7 +253,7 @@ const Login = () => {
           {/* Message Display */}
           {message && (
             <div className={`text-center text-sm mb-6 p-3 rounded-xl font-medium border-2 ${
-              message.includes("success") || message.includes("✅")
+              isSuccessMessage(message)
                 ? "bg-green-50 text-green-700 border-green-200"
                 : "bg-red-50 text-red-700 border-red-200"
             }`}>

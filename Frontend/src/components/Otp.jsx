@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { isSuccessMessage } from '../utils/messageTone';
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { getRouteFromCategory } from "../../utils/routeMapping";
@@ -199,12 +200,12 @@ const OtpVerification = () => {
           {/* Message Display */}
           {message && (
             <div className={`text-center text-sm mb-6 p-4 rounded-xl font-medium border-2 ${
-              message.includes("success") || message.includes("Verified") || message.includes("Redirecting")
+              isSuccessMessage(message)
                 ? "bg-green-50 text-green-700 border-green-200"
                 : "bg-red-50 text-red-700 border-red-200"
             }`}>
               <div className="flex items-center justify-center gap-2">
-                {message.includes("success") || message.includes("Verified") ? (
+                {isSuccessMessage(message) ? (
                   <ShieldCheck size={18} className="text-green-600" />
                 ) : null}
                 <span>{message}</span>

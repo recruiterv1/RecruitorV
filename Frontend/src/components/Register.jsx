@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { isSuccessMessage } from '../utils/messageTone';
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Eye, EyeOff, Phone, Mail, User, Lock, Briefcase, Shield, Users, UserCheck, BookOpen, Award, TrendingUp, Tag, FileText, Upload, X as XIcon } from "lucide-react";
@@ -280,7 +281,7 @@ export default function Register() {
         <div className="p-6 sm:p-8">
           {message && (
             <div className={`text-center text-sm mb-6 p-3 rounded-lg font-medium ${
-              message.includes("Success") || message.includes("OTP Sent")
+              isSuccessMessage(message)
                 ? "bg-green-50 text-green-700 border border-green-200"
                 : "bg-red-50 text-red-700 border border-red-200"
             }`}>

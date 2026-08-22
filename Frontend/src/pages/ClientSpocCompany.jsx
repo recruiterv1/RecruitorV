@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isSuccessMessage } from '../utils/messageTone';
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Eye, EyeOff, Phone, Mail, User, Lock, Briefcase, Shield, Users, UserCheck, BookOpen, Award } from "lucide-react";
@@ -149,7 +150,7 @@ const ClientSpocCompany=()=> {
         <div className="p-6 sm:p-8">
             {message && (
               <div className={`mb-4 p-4 rounded-xl ${
-                message.includes("successfully") 
+                isSuccessMessage(message) 
                   ? "bg-green-50 text-green-700 border-2 border-green-200" 
                   : "bg-red-50 text-red-700 border-2 border-red-200"
                 }`}>
