@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { MessageSquare, RefreshCw, Send, Eye } from 'lucide-react';
+import { MessageSquare, RefreshCw, Send, Eye, Plus, Trash2, Users } from 'lucide-react';
 
 // SuperAdmin → Internal Message Templates.
 // Four in-app events can send an automatic chat message. Nothing is sent until
@@ -121,21 +121,201 @@ const TemplateCard = ({ t, onSaved }) => {
   );
 };
 
+
+// A template the SuperAdmin wrote themselves. No event fires it, so it is sent
+// by hand to a chosen audience.
+const CustomCard = ({ t, audiences, variables, onChanged }) => {
+  const [name, setName] = useState(t.name);
+  const [body, setBody] = useState(t.body);
+  const [audience, setAudience] = useState(t.audience || 'recruiters');
+  const [recipients, setRecipients] = useState((t.recipients || []).join(', '));
+  const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [count, setCount] = useState(null);
+
+  const dirty = name !== t.name || body !== t.body || audience !== (t.audience || 'recruiters')
+    || recipients !== (t.recipients || []).join(', ');
+
+  const payload = () => ({
+    name, body, audience,
+    recipients: recipients.split(',').map(x => x.trim()).filter(Boolean),
+  });
+
+  const save = async () => {
+    setSaving(true); setMsg(null);
+    try {
+      const r = await axios.put(`/api/internal-templates/custom/${t.key}`, payload(), { withCredentials: true });
+      setMsg({ ok: true, text: r.data?.message || 'Saved.' });
+      onChanged();
+    } catch (e) { setMsg({ ok: false, text: e.response?.data?.message || 'Could not save.' }); }
+    finally { setSaving(false); setTimeout(() => setMsg(null), 5000); }
+  };
+
+  const checkAudience = async () => {
+    setMsg(null); setCount(null);
+    try {
+      const r = await axios.get(`/api/internal-templates/custom/${t.key}/audience`, { withCredentials: true });
+      setCount(r.data);
+    } catch (e) { setMsg({ ok: false, text: e.response?.data?.message || 'Could not check the audience.' }); }
+  };
+
+  const send = async () => {
+    if (dirty) { setMsg({ ok: false, text: 'Save your changes before sending.' }); return; }
+    const c = count?.count;
+    const who = c !== undefined ? `${c} ${c === 1 ? 'person' : 'people'}` : 'this audience';
+    if (!window.confirm(`Send this message to ${who}? It lands in their Messages inbox and cannot be recalled.`)) return;
+    setSending(true); setMsg(null);
+    try {
+      // The server delivers in chunks and hands back the next offset, so a large
+      // audience never hangs on one request — keep going until it says done.
+      let offset = 0, failedTotal = 0;
+      for (;;) {
+        const r = await axios.post(`/api/internal-templates/custom/${t.key}/send`,
+          { confirm: true, offset }, { withCredentials: true });
+        failedTotal += r.data?.failed || 0;
+        setMsg({ ok: true, text: r.data?.message || 'Sending…' });
+        if (r.data?.done || r.data?.nextOffset == null) {
+          setMsg({
+            ok: true,
+            text: `Sent to ${r.data?.total ?? 0} ${r.data?.total === 1 ? 'person' : 'people'}` +
+                  (failedTotal ? `, ${failedTotal} failed.` : '.'),
+          });
+          break;
+        }
+        offset = r.data.nextOffset;
+      }
+      onChanged();
+    } catch (e) { setMsg({ ok: false, text: e.response?.data?.message || 'Could not send.' }); }
+    finally { setSending(false); }
+  };
+
+  const remove = async () => {
+    if (!window.confirm(`Delete the template “${t.name}”?`)) return;
+    try {
+      await axios.delete(`/api/internal-templates/custom/${t.key}`, { withCredentials: true });
+      onChanged();
+    } catch (e) { setMsg({ ok: false, text: e.response?.data?.message || 'Could not delete.' }); }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <input value={name} onChange={e => setName(e.target.value)}
+            className="font-bold text-gray-900 border-b border-transparent hover:border-gray-300 focus:border-blue-500 outline-none w-full max-w-md" />
+          <p className="text-[11px] text-gray-400 mt-1">
+            Sent by hand · {t.lastSentAt
+              ? `last sent to ${t.lastSentCount} on ${new Date(t.lastSentAt).toLocaleDateString('en-IN')}`
+              : 'never sent'}
+          </p>
+        </div>
+        <button onClick={remove} title="Delete template"
+          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+          <Trash2 size={16} />
+        </button>
+      </div>
+
+      <div className="p-5">
+        <label className="text-xs font-semibold text-gray-600 block mb-1.5">Message</label>
+        <textarea value={body} onChange={e => setBody(e.target.value)} rows={4}
+          className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none resize-y" />
+
+        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+          <span className="text-[11px] text-gray-400 mr-1">Insert:</span>
+          {variables.map(v => (
+            <button key={v} type="button"
+              onClick={() => setBody(b => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${v}}}`)}
+              className="text-[11px] font-mono bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-100">
+              {`{{${v}}}`}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 block mb-1.5">Send to</label>
+            <select value={audience} onChange={e => { setAudience(e.target.value); setCount(null); }}
+              className="w-full h-9 border-2 border-gray-200 rounded-lg px-2 text-sm bg-white focus:border-blue-500 outline-none">
+              {audiences.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+            </select>
+          </div>
+          {audience === 'custom' && (
+            <div>
+              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Emails (comma separated)</label>
+              <input value={recipients} onChange={e => { setRecipients(e.target.value); setCount(null); }}
+                placeholder="one@x.com, two@y.com"
+                className="w-full h-9 border-2 border-gray-200 rounded-lg px-3 text-sm focus:border-blue-500 outline-none" />
+            </div>
+          )}
+        </div>
+
+        {count && (
+          <p className="mt-3 text-xs text-gray-600">
+            Reaches <b>{count.count}</b> {count.count === 1 ? 'person' : 'people'}
+            {count.sample?.length ? ` — e.g. ${count.sample.join(', ')}${count.count > count.sample.length ? '…' : ''}` : ''}
+          </p>
+        )}
+        {msg && <p className={`mt-3 text-xs font-semibold ${msg.ok ? 'text-green-700' : 'text-red-600'}`}>{msg.text}</p>}
+
+        <div className="flex items-center gap-2 mt-4 flex-wrap">
+          <button onClick={save} disabled={saving || !dirty}
+            className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-40">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button onClick={checkAudience}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-700 border border-gray-300 rounded-xl hover:bg-gray-50">
+            <Users size={13} /> Check audience
+          </button>
+          <button onClick={send} disabled={sending || dirty}
+            title={dirty ? 'Save your changes first' : 'Send to the selected audience'}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl disabled:opacity-40">
+            <Send size={13} /> {sending ? 'Sending…' : 'Send now'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function InternalMessageTemplates() {
   const [templates, setTemplates] = useState([]);
+  const [custom, setCustom] = useState([]);
+  const [audiences, setAudiences] = useState([]);
+  const [customVars, setCustomVars] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newBody, setNewBody] = useState('');
+  const [createErr, setCreateErr] = useState('');
 
   const load = () => {
     setLoading(true);
     axios.get('/api/internal-templates', { withCredentials: true })
-      .then(r => { setTemplates(r.data?.templates || []); setError(''); })
+      .then(r => {
+        setTemplates(r.data?.templates || []);
+        setCustom(r.data?.custom || []);
+        setAudiences(r.data?.audiences || []);
+        setCustomVars(r.data?.customVariables || []);
+        setError('');
+      })
       .catch(e => setError(e.response?.data?.message || 'Could not load templates.'))
       .finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
   const liveCount = templates.filter(t => t.enabled).length;
+
+  const createTemplate = async () => {
+    setCreateErr('');
+    try {
+      await axios.post('/api/internal-templates/custom',
+        { name: newName, body: newBody, audience: 'recruiters' }, { withCredentials: true });
+      setNewName(''); setNewBody(''); setCreating(false);
+      load();
+    } catch (e) { setCreateErr(e.response?.data?.message || 'Could not create the template.'); }
+  };
 
   return (
     <div className="p-4 sm:p-6">
@@ -166,9 +346,61 @@ export default function InternalMessageTemplates() {
       ) : error ? (
         <div className="py-16 text-center text-red-500 text-sm">{error}</div>
       ) : (
-        <div className="space-y-4">
-          {templates.map(t => <TemplateCard key={t.key} t={t} onSaved={load} />)}
-        </div>
+        <>
+          <h3 className="text-sm font-bold text-gray-700 mb-3">Event messages</h3>
+          <div className="space-y-4">
+            {templates.map(t => <TemplateCard key={t.key} t={t} onSaved={load} />)}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 flex-wrap mt-8 mb-3">
+            <div>
+              <h3 className="text-sm font-bold text-gray-700">Your own messages</h3>
+              <p className="text-xs text-gray-500">
+                Templates you write yourself. These have no event behind them — send them when you want.
+              </p>
+            </div>
+            <button onClick={() => setCreating(v => !v)}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl">
+              <Plus size={14} /> New Template
+            </button>
+          </div>
+
+          {creating && (
+            <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-sm p-5 mb-4">
+              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Template name</label>
+              <input value={newName} onChange={e => setNewName(e.target.value)}
+                placeholder="e.g. Monthly reminder to update profiles"
+                className="w-full h-9 border-2 border-gray-200 rounded-lg px-3 text-sm focus:border-blue-500 outline-none mb-3" />
+              <label className="text-xs font-semibold text-gray-600 block mb-1.5">Message</label>
+              <textarea value={newBody} onChange={e => setNewBody(e.target.value)} rows={3}
+                placeholder="Hi {{firstName}}, …"
+                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm focus:border-blue-500 outline-none resize-y" />
+              {createErr && <p className="mt-2 text-xs font-semibold text-red-600">{createErr}</p>}
+              <div className="flex gap-2 mt-3">
+                <button onClick={createTemplate} disabled={!newName.trim() || !newBody.trim()}
+                  className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl disabled:opacity-40">
+                  Create
+                </button>
+                <button onClick={() => { setCreating(false); setCreateErr(''); }}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {custom.length === 0 && !creating ? (
+            <div className="bg-white rounded-2xl border border-dashed border-gray-300 p-8 text-center">
+              <p className="text-sm text-gray-500">No templates of your own yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {custom.map(t => (
+                <CustomCard key={t.key} t={t} audiences={audiences} variables={customVars} onChanged={load} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

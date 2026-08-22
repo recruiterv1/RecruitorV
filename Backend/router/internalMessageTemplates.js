@@ -10,7 +10,10 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { db } = require('./firebase_ad');
-const { TRIGGERS, TRIGGER_MAP, substitute, sendInternalMessage } = require('../utils/internalMessage');
+const {
+  TRIGGERS, TRIGGER_MAP, substitute, sendInternalMessage,
+  AUDIENCES, AUDIENCE_MAP, CUSTOM_VARIABLES, audienceMembers, varsFor,
+} = require('../utils/internalMessage');
 
 const lc = (s) => (s || '').toString().toLowerCase().trim();
 const MANAGER_ROLES = ['superadmin', 'super admin', 'admin'];
@@ -58,7 +61,29 @@ router.get('/', managerAuth, async (req, res) => {
         updatedBy: s.updatedBy || '',
       };
     });
-    res.json({ success: true, templates });
+    // Templates the SuperAdmin wrote themselves. These have no event to fire on,
+    // so they are sent by hand from the designer.
+    const customSnap = await db.collection('internal_message_templates')
+      .where('custom', '==', true).get();
+    const custom = customSnap.docs.map(d => {
+      const c = d.data();
+      return {
+        key: d.id, name: c.name || 'Untitled', body: c.body || '',
+        audience: c.audience || 'recruiters',
+        recipients: Array.isArray(c.recipients) ? c.recipients : [],
+        custom: true,
+        updatedAt: c.updatedAt?.toDate?.()?.toISOString?.() || null,
+        updatedBy: c.updatedBy || '',
+        lastSentAt: c.lastSentAt?.toDate?.()?.toISOString?.() || null,
+        lastSentCount: c.lastSentCount || 0,
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({
+      success: true, templates, custom,
+      audiences: AUDIENCES.map(({ key, label }) => ({ key, label })),
+      customVariables: CUSTOM_VARIABLES,
+    });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
@@ -108,6 +133,146 @@ router.post('/:key/test', managerAuth, async (req, res) => {
       fromEmail: 'support@recruiterv.com', toEmail: req.managerEmail, text: `[TEST] ${text}`,
     });
     res.json({ success: ok, message: ok ? 'Test message sent to your Messages inbox.' : 'Could not send the test message.' });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+
+// ── Custom templates ─────────────────────────────────────────────────────────
+
+const slugKey = (name) =>
+  'custom_' + lc(name).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)
+  + '_' + Date.now().toString(36);
+
+// POST /api/internal-templates/custom  { name, body, audience, recipients }
+router.post('/custom', managerAuth, async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim().slice(0, 80);
+    const body = String(req.body?.body || '').trim();
+    const audience = AUDIENCE_MAP[req.body?.audience] ? req.body.audience : 'recruiters';
+    const recipients = Array.isArray(req.body?.recipients)
+      ? req.body.recipients.map(e => lc(e)).filter(Boolean) : [];
+    if (!name) return res.status(400).json({ success: false, message: 'Give the template a name.' });
+    if (!body) return res.status(400).json({ success: false, message: 'Write the message.' });
+
+    const { FieldValue } = require('firebase-admin/firestore');
+    const key = slugKey(name);
+    await db.collection('internal_message_templates').doc(key).set({
+      key, name, body, audience, recipients,
+      custom: true, enabled: false,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedBy: req.managerEmail,
+    });
+    res.json({ success: true, key, message: 'Template created.' });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// PUT /api/internal-templates/custom/:key
+router.put('/custom/:key', managerAuth, async (req, res) => {
+  try {
+    const ref = db.collection('internal_message_templates').doc(req.params.key);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().custom !== true) {
+      return res.status(404).json({ success: false, message: 'Template not found.' });
+    }
+    const name = String(req.body?.name || '').trim().slice(0, 80);
+    const body = String(req.body?.body || '').trim();
+    if (!name || !body) return res.status(400).json({ success: false, message: 'Name and message are both required.' });
+
+    const { FieldValue } = require('firebase-admin/firestore');
+    await ref.set({
+      name, body,
+      audience: AUDIENCE_MAP[req.body?.audience] ? req.body.audience : (doc.data().audience || 'recruiters'),
+      recipients: Array.isArray(req.body?.recipients) ? req.body.recipients.map(e => lc(e)).filter(Boolean) : [],
+      updatedAt: FieldValue.serverTimestamp(), updatedBy: req.managerEmail,
+    }, { merge: true });
+    res.json({ success: true, message: 'Saved.' });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// DELETE /api/internal-templates/custom/:key
+router.delete('/custom/:key', managerAuth, async (req, res) => {
+  try {
+    const ref = db.collection('internal_message_templates').doc(req.params.key);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().custom !== true) {
+      return res.status(404).json({ success: false, message: 'Template not found.' });
+    }
+    await ref.delete();
+    res.json({ success: true, message: 'Template deleted.' });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// GET /api/internal-templates/custom/:key/audience — how many people this would
+// reach, so the count can be shown before anything is sent.
+router.get('/custom/:key/audience', managerAuth, async (req, res) => {
+  try {
+    const doc = await db.collection('internal_message_templates').doc(req.params.key).get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Template not found.' });
+    const c = doc.data();
+    const people = await audienceMembers(c.audience, c.recipients || []);
+    res.json({
+      success: true, count: people.length,
+      sample: people.slice(0, 5).map(p => p.name || p.email),
+    });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// POST /api/internal-templates/custom/:key/send  { confirm: true, offset }
+// Delivers to the audience in chunks. Each call sends up to CHUNK recipients and
+// returns the next offset, so a 1,700-person audience never blocks one long
+// request and the sender sees progress. `confirm` is required so a stray call
+// can never message everyone.
+const SEND_CHUNK = 150;
+
+router.post('/custom/:key/send', managerAuth, async (req, res) => {
+  try {
+    if (req.body?.confirm !== true) {
+      return res.status(400).json({ success: false, message: 'Confirmation required.' });
+    }
+    const ref = db.collection('internal_message_templates').doc(req.params.key);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().custom !== true) {
+      return res.status(404).json({ success: false, message: 'Template not found.' });
+    }
+    const c = doc.data();
+    const people = await audienceMembers(c.audience, c.recipients || []);
+    if (!people.length) return res.status(400).json({ success: false, message: 'That audience has nobody in it.' });
+
+    const offset = Math.max(0, parseInt(req.body?.offset, 10) || 0);
+    const slice = people.slice(offset, offset + SEND_CHUNK);
+
+    let sent = 0, failed = 0;
+    // Ten at a time — this writes two documents per recipient and must not
+    // stampede Firestore.
+    for (let i = 0; i < slice.length; i += 10) {
+      const results = await Promise.all(slice.slice(i, i + 10).map(p =>
+        sendInternalMessage({
+          fromEmail: req.managerEmail,
+          toEmail: p.email,
+          text: substitute(c.body, varsFor(p)),
+        }).catch(() => false)));
+      results.forEach(ok => (ok ? sent++ : failed++));
+    }
+
+    const nextOffset = offset + slice.length;
+    const done = nextOffset >= people.length;
+
+    const { FieldValue } = require('firebase-admin/firestore');
+    if (done) {
+      await ref.set({
+        lastSentAt: FieldValue.serverTimestamp(),
+        lastSentCount: people.length, lastSentBy: req.managerEmail,
+      }, { merge: true });
+    }
+
+    res.json({
+      success: true, sent, failed, total: people.length,
+      nextOffset: done ? null : nextOffset, done,
+      message: done
+        ? `Sent to ${people.length} ${people.length === 1 ? 'person' : 'people'}${failed ? `, ${failed} failed` : ''}.`
+        : `Sent ${nextOffset} of ${people.length}…`,
+    });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

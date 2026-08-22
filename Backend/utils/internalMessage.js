@@ -192,4 +192,69 @@ async function notify(key, { fromEmail, toEmail, vars = {} }) {
   return sendInternalMessage({ fromEmail, toEmail, text });
 }
 
-module.exports = { TRIGGERS, TRIGGER_MAP, substitute, renderInternal, sendInternalMessage, notify };
+
+// ── Custom templates ─────────────────────────────────────────────────────────
+// The four triggers above fire on an event. A SuperAdmin can also write their
+// own templates, which have no event to hook — those are sent by hand to a
+// chosen audience from the designer.
+
+// Audiences a custom message can be sent to.
+const AUDIENCES = [
+  { key: 'recruiters', label: 'All Recruiters', collection: 'recruiter_db' },
+  { key: 'coaches',    label: 'All Coaches',    collection: 'coach_db' },
+  { key: 'experts',    label: 'All Experts',    collection: 'expert_db' },
+  { key: 'vendors',    label: 'All Vendors',    collection: 'admin_db', roleCategory: 'vendor' },
+  { key: 'clientspocs',label: 'All ClientSPOCs',collection: 'admin_db', roleCategory: 'clientspoc' },
+  { key: 'custom',     label: 'Specific people (enter emails)', collection: null },
+];
+const AUDIENCE_MAP = Object.fromEntries(AUDIENCES.map(a => [a.key, a]));
+
+// Variables a custom template may use. Resolved per recipient at send time.
+const CUSTOM_VARIABLES = ['name', 'firstName', 'email', 'role'];
+
+/**
+ * Everyone in an audience. Only active, non-blocked accounts with an email.
+ * @returns {Promise<{email,name,role}[]>}
+ */
+async function audienceMembers(audienceKey, explicitEmails = []) {
+  const a = AUDIENCE_MAP[audienceKey];
+  if (!a) return [];
+
+  if (a.key === 'custom') {
+    const out = [];
+    for (const raw of explicitEmails) {
+      const e = lc(raw);
+      if (e && !out.some(x => x.email === e)) out.push(await resolveBasic(e));
+    }
+    return out;
+  }
+
+  const snap = await db.collection(a.collection).get();
+  const wanted = a.roleCategory;
+  return snap.docs
+    .map(d => d.data())
+    .filter(u => {
+      if (!u.email) return false;
+      if (lc(u.accountStatus) === 'blocked') return false;
+      if (wanted) return lc(u.roleCategory || u.role || '').replace(/\s/g, '') === wanted;
+      return true;
+    })
+    .map(u => ({
+      email: lc(u.email),
+      name: u.name || lc(u.email).split('@')[0],
+      role: lc(u.roleCategory || u.role || ''),
+    }));
+}
+
+/** Per-recipient variable values for a custom send. */
+const varsFor = (person) => ({
+  name: person.name || '',
+  firstName: (person.name || '').split(' ')[0] || '',
+  email: person.email || '',
+  role: person.role || '',
+});
+
+module.exports = {
+  TRIGGERS, TRIGGER_MAP, substitute, renderInternal, sendInternalMessage, notify,
+  AUDIENCES, AUDIENCE_MAP, CUSTOM_VARIABLES, audienceMembers, varsFor, resolveBasic,
+};

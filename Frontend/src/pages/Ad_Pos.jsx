@@ -1700,34 +1700,10 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
               />
             </div>
 
-            {/* Vendor-only: publish on RecruiterV, or keep the role inside the team. */}
-            {vendorMode && (
-              <div className="mb-6 sm:mb-8">
-                <div className="flex items-center gap-2 mb-3 sm:mb-4">
-                  <Building size={18} className="sm:w-5 sm:h-5 text-blue-600" />
-                  <h4 className="text-base sm:text-lg font-bold text-gray-900">Where should this position live?</h4>
-                </div>
-                <label className={`flex items-start gap-3 rounded-xl border-2 p-4 cursor-pointer transition-colors ${
-                  form.publishToPlatform ? 'border-blue-500 bg-blue-50/60' : 'border-gray-200 hover:bg-gray-50'}`}>
-                  <input
-                    type="checkbox"
-                    checked={!!form.publishToPlatform}
-                    onChange={(e) => setForm(prev => ({ ...prev, publishToPlatform: e.target.checked }))}
-                    className="w-5 h-5 accent-blue-600 mt-0.5 flex-shrink-0"
-                  />
-                  <span>
-                    <span className="block text-sm font-semibold text-gray-800">
-                      Publish this position on the RecruiterV public platform
-                    </span>
-                    <span className="block text-xs text-gray-500 mt-1">
-                      Ticked, it goes to the ClientSPOC you selected for review — they decide whether it
-                      goes live. Left unticked, the position stays private to your own team: only your
-                      recruiters see it and work on it, and no ClientSPOC approval is needed.
-                    </span>
-                  </span>
-                </label>
-              </div>
-            )}
+            {/* The "Where should this position live?" choice is hidden: a vendor's
+                position stays private to their team by default, and publishing to
+                RecruiterV is arranged with the ClientSPOC rather than self-served.
+                form.publishToPlatform stays false, so the server keeps it private. */}
             </>)}
 
             {step === 7 && (<>
