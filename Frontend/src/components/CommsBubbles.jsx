@@ -1,6 +1,7 @@
 import React, { useContext } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mail, MessageSquare, Smartphone } from 'lucide-react';
+import { Mail, MessageSquare } from 'lucide-react';
+import AndroidIcon from './AndroidIcon';
 import { UserStateContext } from '../context/AuthPro';
 import { useChatNotify } from '../context/ChatNotify';
 
@@ -72,7 +73,7 @@ export default function CommsBubbles() {
           app download rather than another comms channel. */}
       <Bubble label="Get the Android app" active={location.pathname === '/get-app'}
         onClick={() => go('/get-app')} tone="android">
-        <Smartphone size={22} />
+        <AndroidIcon size={24} />
       </Bubble>
     </div>
   );

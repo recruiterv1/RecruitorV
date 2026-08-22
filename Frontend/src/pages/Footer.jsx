@@ -1,6 +1,7 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { Linkedin, Twitter, Facebook, Mail, Phone, MapPin, ArrowRight, Smartphone } from 'lucide-react'
+import { Linkedin, Twitter, Facebook, Mail, Phone, MapPin, ArrowRight } from 'lucide-react'
+import AndroidIcon from '../components/AndroidIcon'
 
 const Footer = () => {
   return (
@@ -156,7 +157,7 @@ const Footer = () => {
                 aria-label="Get the Android app"
                 title="Get the Android app"
               >
-                <Smartphone size={22} className="text-green-400 group-hover:text-white transition-colors" />
+                <AndroidIcon size={22} className="text-green-400 group-hover:text-white transition-colors" />
               </a>
             </div>
 
