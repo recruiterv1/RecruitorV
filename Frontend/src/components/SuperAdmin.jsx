@@ -1,4 +1,5 @@
 import React, { useState, useContext } from 'react';
+import AnnouncementBar from './AnnouncementBar';
 import { useNavigate } from 'react-router-dom';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import axios from 'axios';
@@ -34,7 +35,7 @@ import {
   Landmark,
   Sparkles,
   MessageSquare,
-  BadgeCheck,
+  BadgeCheck, Megaphone
 } from 'lucide-react';
 import SuperAdminAIReports from '../pages/SuperAdminAIReports';
 import ChatPanel from './ChatPanel';
@@ -61,6 +62,7 @@ import CoachRecruiterAssignmentsAdmin from '../pages/CoachRecruiterAssignmentsAd
 import { PendingUsersPanel, VendorManagement } from './AdminDashboard';
 import AllVendors from '../pages/AllVendors';
 import InternalMessageTemplates from '../pages/InternalMessageTemplates';
+import AnnouncementsAdmin from '../pages/AnnouncementsAdmin';
 import { AllCandidatesPanel, DirectCandidatesPanel, ActiveCandidatesPanel } from '../pages/SuperAdminCandidates';
 import SuperAdminAssignedPositions from '../pages/SuperAdminAssignedPositions';
 import CoachVendorRequests from '../pages/CoachVendorRequests';
@@ -284,6 +286,7 @@ const SuperAdmin = () => {
       { id: 'send-email', icon: Mail, label: 'Send Email', component: <SuperAdminSendEmail /> },
       { id: 'email-templates', icon: Mail, label: 'Email Templates', component: <SuperAdminEmailTemplates /> },
       { id: 'internal-message-templates', icon: MessageSquare, label: 'Internal Message Templates', component: <InternalMessageTemplates /> },
+      { id: 'announcements', icon: Megaphone, label: 'Announcements', component: <AnnouncementsAdmin /> },
       { id: 'inbox-access', icon: Inbox, label: 'Inbox Access', component: <SuperAdminInboxAccess /> },
       ]
     },
@@ -565,6 +568,7 @@ const SuperAdmin = () => {
         
         {/* Top Header */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-lg shadow-md border-b-2 border-blue-100">
+          <AnnouncementBar />
           <div className="px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex items-center justify-between">
               

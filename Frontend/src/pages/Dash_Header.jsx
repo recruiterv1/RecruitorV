@@ -1,4 +1,5 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
+import AnnouncementBar from '../components/AnnouncementBar';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Bell, Search, Menu, X, Check, CheckCheck, HelpCircle, Sun, Moon } from 'lucide-react';
@@ -235,6 +236,8 @@ const Dash_Header = ({ onMenuClick }) => {
 
   return (
     <div className="w-full bg-white border-b border-gray-200">
+      {/* Role-wise announcements, above everything else in the header */}
+      <AnnouncementBar />
       <div className="px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex items-center justify-between gap-4">
           

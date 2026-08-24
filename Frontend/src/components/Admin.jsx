@@ -1,4 +1,5 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
+import AnnouncementBar from './AnnouncementBar';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import { SidebarContext } from '../context/Sidebarcontext';
@@ -680,6 +681,7 @@ const Admin = () => {
         
         {/* Top Header */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-lg shadow-md border-b-2 border-blue-100">
+          <AnnouncementBar />
           <div className="px-4 sm:px-6 lg:px-8 py-4">
             <div className="flex items-center justify-between">
               

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
+import AnnouncementBar from '../components/AnnouncementBar';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -1825,6 +1826,7 @@ const VendorDashboard = () => {
       <div className={`transition-all duration-300 ${showExpanded ? 'lg:ml-64' : 'lg:ml-20'}`}>
         {/* Top bar */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm">
+          <AnnouncementBar />
           <div className="flex items-center justify-between px-4 sm:px-6 py-4">
             <div className="flex items-center gap-3">
               <button onClick={() => setIsMobileSidebarOpen(true)} className="lg:hidden p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
