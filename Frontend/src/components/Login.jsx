@@ -98,7 +98,8 @@ const Login = () => {
             profilePct = pcRes.data?.completion?.percentage ?? 0;
           } catch (_) {}
         }
-        const readyForPositions = agreementSigned && profilePct >= 80;
+        const isVendorTeam = !!userData?.vendorEmail;
+        const readyForPositions = isVendorTeam || (agreementSigned && profilePct >= 80);
 
         if (role === 'Coach') {
           navigate(readyForPositions ? "/coach-expert-positions" : "/coach-dashboard");
@@ -200,7 +201,8 @@ const Login = () => {
           profilePct = pcRes.data?.completion?.percentage ?? 0;
         } catch (_) {}
       }
-      const readyForPositions = agreementSigned && profilePct >= 80;
+      const isVendorTeam = !!userData?.vendorEmail;
+      const readyForPositions = isVendorTeam || (agreementSigned && profilePct >= 80);
 
       if (role === 'Coach') {
         navigate(readyForPositions ? "/coach-expert-positions" : "/coach-dashboard");

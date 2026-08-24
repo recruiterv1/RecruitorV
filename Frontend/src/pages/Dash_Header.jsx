@@ -413,7 +413,11 @@ const Dash_Header = ({ onMenuClick }) => {
               {isUserMenuOpen && (
                 <div className="absolute right-0 top-full mt-2 w-44 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
                   <button
-                    onClick={() => { setIsUserMenuOpen(false); navigate('/profile'); }}
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      // A vendor's recruiter keeps a short profile of their own.
+                      navigate(user?.vendorEmail ? '/team-profile' : '/profile');
+                    }}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
                   >
                     Profile

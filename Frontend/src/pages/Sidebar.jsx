@@ -193,7 +193,8 @@ const Sidebar = () => {
   // Agreement gate ENABLED — but only ever true for accounts created BEFORE the
   // Terms & Conditions checkbox existed on the sign-up form. New sign-ups accept
   // the Terms at registration (agreementSigned = true) and are never locked.
-  const needsAgreement = user && !isAdmin && !isClientSpoc && !isVendor && !user?.agreementSigned;
+  const isVendorTeam   = !!user?.vendorEmail;   // recruiter registered by a vendor
+  const needsAgreement = user && !isAdmin && !isClientSpoc && !isVendor && !isVendorTeam && !user?.agreementSigned;
   const agreementPath  = isCoach ? '/coach-agreement' : isExpert ? '/expert-agreement' : '/recruiter-agreement';
   const isGuardedRole  = (isCoachOrExpert || (!isClientSpoc && !isAdmin)) && !needsAgreement;
 
@@ -278,8 +279,15 @@ const Sidebar = () => {
     // shared pages like dash_view. Messages/Inbox stay out — they're the floating
     // buttons bottom-right.
     menuItems = [
-      { icon: UserPlus, label: 'Register Recruiter', path: '/vendor-dashboard#register' },
-      { icon: Users,    label: 'My Recruiters',      path: '/vendor-dashboard#recruiters' },
+      { icon: LayoutDashboard, label: 'Dashboard', path: '/vendor-dashboard#dashboard' },
+      {
+        icon: Users,
+        label: 'My Teams',
+        children: [
+          { icon: Users,    label: 'My Teams',      path: '/vendor-dashboard#recruiters' },
+          { icon: UserPlus, label: 'Add Recruiter', path: '/vendor-dashboard#register' },
+        ],
+      },
       {
         icon: FileText,
         label: 'Candidates',

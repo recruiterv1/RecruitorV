@@ -8,7 +8,7 @@ import {
   PlusCircle, FolderOpen, ClipboardList,
   ChevronDown, ChevronRight, ChevronLeft, AlertCircle, Building,
   Briefcase, Download, X, Hash, Store, Menu, Clock, MapPin,
-  IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox, Building2, Mic
+  IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox, Building2, Mic, LayoutDashboard, Trash2
 } from 'lucide-react';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import Ad_Candi from './Ad_Candi';
@@ -28,7 +28,7 @@ const fmt = (d) => {
   } catch { return 'N/A'; }
 };
 
-// ── Register Recruiter ─────────────────────────────────────────
+// ── Add Recruiter ──────────────────────────────────────────────
 const RegisterRecruiterTab = ({ vendorInfo, vendorInfoLoaded, vendorInfoError, onRegistered, onRetry }) => {
   const [form, setForm] = useState({ name: '', email: '', password: '', mobile: '' });
   const [selectedCategories, setSelectedCategories] = useState([]);
@@ -262,7 +262,7 @@ const RegisterRecruiterTab = ({ vendorInfo, vendorInfoLoaded, vendorInfoError, o
           disabled={loading}
           className="w-full bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 disabled:opacity-50 text-white py-3 rounded-xl font-bold text-sm transition-all"
         >
-          {loading ? 'Registering…' : 'Register Recruiter (Paid Plan)'}
+          {loading ? 'Adding…' : 'Add Recruiter (Paid Plan)'}
         </button>
       </form>
     </div>
@@ -622,8 +622,24 @@ const RecruiterDetailModal = ({ recruiterId, recruiterName, accountStatus, onAcc
   );
 };
 
-// ── My Recruiters ──────────────────────────────────────────────
+// ── My Teams ───────────────────────────────────────────────────
 const MyRecruitersTab = ({ recruiters, loading, onRefresh }) => {
+  // Removing detaches the recruiter from this vendor — it never deletes their
+  // account, because their submitted candidates and history belong to them.
+  const removeRecruiter = async (r) => {
+    if (!window.confirm(
+      `Remove ${r.name || r.email} from your team?\n\n` +
+      'They keep their RecruiterV account and their candidates — they simply stop being part of your team.'
+    )) return;
+    try {
+      const res = await axios.post('/vendor/remove-recruiter', { recruiterId: r.id }, { withCredentials: true });
+      alert(res.data?.message || 'Recruiter removed from your team.');
+      onRefresh && onRefresh();
+    } catch (e) {
+      alert(e.response?.data?.message || 'Could not remove this recruiter.');
+    }
+  };
+
   const [detailModal, setDetailModal] = useState(null); // { id, name }
 
   if (loading) return <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mr-3" /><span className="text-gray-500">Loading…</span></div>;
@@ -654,6 +670,12 @@ const MyRecruitersTab = ({ recruiters, loading, onRefresh }) => {
                   <p className="font-semibold text-gray-800 truncate">{r.name}</p>
                   <p className="text-xs text-gray-500 truncate">{r.email}</p>
                 </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); removeRecruiter(r); }}
+                  title="Remove from your team"
+                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg flex-shrink-0">
+                  <Trash2 size={15} />
+                </button>
                 <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />
               </div>
               <div className="space-y-1 text-xs text-gray-500">
@@ -1012,6 +1034,89 @@ const NotesLight = ({ pos }) => {
         boxShadow: `0 0 5px 1.5px ${colour}99`, animation: 'notesPulse 1.6s ease-in-out infinite' }} />
       <style>{`@keyframes notesPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
     </span>
+  );
+};
+
+
+// Vendor landing page. "Direct" positions are the ones the vendor added
+// themselves; "RecruiterV" ones come from the wider platform.
+const VendorDashboardTab = ({ onGo }) => {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    axios.get('/vendor/dashboard-stats', { withCredentials: true })
+      .then(r => { if (live) setData(r.data); })
+      .catch(e => { if (live) setError(e.response?.data?.message || 'Could not load your dashboard.'); });
+    return () => { live = false; };
+  }, []);
+
+  if (error) return <div className="py-16 text-center text-red-500 text-sm">{error}</div>;
+  if (!data) return <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>;
+
+  const s = data.stats || {};
+  const cards = [
+    { label: 'Direct Active Positions', value: s.directActivePositions, hint: 'Positions you added', tone: 'from-blue-500 to-blue-600', go: 'added-positions' },
+    { label: 'RecruiterV Active Positions', value: s.platformActivePositions, hint: 'Platform positions your team holds', tone: 'from-purple-500 to-purple-600', go: 'assigned-positions' },
+    { label: 'Active CVs', value: s.activeCvs, hint: 'Candidates still in play', tone: 'from-green-500 to-green-600', go: 'candidates' },
+    { label: 'Matching CVs on Active Positions', value: s.cvsOnActivePositions, hint: 'Live CVs against active positions', tone: 'from-teal-500 to-teal-600', go: 'candidates' },
+    { label: 'Positions Without Active CV', value: s.positionsWithoutCv, hint: 'Need sourcing attention', tone: 'from-orange-500 to-red-500', go: 'assigned-positions' },
+    { label: 'CVs in Upcoming Drive', value: s.cvsInUpcomingDrive, hint: 'Scheduled or to be scheduled', tone: 'from-amber-500 to-orange-500', go: 'candidates' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
+        <p className="text-sm text-gray-500">Where your team stands right now.</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {cards.map(c => (
+          <button key={c.label} onClick={() => onGo && onGo(c.go)}
+            className="text-left bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all overflow-hidden">
+            <div className={`h-1.5 bg-gradient-to-r ${c.tone}`} />
+            <div className="p-4">
+              <p className="text-3xl font-bold text-gray-900">{c.value ?? 0}</p>
+              <p className="text-sm font-semibold text-gray-700 mt-1">{c.label}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{c.hint}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="font-bold text-gray-800">Client-wise Active Positions</h3>
+          <p className="text-xs text-gray-500 mt-0.5">Across both your own and RecruiterV positions.</p>
+        </div>
+        {!data.clientWise?.length ? (
+          <p className="px-5 py-10 text-center text-sm text-gray-400">No active positions yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
+                  <th className="px-5 py-3 font-semibold">Client</th>
+                  <th className="px-5 py-3 font-semibold">Active positions</th>
+                  <th className="px-5 py-3 font-semibold">Active CVs</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {data.clientWise.map(c => (
+                  <tr key={c.client} className="hover:bg-gray-50/70">
+                    <td className="px-5 py-3 font-semibold text-gray-800">{c.client}</td>
+                    <td className="px-5 py-3 text-gray-700">{c.positions}</td>
+                    <td className="px-5 py-3 text-gray-700">{c.cvs}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -1541,7 +1646,7 @@ const VendorDashboard = () => {
     'assigned-positions', 'add-position', 'added-positions', 'messages', 'inbox', 'reports'];
   const tabFromHash = () => {
     const h = (window.location.hash || '').replace('#', '').trim();
-    return VALID_TABS.includes(h) ? h : 'register';
+    return VALID_TABS.includes(h) ? h : 'dashboard';   // land on the dashboard
   };
   const [activeTab, setActiveTab] = useState(tabFromHash);
   const [openGroups, setOpenGroups] = useState({});
@@ -1601,8 +1706,14 @@ const VendorDashboard = () => {
   };
 
   const menuItems = [
-    { id: 'register', icon: UserPlus, label: 'Register Recruiter' },
-    { id: 'recruiters', icon: Users, label: 'My Recruiters' },
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    {
+      id: 'teams-group', icon: Users, label: 'My Teams',
+      children: [
+        { id: 'recruiters', icon: Users, label: 'My Teams' },
+        { id: 'register', icon: UserPlus, label: 'Add Recruiter' },
+      ],
+    },
     {
       id: 'candidates-group', icon: FileText, label: 'Candidates',
       children: [
@@ -1716,6 +1827,7 @@ const VendorDashboard = () => {
   const activeLabel = menuItems.find(m => m.id === activeTab)?.label || '';
 
   const tabContent = {
+    dashboard: <VendorDashboardTab onGo={setActiveTab} />,
     register: <RegisterRecruiterTab vendorInfo={vendorInfo} vendorInfoLoaded={vendorInfoLoaded} vendorInfoError={vendorInfoError} onRegistered={() => { loadVendorInfo(); loadRecruiters(); }} onRetry={loadVendorInfo} />,
     recruiters: <MyRecruitersTab recruiters={recruiters} loading={loadingRecruiters} onRefresh={loadRecruiters} />,
     candidates: <Ad_Candi vendorView={true} />,

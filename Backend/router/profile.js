@@ -8,7 +8,7 @@ const recruiter = require('../model_fire/recruiterF');
 const coach = require('../model_fire/coachF');
 const expert = require('../model_fire/expertF');
 const clientspoc = require('../model_fire/clientspocF');
-const { admin } = require('./firebase_ad');
+const { admin, db } = require('./firebase_ad');
 const adminCF = require('../model_fire/adminCF');
 
 // Auth middleware
@@ -1334,6 +1334,58 @@ router.post('/send-declaration-email', authMiddleware, async (req, res) => {
       error: error.message 
     });
   }
+});
+
+
+// ── Vendor-team recruiter: short profile ─────────────────────────────────────
+// A recruiter registered by a vendor works under that vendor's agreement, so
+// they only keep a short profile. Name and mobile identify them; the official
+// email, office address and website are optional and used purely for the
+// signature block on outgoing mail.
+const VENDOR_TEAM_FIELDS = ['name', 'mobile', 'officialEmail', 'officeAddress', 'website'];
+
+router.get('/team-profile', authMiddleware, async (req, res) => {
+  try {
+    const email = (req.user.email || '').toLowerCase();
+    const snap = await db.collection('recruiter_db').where('email', '==', email).limit(1).get();
+    if (snap.empty) return res.status(404).json({ success: false, message: 'Recruiter not found.' });
+    const d = snap.docs[0].data();
+    if (!d.vendorEmail) {
+      return res.status(403).json({ success: false, message: 'This short profile is for vendor-team recruiters.' });
+    }
+    res.json({
+      success: true,
+      profile: {
+        name: d.name || '', mobile: d.mobile || d.phone || '',
+        officialEmail: d.officialEmail || '', officeAddress: d.officeAddress || '',
+        website: d.website || '', email: d.email || '',
+        vendorName: d.vendorName || '',
+      },
+    });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+router.put('/team-profile', authMiddleware, async (req, res) => {
+  try {
+    const email = (req.user.email || '').toLowerCase();
+    const snap = await db.collection('recruiter_db').where('email', '==', email).limit(1).get();
+    if (snap.empty) return res.status(404).json({ success: false, message: 'Recruiter not found.' });
+    const d = snap.docs[0].data();
+    if (!d.vendorEmail) {
+      return res.status(403).json({ success: false, message: 'This short profile is for vendor-team recruiters.' });
+    }
+
+    const patch = {};
+    VENDOR_TEAM_FIELDS.forEach(f => {
+      if (req.body?.[f] !== undefined) patch[f] = String(req.body[f] || '').trim().slice(0, 300);
+    });
+    if (!patch.name) return res.status(400).json({ success: false, message: 'Name is required.' });
+    if (!patch.mobile) return res.status(400).json({ success: false, message: 'Mobile number is required.' });
+
+    patch.updatedAt = new Date();
+    await snap.docs[0].ref.set(patch, { merge: true });
+    res.json({ success: true, message: 'Profile saved.' });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 module.exports = router;

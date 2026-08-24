@@ -40,7 +40,10 @@ const AgreementGuard = ({ children }) => {
   const isAdmin      = user?.type === 'admin' || isSuperAdminRole(user);
   const isClientSpoc = user?.roleCategory?.toLowerCase() === 'clientspoc';
   // Never gate while auth is still resolving, or for admins/clientspoc
-  const needsAgreement = !isChecking && user && !isAdmin && !isClientSpoc && !user.agreementSigned;
+  // A recruiter registered by a vendor works under that vendor's agreement, so
+  // they are never asked to sign one themselves.
+  const isVendorTeam = !!user?.vendorEmail;
+  const needsAgreement = !isChecking && user && !isAdmin && !isClientSpoc && !isVendorTeam && !user.agreementSigned;
 
   return (
     <Fragment>

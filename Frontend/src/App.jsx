@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import TeamRecruiterProfile from './pages/TeamRecruiterProfile';
 import MyBriefings from './pages/MyBriefings';
 import BriefingEntry from './pages/BriefingEntry';
 import axios from 'axios';
@@ -394,6 +395,7 @@ const App = () => {
           <ProfileGuard>
       <React.Suspense fallback={<div style={{ padding: 20 }}>Loading...</div>}>
       <Routes>
+            <Route path='/team-profile' element={<TeamRecruiterProfile/>}/>
             <Route path='/my-briefings' element={<MyBriefings/>}/>
             <Route path='/briefing/:pos_id' element={<BriefingEntry/>}/>
             <Route  path='/' element={<HomeLanding/>}/>

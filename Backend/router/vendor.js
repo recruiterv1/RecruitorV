@@ -1145,4 +1145,108 @@ router.post('/admin/companies/:id/decision', managerGate, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+
+// GET /vendor/dashboard-stats — the vendor landing page.
+// "Direct" means positions the vendor added themselves; "RecruiterV" means
+// positions from the wider platform their side is working on.
+router.get('/dashboard-stats', vendorAuth, async (req, res) => {
+  try {
+    const vendorEmail = (req.vendor.email || '').toLowerCase();
+
+    // The vendor plus every recruiter under them.
+    const teamSnap = await db.collection('recruiter_db').where('vendorEmail', '==', vendorEmail).get();
+    const teamEmails = [...new Set([vendorEmail, ...teamSnap.docs.map(d => (d.data().email || '').toLowerCase())])].filter(Boolean);
+
+    // Positions the vendor posted themselves.
+    const ownSnap = await db.collection('admin_AddPos').where('postedByVendor', '==', vendorEmail).get();
+    const ownPos = ownSnap.docs.map(d => d.data());
+    const ownIds = new Set(ownPos.map(p => String(p.pos_id)));
+
+    // Everything the team holds, from the shared access model.
+    const positionAccess = require('../model_fire/positionAccessF');
+    const heldIds = new Set();
+    await Promise.all(teamEmails.map(async (e) => {
+      try {
+        (await positionAccess.getRecruiterAssignments(e) || [])
+          .forEach(a => { const pid = String(a.positionId || ''); if (pid) heldIds.add(pid); });
+      } catch (_) { /* skip this member */ }
+    }));
+
+    // Details for held positions that the vendor did not post.
+    const platformIds = [...heldIds].filter(id => !ownIds.has(id));
+    const platformPos = [];
+    for (let i = 0; i < platformIds.length; i += 10) {
+      const snap = await db.collection('admin_AddPos').where('pos_id', 'in', platformIds.slice(i, i + 10)).get();
+      snap.docs.forEach(d => platformPos.push(d.data()));
+    }
+
+    const isActive = (p) => String(p.status || 'active').toLowerCase().trim() === 'active';
+    const activeOwn = ownPos.filter(isActive);
+    const activePlatform = platformPos.filter(isActive);
+    const activeAll = [...activeOwn, ...activePlatform];
+    const activeIds = new Set(activeAll.map(p => String(p.pos_id)));
+
+    // Candidates the team submitted. recEmail is indexed, so query in batches.
+    const cands = [];
+    for (let i = 0; i < teamEmails.length; i += 10) {
+      const snap = await db.collection('candidate_db')
+        .select('pos_id', 'statusa', 'recEmail', 'client', 'candidate')
+        .where('recEmail', 'in', teamEmails.slice(i, i + 10)).get();
+      snap.docs.forEach(d => cands.push(d.data()));
+    }
+
+    // "Active CV" = in play: not parked, rejected, dropped or duplicated.
+    const DEAD = new Set(['resume bank', 'duplicate', 'client drop', 'candidate drop',
+      'position on hold', 'offer declined', 'draft']);
+    const isLiveCv = (c) => {
+      const st = String(c.statusa || '').toLowerCase().trim();
+      if (!st || st.includes('reject')) return false;
+      return !DEAD.has(st);
+    };
+    const liveCvs = cands.filter(isLiveCv);
+    const cvOnActive = liveCvs.filter(c => activeIds.has(String(c.pos_id)));
+
+    // Positions with no live CV against them.
+    const posWithCv = new Set(cvOnActive.map(c => String(c.pos_id)));
+    const withoutCv = activeAll.filter(p => !posWithCv.has(String(p.pos_id)));
+
+    // Interview-stage CVs — the ones with a drive coming up.
+    const UPCOMING = ['to be schedule', 'scheduled', 'schedule interview'];
+    const upcoming = cvOnActive.filter(c => {
+      const st = String(c.statusa || '').toLowerCase();
+      return UPCOMING.some(u => st.includes(u));
+    });
+
+    // Client-wise active positions, biggest first.
+    const byClient = {};
+    activeAll.forEach(p => {
+      const k = (p.client || 'Unassigned').trim() || 'Unassigned';
+      if (!byClient[k]) byClient[k] = { client: k, positions: 0, cvs: 0 };
+      byClient[k].positions++;
+    });
+    cvOnActive.forEach(c => {
+      const k = (c.client || '').trim();
+      if (k && byClient[k]) byClient[k].cvs++;
+    });
+    const clientWise = Object.values(byClient).sort((a, b) => b.positions - a.positions);
+
+    res.json({
+      success: true,
+      stats: {
+        directActivePositions: activeOwn.length,
+        platformActivePositions: activePlatform.length,
+        activeCvs: liveCvs.length,
+        cvsOnActivePositions: cvOnActive.length,
+        positionsWithoutCv: withoutCv.length,
+        cvsInUpcomingDrive: upcoming.length,
+        teamSize: teamSnap.size,
+      },
+      clientWise,
+    });
+  } catch (e) {
+    console.error('vendor/dashboard-stats error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 module.exports = router;
