@@ -183,7 +183,7 @@ const companyPositions = async (company, hr = null) => {
   const { positionMatchesSkills } = require('../utils/skillMatch');
   const cats = hr.skillCategories || [];
   if (!cats.length) return [];
-  return positions.filter(p => positionMatchesSkills(p, cats));
+  return positions.filter(p => positionMatchesSkills(p, hrParents(cats)));
 };
 const posGroup = (s) => { const v = (s || '').toLowerCase().trim() || 'active'; if (v === 'active') return 'live'; if (v === 'pending') return 'pending'; if (v === 'hold' || v === 'paused') return 'hold'; if (v === 'rejected' || v === 'closed') return 'rejected'; return 'other'; };
 const CAND_REJECTS = new Set(['screen reject', 'l1 reject', 'l2 reject', 'l3 reject', 'hr reject', 'background verification reject', 'negotiation reject', 'test reject', 'client drop', 'candidate drop', 'duplicate', 'offer declined', 'position on hold', 'rejected']);
@@ -235,9 +235,9 @@ router.post('/positions', companyAuth, async (req, res) => {
         return res.status(403).json({ message: 'You have no skill categories assigned, so you cannot post a position.' });
       }
       const { positionMatchesSkills } = require('../utils/skillMatch');
-      if (!positionMatchesSkills(body, cats)) {
+      if (!positionMatchesSkills(body, hrParents(cats))) {
         return res.status(403).json({
-          message: `You can only post positions in your skill areas: ${cats.join(', ')}.`,
+          message: `You can only post positions in your skill areas: ${hrParents(cats).join(', ')}.`,
         });
       }
     }
@@ -283,7 +283,7 @@ router.get('/positions', companyAuth, async (req, res) => {
     if (req.hr) {
       const { positionMatchesSkills } = require('../utils/skillMatch');
       const cats = req.hr.skillCategories || [];
-      list = cats.length ? list.filter(p => positionMatchesSkills(p, cats)) : [];
+      list = cats.length ? list.filter(p => positionMatchesSkills(p, hrParents(cats))) : [];
     }
     res.json({ success: true, positions: list, scopedToHr: !!req.hr });
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -323,10 +323,11 @@ router.get('/candidates', companyAuth, async (req, res) => {
       const cats = req.hr.skillCategories || [];
       if (!cats.length) return res.json({ success: true, candidates: [] });
       const allowed = new Set();
-      byCompany.docs.forEach(d => { const x = d.data(); if (x.pos_id && positionMatchesSkills(x, cats)) allowed.add(x.pos_id); });
+      const parents = hrParents(cats);
+      byCompany.docs.forEach(d => { const x = d.data(); if (x.pos_id && positionMatchesSkills(x, parents)) allowed.add(x.pos_id); });
       all.docs.forEach(d => {
         const x = d.data();
-        if ((lc(x.client) === name || lc(x.companyName) === name) && x.pos_id && positionMatchesSkills(x, cats)) allowed.add(x.pos_id);
+        if ((lc(x.client) === name || lc(x.companyName) === name) && x.pos_id && positionMatchesSkills(x, parents)) allowed.add(x.pos_id);
       });
       posIds = posIds.filter(id => allowed.has(id));
     }
@@ -588,6 +589,33 @@ router.post('/spoc/positions/:id/reject', spocAuth, async (req, res) => {
 const HR = db.collection('company_hr');
 const bcryptHr = require('bcryptjs');
 
+// HR skill scope. Entries are either a bare category ("Banking") or a
+// sub-category written "Banking > Retail". Matching is done on the parent, so a
+// sub-category selection still sees that category's positions.
+const HR_MAX_CATEGORIES = 5;
+const HR_MAX_SUBS = 3;
+
+const hrParents = (cats) =>
+  [...new Set((cats || []).map(c => String(c).split('>')[0].trim()).filter(Boolean))];
+
+// Reject a scope that breaks the agreed limits, so the UI caps are not the only
+// thing standing between an HR and the whole company.
+const validateHrScope = (cats) => {
+  const list = (cats || []).map(c => String(c).trim()).filter(Boolean);
+  const parents = list.filter(c => !c.includes('>'));
+  if (parents.length > HR_MAX_CATEGORIES) {
+    return `Choose at most ${HR_MAX_CATEGORIES} skill categories.`;
+  }
+  const bySub = {};
+  list.filter(c => c.includes('>')).forEach(c => {
+    const p = c.split('>')[0].trim();
+    bySub[p] = (bySub[p] || 0) + 1;
+  });
+  const over = Object.entries(bySub).find(([, n]) => n > HR_MAX_SUBS);
+  if (over) return `Choose at most ${HR_MAX_SUBS} sub-categories within ${over[0]}.`;
+  return null;
+};
+
 const hrShape = (doc) => {
   const h = doc.data();
   return {
@@ -605,7 +633,7 @@ const hrOwnsPosition = (hr, pos) => {
   const cats = hr.skillCategories || [];
   if (!cats.length) return false;                          // no categories = nothing
   const { positionMatchesSkills } = require('../utils/skillMatch');
-  return positionMatchesSkills(pos, cats);
+  return positionMatchesSkills(pos, hrParents(cats));
 };
 
 // ── Company owner: manage HRs ────────────────────────────────────────────────
@@ -631,6 +659,8 @@ router.post('/hrs', companyAuth, async (req, res) => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: 'Enter a valid email.' });
     if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
     if (!skillCategories.length) return res.status(400).json({ message: 'Give this HR at least one skill category.' });
+    const scopeErr = validateHrScope(skillCategories);
+    if (scopeErr) return res.status(400).json({ message: scopeErr });
 
     const dup = await HR.where('email', '==', email).limit(1).get();
     if (!dup.empty) return res.status(409).json({ message: 'An HR with that email already exists.' });
@@ -684,6 +714,8 @@ router.put('/hrs/:id', companyAuth, async (req, res) => {
     if (Array.isArray(req.body?.skillCategories)) {
       const cats = [...new Set(req.body.skillCategories.map(x => String(x).trim()).filter(Boolean))];
       if (!cats.length) return res.status(400).json({ message: 'Give this HR at least one skill category.' });
+      const scopeErr = validateHrScope(cats);
+      if (scopeErr) return res.status(400).json({ message: scopeErr });
       patch.skillCategories = cats;
     }
     if (req.body?.password) {

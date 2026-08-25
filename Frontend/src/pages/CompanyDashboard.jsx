@@ -771,7 +771,8 @@ const hrInputCls = 'w-full text-sm border border-gray-300 rounded-lg px-3 py-2 o
 
 const HrTeam = () => {
   const [hrs, setHrs] = useState(null);
-  const [cats, setCats] = useState([]);
+  const [cats, setCats] = useState([]);          // [{ parent, children:[{name, subChildren}] }]
+  const [openCat, setOpenCat] = useState(null);  // which parent is expanded
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', skillCategories: [] });
   const [err, setErr] = useState('');
@@ -781,19 +782,46 @@ const HrTeam = () => {
 
   useEffect(() => {
     load();
-    // Same category list the position form uses, so an HR's scope always lines
-    // up with how positions are actually filed.
-    axios.get('/addit/skill-categories', { withCredentials: true })
-      .then(r => setCats(Array.isArray(r.data) ? r.data : (r.data?.categories || [])))
+    // The same hierarchy the SuperAdmin maintains and the position form uses, so
+    // an HR's scope always lines up with how positions are actually filed.
+    axios.get('/candidate/skill-categories-hierarchical')
+      .then(r => setCats(r.data?.success ? (r.data.categories || []) : []))
       .catch(() => setCats([]));
   }, []);
 
-  const toggleCat = (c) => setForm(f => ({
-    ...f,
-    skillCategories: f.skillCategories.includes(c)
-      ? f.skillCategories.filter(x => x !== c)
-      : [...f.skillCategories, c],
-  }));
+  // Limits agreed with the business: at most 5 skill categories per HR, and at
+  // most 3 sub-categories within any one of them.
+  const MAX_CATS = 5;
+  const MAX_SUBS = 3;
+
+  // Sub-categories are stored as "Parent > Sub" so a bare parent and its
+  // children never collide, and the server can still match on the parent.
+  const subKey = (parent, sub) => `${parent} > ${sub}`;
+  const parentsChosen = form.skillCategories.filter(c => !c.includes(' > '));
+  const subsOf = (parent) =>
+    form.skillCategories.filter(c => c.startsWith(`${parent} > `));
+
+  const toggleCat = (parent) => setForm(f => {
+    const has = f.skillCategories.includes(parent);
+    if (has) {
+      // Dropping a category drops its sub-categories with it.
+      return { ...f, skillCategories: f.skillCategories.filter(c => c !== parent && !c.startsWith(`${parent} > `)) };
+    }
+    if (f.skillCategories.filter(c => !c.includes(' > ')).length >= MAX_CATS) return f;
+    return { ...f, skillCategories: [...f.skillCategories, parent] };
+  });
+
+  const toggleSub = (parent, sub) => setForm(f => {
+    const key = subKey(parent, sub);
+    if (f.skillCategories.includes(key)) {
+      return { ...f, skillCategories: f.skillCategories.filter(c => c !== key) };
+    }
+    if (f.skillCategories.filter(c => c.startsWith(`${parent} > `)).length >= MAX_SUBS) return f;
+    // Selecting a sub-category implies its parent.
+    const next = f.skillCategories.includes(parent) ? f.skillCategories : [...f.skillCategories, parent];
+    if (next.filter(c => !c.includes(' > ')).length > MAX_CATS) return f;
+    return { ...f, skillCategories: [...next, key] };
+  });
 
   const save = async () => {
     setErr(''); setBusy(true);
@@ -848,19 +876,64 @@ const HrTeam = () => {
               placeholder="Password * (min 6)" type="text" className={hrInputCls} />
           </div>
           <div>
-            <p className="text-xs font-semibold opacity-80 mb-1.5">Skill categories they handle *</p>
-            <div className="flex flex-wrap gap-1.5">
-              {cats.map(c => (
-                <button key={c} type="button" onClick={() => toggleCat(c)}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
-                    form.skillCategories.includes(c)
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'border-gray-300 opacity-80 hover:opacity-100'}`}>
-                  {c}
-                </button>
-              ))}
-            </div>
-            {!cats.length && <p className="text-xs opacity-60">No skill categories configured yet.</p>}
+            <p className="text-xs font-semibold opacity-80">Skill categories they handle *</p>
+            <p className="text-[11px] opacity-60 mb-2">
+              Up to {MAX_CATS} categories, and up to {MAX_SUBS} sub-categories within each.
+              Selected: {parentsChosen.length}/{MAX_CATS}
+            </p>
+
+            {!cats.length ? (
+              <p className="text-xs opacity-60">No skill categories configured yet.</p>
+            ) : (
+              <div className="rounded-xl border border-gray-200/50 divide-y divide-gray-200/40 max-h-72 overflow-y-auto">
+                {cats.map(c => {
+                  const chosen = form.skillCategories.includes(c.parent);
+                  const mySubs = subsOf(c.parent);
+                  const atCatLimit = !chosen && parentsChosen.length >= MAX_CATS;
+                  const isOpen = openCat === c.parent;
+                  return (
+                    <div key={c.parent}>
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        <button type="button" onClick={() => toggleCat(c.parent)} disabled={atCatLimit}
+                          className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                            chosen ? 'bg-blue-600 text-white border-blue-600'
+                                   : atCatLimit ? 'border-gray-200 opacity-40 cursor-not-allowed'
+                                   : 'border-gray-300 opacity-80 hover:opacity-100'}`}>
+                          {chosen ? '✓ ' : ''}{c.parent}
+                        </button>
+                        {mySubs.length > 0 && (
+                          <span className="text-[11px] opacity-60">{mySubs.length}/{MAX_SUBS} sub</span>
+                        )}
+                        {(c.children || []).length > 0 && (
+                          <button type="button" onClick={() => setOpenCat(isOpen ? null : c.parent)}
+                            className="ml-auto text-[11px] opacity-70 hover:opacity-100">
+                            {isOpen ? 'Hide' : 'Sub-categories'} {isOpen ? '▴' : '▾'}
+                          </button>
+                        )}
+                      </div>
+                      {isOpen && (
+                        <div className="px-3 pb-3 pl-6 flex flex-wrap gap-1.5">
+                          {(c.children || []).map(ch => {
+                            const on = form.skillCategories.includes(subKey(c.parent, ch.name));
+                            const atSubLimit = !on && mySubs.length >= MAX_SUBS;
+                            return (
+                              <button key={ch.name} type="button"
+                                onClick={() => toggleSub(c.parent, ch.name)} disabled={atSubLimit}
+                                className={`text-[11px] px-2 py-0.5 rounded border transition-colors ${
+                                  on ? 'bg-blue-100 text-blue-700 border-blue-300'
+                                     : atSubLimit ? 'border-gray-200 opacity-40 cursor-not-allowed'
+                                     : 'border-gray-300 opacity-75 hover:opacity-100'}`}>
+                                {ch.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <button onClick={save} disabled={busy || !form.name || !form.email || !form.password || !form.skillCategories.length}
