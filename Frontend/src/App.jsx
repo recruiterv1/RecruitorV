@@ -30,6 +30,11 @@ const CompanyLogin = React.lazy(() => import('./pages/CompanyLogin'));
 const PostJob = React.lazy(() => import('./pages/PostJob'));
 const ClientSpocCompany = React.lazy(() => import('./pages/ClientSpocCompany'));
 const ConsultingLogin = React.lazy(() => import('./pages/ConsultingLogin'));
+const EmployerLanding = React.lazy(() => import('./pages/EmployerLanding'));
+const CompanyLanding = React.lazy(() => import('./pages/CompanyLanding'));
+const VendorLanding = React.lazy(() => import('./pages/VendorLanding'));
+const ConsultingLanding = React.lazy(() => import('./pages/ConsultingLanding'));
+const PortalRegister = React.lazy(() => import('./pages/PortalRegister'));
 const ConsultingRegister = React.lazy(() => import('./pages/ConsultingRegister'));
 const ConsultingFirmLanding = React.lazy(() => import('./pages/ConsultingFirmLanding'));
 const ConsultingDashboard = React.lazy(() => import('./pages/ConsultingDashboard'));
@@ -444,7 +449,13 @@ const App = () => {
             <Route path='/freelance' element={<MainFreelance/>} />
             <Route path='/established' element={<MainEstablished/>} />
             <Route path='/pricing' element={<Pricing/>} />
-            <Route path='/for-employer' element={<ForEmployer/>} />
+            <Route path='/for-employer' element={<EmployerLanding/>} />
+            <Route path='/for-employer/post' element={<ForEmployer/>} />
+            <Route path='/for-company' element={<CompanyLanding/>} />
+            <Route path='/for-vendor' element={<VendorLanding/>} />
+            <Route path='/for-consulting' element={<ConsultingLanding/>} />
+            <Route path='/company-signup' element={<PortalRegister portal='company'/>} />
+            <Route path='/vendor-register' element={<PortalRegister portal='vendor'/>} />
             <Route path='/about' element={<AboutUs/>} />
             <Route path='/coachexpert' element={<CoachExpert/>} />
             <Route path='/superadmin' element={<SuperAdmin/>} />

@@ -88,6 +88,25 @@ const checkCredentials = async(email,pass)=>{
             return { success: false, message: "Invalid Credentials"}
         }
 
+        // Self-registered Company / Vendor accounts sit at 'pending' until a
+        // SuperAdmin approves them. Refuse the sign-in until then, otherwise
+        // approval would mean nothing.
+        const status = String(admin.accountStatus || '').toLowerCase().trim();
+        if (status === 'pending') {
+            return {
+                success: false,
+                pending: true,
+                message: "Your account is awaiting approval. We'll email you as soon as it's approved.",
+            };
+        }
+        if (status === 'blocked') {
+            return {
+                success: false,
+                blocked: true,
+                message: "Your access has been put on hold by the administrator.",
+            };
+        }
+
         return { success: true, message: "Verified Successfully", admin}
 
     } catch (error){
