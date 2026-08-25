@@ -957,7 +957,11 @@ function DashViewV2Inner() {
       sub: [j.client, j.clientspoc_name ? `Client SPOC: ${j.clientspoc_name}` : '', j.datePosted ? `Posted ${fmtDate(j.datePosted)}` : ''].filter(Boolean).join(' · '),
       location: loc || '—',
       ctc: (j.ctcStart || j.ctcEnd) ? `${fmtCtc(j.ctcStart)} – ${fmtCtc(j.ctcEnd)}` : '—',
-      commission: j.commison ? formatCommission(j.commison, j.commission_type) : '—',
+      // A vendor's or firm's recruiter is paid by their own organisation, so the
+      // server withholds the platform commission — say so rather than show a dash.
+      commission: j.commissionHidden
+        ? 'As per your organisation'
+        : (j.commison ? formatCommission(j.commison, j.commission_type) : '—'),
       openings: j.no_of_positions || 1,
       experience: exp || '—',
       minExp: j.min_exp, maxExp: j.max_exp, minRelExp: j.min_rel_exp,

@@ -43,6 +43,18 @@ const buildCommissionMap = async () => {
 // Apply current commission from company map to a positions array — only for
 // legacy positions with no explicit commission_type, so a position's own
 // chosen tier (fixed amount or percentage) is never overwritten.
+// Commission is the platform's arrangement with the recruiter. A recruiter who
+// belongs to a vendor or a consulting firm is paid by that organisation, not by
+// RecruiterV, so they must never see the platform commission on a position.
+const COMMISSION_FIELDS = ['commison', 'commission_type', 'commissionTiers', 'commissionType', 'tier'];
+const stripCommission = (positions) =>
+  positions.map(pos => {
+    const clean = { ...pos };
+    COMMISSION_FIELDS.forEach(f => { delete clean[f]; });
+    clean.commissionHidden = true;      // so the UI can label it rather than show a blank
+    return clean;
+  });
+
 const applyCommission = (positions, commMap) =>
   positions.map(pos => {
     if (pos.commission_type) return pos;
@@ -181,6 +193,9 @@ router.get('/pos/show-for-user', authMiddleware, async (req, res) => {
         show = show.filter(pos => positionMatchesSkills(pos, userCats));
       }
     }
+
+    // A vendor's or firm's recruiter is paid by their own organisation.
+    if (userDoc?.vendorEmail || userDoc?.consultingFirmId) show = stripCommission(show);
 
     res.status(200).json(show);
   } catch (err) {
@@ -540,6 +555,25 @@ router.get('/position/:pos_id', async (req, res) => {
         }
       } catch (_) { /* ignore — return position as-is */ }
     }
+
+    // Hide the platform commission from a vendor's or firm's recruiter — they are
+    // paid by their own organisation. The route is public (shared position links
+    // work signed-out), so the caller is resolved only when a session exists.
+    try {
+      const token = req.cookies?.__session;
+      if (token) {
+        const email = (jwt.verify(token, process.env.SECKEY).email || '').toLowerCase();
+        if (email) {
+          const rSnap = await db.collection('recruiter_db').where('email', '==', email).limit(1).get();
+          if (!rSnap.empty) {
+            const r = rSnap.docs[0].data();
+            if (r.vendorEmail || r.consultingFirmId) {
+              return res.status(200).json(stripCommission([position])[0]);
+            }
+          }
+        }
+      }
+    } catch (_) { /* no/invalid session — return the position as-is */ }
 
     res.status(200).json(position);
   } catch (err) {

@@ -606,9 +606,17 @@ const Dash_Pos= () => {
                     <Calendar size={11}/>
                     <span>{formatDate(job.datePosted) || '—'}</span>
                   </div>
-                  <span className={`flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-full border ${getCommissionColor(job.commison)}`}>
-                    <BadgePercent size={11}/>{formatCommission(job.commison, job.commission_type)}
-                  </span>
+                  {/* Vendor/firm recruiters are paid by their own organisation, so
+                      the server withholds the platform commission. */}
+                  {job.commissionHidden ? (
+                    <span className="flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full border bg-gray-50 text-gray-500 border-gray-200">
+                      <BadgePercent size={11}/> As per your organisation
+                    </span>
+                  ) : (
+                    <span className={`flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-full border ${getCommissionColor(job.commison)}`}>
+                      <BadgePercent size={11}/>{formatCommission(job.commison, job.commission_type)}
+                    </span>
+                  )}
                 </div>
 
                 {/* Assign Me */}
