@@ -762,6 +762,157 @@ function Profile() {
 }
 
 // ── Shell ────────────────────────────────────────────────────────────────────
+
+// ── HR Team ──────────────────────────────────────────────────────────────────
+// The company owner adds HRs and gives each the skill categories they own. An
+// HR then signs in at /company and sees only the positions and candidates in
+// those categories.
+const hrInputCls = 'w-full text-sm border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500/30';
+
+const HrTeam = () => {
+  const [hrs, setHrs] = useState(null);
+  const [cats, setCats] = useState([]);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', skillCategories: [] });
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.get('/hrs').then(r => setHrs(r.data?.hrs || [])).catch(() => setHrs([]));
+
+  useEffect(() => {
+    load();
+    // Same category list the position form uses, so an HR's scope always lines
+    // up with how positions are actually filed.
+    axios.get('/addit/skill-categories', { withCredentials: true })
+      .then(r => setCats(Array.isArray(r.data) ? r.data : (r.data?.categories || [])))
+      .catch(() => setCats([]));
+  }, []);
+
+  const toggleCat = (c) => setForm(f => ({
+    ...f,
+    skillCategories: f.skillCategories.includes(c)
+      ? f.skillCategories.filter(x => x !== c)
+      : [...f.skillCategories, c],
+  }));
+
+  const save = async () => {
+    setErr(''); setBusy(true);
+    try {
+      await api.post('/hrs', form);
+      setForm({ name: '', email: '', phone: '', password: '', skillCategories: [] });
+      setAdding(false);
+      load();
+    } catch (e) { setErr(e.response?.data?.message || 'Could not add this HR.'); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async (h) => {
+    if (!window.confirm(`Remove ${h.name}? They will no longer be able to sign in.`)) return;
+    try { await api.delete(`/hrs/${h.id}`); load(); }
+    catch (e) { alert(e.response?.data?.message || 'Could not remove this HR.'); }
+  };
+
+  const toggleBlock = async (h) => {
+    try {
+      await api.put(`/hrs/${h.id}`, { accountStatus: h.accountStatus === 'blocked' ? 'approved' : 'blocked' });
+      load();
+    } catch (e) { alert(e.response?.data?.message || 'Could not update this HR.'); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-lg font-bold">HR Team</h3>
+          <p className="text-xs opacity-70 mt-0.5">
+            Each HR signs in at /company and sees only the positions and candidates in their skill areas.
+          </p>
+        </div>
+        <button onClick={() => setAdding(v => !v)}
+          className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl">
+          + Add HR
+        </button>
+      </div>
+
+      {adding && (
+        <div className="rounded-xl border-2 border-blue-200 p-4 space-y-3">
+          {err && <p className="text-xs font-semibold text-red-500">{err}</p>}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Name *" className={hrInputCls} />
+            <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              placeholder="Email *" type="email" className={hrInputCls} />
+            <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+              placeholder="Phone" className={hrInputCls} />
+            <input value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+              placeholder="Password * (min 6)" type="text" className={hrInputCls} />
+          </div>
+          <div>
+            <p className="text-xs font-semibold opacity-80 mb-1.5">Skill categories they handle *</p>
+            <div className="flex flex-wrap gap-1.5">
+              {cats.map(c => (
+                <button key={c} type="button" onClick={() => toggleCat(c)}
+                  className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                    form.skillCategories.includes(c)
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'border-gray-300 opacity-80 hover:opacity-100'}`}>
+                  {c}
+                </button>
+              ))}
+            </div>
+            {!cats.length && <p className="text-xs opacity-60">No skill categories configured yet.</p>}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={save} disabled={busy || !form.name || !form.email || !form.password || !form.skillCategories.length}
+              className="px-4 py-2 text-xs font-bold text-white bg-blue-600 rounded-xl disabled:opacity-40">
+              {busy ? 'Adding…' : 'Add HR'}
+            </button>
+            <button onClick={() => { setAdding(false); setErr(''); }}
+              className="px-4 py-2 text-xs font-semibold border border-gray-300 rounded-xl">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {hrs === null ? (
+        <p className="text-sm opacity-60 py-8 text-center">Loading…</p>
+      ) : !hrs.length ? (
+        <p className="text-sm opacity-60 py-8 text-center">No HRs added yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {hrs.map(h => (
+            <div key={h.id} className="rounded-xl border border-gray-200/40 p-3 flex items-start justify-between gap-3 flex-wrap">
+              <div className="min-w-0">
+                <p className="font-semibold text-sm">
+                  {h.name}
+                  {h.accountStatus === 'blocked' && (
+                    <span className="ml-2 text-[10px] font-bold text-red-600 bg-red-100 rounded px-1.5 py-0.5">On hold</span>
+                  )}
+                </p>
+                <p className="text-xs opacity-70">{h.email}{h.phone ? ` · ${h.phone}` : ''}</p>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {(h.skillCategories || []).map(c => (
+                    <span key={c} className="text-[11px] bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">{c}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={() => toggleBlock(h)}
+                  className="px-3 py-1.5 text-xs font-semibold border border-gray-300 rounded-lg">
+                  {h.accountStatus === 'blocked' ? 'Restore' : 'Put on hold'}
+                </button>
+                <button onClick={() => remove(h)}
+                  className="px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50">
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function CompanyDashboard() {
   const navigate = useNavigate();
   const [me, setMe] = useState(null);
@@ -786,15 +937,25 @@ export default function CompanyDashboard() {
 
   const logout = async () => { try { await api.post('/logout'); } catch (_) {} navigate('/company'); };
 
-  const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'post', label: 'Post Position', icon: Plus },
-    { id: 'positions', label: 'My Positions', icon: Briefcase },
-    { id: 'candidates', label: 'Candidates', icon: Users },
-    { id: 'poc', label: 'POC', icon: UserCircle },
-    { id: 'questions', label: 'Client Questions', icon: HelpCircle },
-    { id: 'profile', label: 'Profile', icon: UserCircle },
-  ];
+  // An HR sees only what belongs to their skill areas, and cannot post
+  // positions, manage other HRs or edit the company profile.
+  const isHr = me?.isHr === true;
+  const tabs = isHr
+    ? [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'positions', label: 'My Positions', icon: Briefcase },
+        { id: 'candidates', label: 'Candidates', icon: Users },
+      ]
+    : [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'post', label: 'Post Position', icon: Plus },
+        { id: 'positions', label: 'My Positions', icon: Briefcase },
+        { id: 'candidates', label: 'Candidates', icon: Users },
+        { id: 'hrs', label: 'HR Team', icon: Users },
+        { id: 'poc', label: 'POC', icon: UserCircle },
+        { id: 'questions', label: 'Client Questions', icon: HelpCircle },
+        { id: 'profile', label: 'Profile', icon: UserCircle },
+      ];
   const activeLabel = tabs.find(t => t.id === tab)?.label || '';
 
   if (!me) return <div className="min-h-screen grid place-items-center bg-gray-50"><Loader2 size={28} className="animate-spin text-blue-500" /></div>;
@@ -872,6 +1033,7 @@ export default function CompanyDashboard() {
           )}
           {tab === 'positions' && <MyPositions key={refreshKey} />}
           {tab === 'candidates' && <Candidates />}
+          {tab === 'hrs' && <HrTeam />}
           {tab === 'poc' && <POCs />}
           {tab === 'questions' && <Questions />}
         </main>

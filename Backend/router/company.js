@@ -50,6 +50,19 @@ const companyAuth = async (req, res, next) => {
   const c = await companyF.getCompanyById(decoded.companyId);
   if (!c) return res.status(404).json({ message: 'Company not found' });
   req.company = c;
+
+  // An HR session carries hrId. Resolving it here means every route below can
+  // scope to that HR's skill categories without repeating the lookup.
+  if (decoded.hrId) {
+    const hrDoc = await db.collection('company_hr').doc(decoded.hrId).get();
+    if (!hrDoc.exists || hrDoc.data().companyId !== decoded.companyId) {
+      return res.status(403).json({ message: 'HR account not found for this company.' });
+    }
+    if ((hrDoc.data().accountStatus || 'approved') === 'blocked') {
+      return res.status(403).json({ message: 'Your access has been put on hold by your company.' });
+    }
+    req.hr = { id: hrDoc.id, ...hrDoc.data() };
+  }
   next();
 };
 
@@ -92,11 +105,37 @@ router.post('/login', async (req, res) => {
   try {
     const { email, pass } = req.body || {};
     const result = await companyF.checkCompanyCredentials(email, pass);
-    if (!result.success) return res.status(400).json({ message: result.message });
-    const c = result.company;
-    const token = jwt.sign({ email: c.email, portal: 'company', companyId: c.id }, process.env.SECKEY, { expiresIn: '30d' });
-    setSessionCookie(res, token);
-    res.json({ message: 'Verified Successfully', company: { id: c.id, name: c.name, email: c.email }, token });
+    if (result.success) {
+      const c = result.company;
+      const token = jwt.sign({ email: c.email, portal: 'company', companyId: c.id }, process.env.SECKEY, { expiresIn: '30d' });
+      setSessionCookie(res, token);
+      return res.json({ message: 'Verified Successfully', company: { id: c.id, name: c.name, email: c.email }, token });
+    }
+
+    // Not the company account — it may be one of that company's HRs, who sign in
+    // through the same door and get a session scoped to their skill categories.
+    const bcryptLogin = require('bcryptjs');
+    const hrSnap = await db.collection('company_hr').where('email', '==', lc(email)).limit(1).get();
+    if (!hrSnap.empty) {
+      const h = hrSnap.docs[0].data();
+      if ((h.accountStatus || 'approved') === 'blocked') {
+        return res.status(403).json({ message: 'Your access has been put on hold by your company.' });
+      }
+      if (h.password && await bcryptLogin.compare(String(pass || ''), h.password)) {
+        const token = jwt.sign(
+          { email: h.email, portal: 'company', companyId: h.companyId, hrId: hrSnap.docs[0].id },
+          process.env.SECKEY, { expiresIn: '30d' });
+        setSessionCookie(res, token);
+        return res.json({
+          message: 'Verified Successfully',
+          company: { id: h.companyId, name: h.companyName || '', email: h.email },
+          hr: { id: hrSnap.docs[0].id, name: h.name, skillCategories: h.skillCategories || [] },
+          token,
+        });
+      }
+    }
+
+    return res.status(400).json({ message: result.message || 'Invalid credentials' });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -109,6 +148,14 @@ router.post('/logout', (req, res) => {
 // ── GET /me ──────────────────────────────────────────────────────────────────
 router.get('/me', companyAuth, (req, res) => {
   const c = req.company;
+  if (req.hr) {
+    return res.json({
+      success: true,
+      company: { id: c.id, name: c.name, email: c.email },
+      hr: { id: req.hr.id, name: req.hr.name, email: req.hr.email, skillCategories: req.hr.skillCategories || [] },
+      isHr: true,
+    });
+  }
   res.json({
     success: true,
     id: c.id, name: c.name, email: c.email,
@@ -121,7 +168,7 @@ router.get('/me', companyAuth, (req, res) => {
 
 // All positions belonging to a company: posted through the portal + pre-existing
 // ones whose client matches the company name.
-const companyPositions = async (company) => {
+const companyPositions = async (company, hr = null) => {
   const name = lc(company.name);
   const [byCompany, all] = await Promise.all([
     POS.where('postedByCompany', '==', company.id).get(),
@@ -130,7 +177,13 @@ const companyPositions = async (company) => {
   const map = new Map();
   byCompany.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
   all.docs.forEach(d => { const x = d.data(); if (lc(x.client) === name || lc(x.companyName) === name) map.set(d.id, { id: d.id, ...x }); });
-  return [...map.values()];
+  const positions = [...map.values()];
+  // An HR only ever sees the positions in their own skill categories.
+  if (!hr) return positions;
+  const { positionMatchesSkills } = require('../utils/skillMatch');
+  const cats = hr.skillCategories || [];
+  if (!cats.length) return [];
+  return positions.filter(p => positionMatchesSkills(p, cats));
 };
 const posGroup = (s) => { const v = (s || '').toLowerCase().trim() || 'active'; if (v === 'active') return 'live'; if (v === 'pending') return 'pending'; if (v === 'hold' || v === 'paused') return 'hold'; if (v === 'rejected' || v === 'closed') return 'rejected'; return 'other'; };
 const CAND_REJECTS = new Set(['screen reject', 'l1 reject', 'l2 reject', 'l3 reject', 'hr reject', 'background verification reject', 'negotiation reject', 'test reject', 'client drop', 'candidate drop', 'duplicate', 'offer declined', 'position on hold', 'rejected']);
@@ -138,7 +191,7 @@ const CAND_REJECTS = new Set(['screen reject', 'l1 reject', 'l2 reject', 'l3 rej
 // ── GET /summary — dashboard aggregates ──────────────────────────────────────
 router.get('/summary', companyAuth, async (req, res) => {
   try {
-    const positions = await companyPositions(req.company);
+    const positions = await companyPositions(req.company, req.hr);
     const posByGroup = { live: 0, pending: 0, hold: 0, rejected: 0, other: 0 };
     positions.forEach(p => { posByGroup[posGroup(p.status)]++; });
 
@@ -209,8 +262,14 @@ router.get('/positions', companyAuth, async (req, res) => {
       const x = d.data();
       if (lc(x.client) === name || lc(x.companyName) === name) map.set(d.id, { id: d.id, ...x });
     });
-    const list = [...map.values()].sort((a, b) => (b.datePosted?.toMillis?.() || 0) - (a.datePosted?.toMillis?.() || 0));
-    res.json({ success: true, positions: list });
+    let list = [...map.values()].sort((a, b) => (b.datePosted?.toMillis?.() || 0) - (a.datePosted?.toMillis?.() || 0));
+    // An HR only sees positions in the skill categories they own.
+    if (req.hr) {
+      const { positionMatchesSkills } = require('../utils/skillMatch');
+      const cats = req.hr.skillCategories || [];
+      list = cats.length ? list.filter(p => positionMatchesSkills(p, cats)) : [];
+    }
+    res.json({ success: true, positions: list, scopedToHr: !!req.hr });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -240,7 +299,21 @@ router.get('/candidates', companyAuth, async (req, res) => {
     const idSet = new Set();
     byCompany.docs.forEach(d => { if (d.data().pos_id) idSet.add(d.data().pos_id); });
     all.docs.forEach(d => { const x = d.data(); if ((lc(x.client) === name || lc(x.companyName) === name) && x.pos_id) idSet.add(x.pos_id); });
-    const posIds = [...idSet];
+    // Narrow to the HR's skill categories BEFORE fetching candidates, so a
+    // candidate outside their remit is never even loaded.
+    let posIds = [...idSet];
+    if (req.hr) {
+      const { positionMatchesSkills } = require('../utils/skillMatch');
+      const cats = req.hr.skillCategories || [];
+      if (!cats.length) return res.json({ success: true, candidates: [] });
+      const allowed = new Set();
+      byCompany.docs.forEach(d => { const x = d.data(); if (x.pos_id && positionMatchesSkills(x, cats)) allowed.add(x.pos_id); });
+      all.docs.forEach(d => {
+        const x = d.data();
+        if ((lc(x.client) === name || lc(x.companyName) === name) && x.pos_id && positionMatchesSkills(x, cats)) allowed.add(x.pos_id);
+      });
+      posIds = posIds.filter(id => allowed.has(id));
+    }
     if (!posIds.length) return res.json({ success: true, candidates: [] });
 
     // Firestore 'in' supports up to 30 values per query — chunk it.
@@ -486,6 +559,136 @@ router.post('/spoc/positions/:id/reject', spocAuth, async (req, res) => {
     }
     await POS.doc(req.params.id).update({ status: 'rejected', rejectReason: reason, rejectedBy: req.spocEmail, rejectedAt: new Date() });
     res.json({ success: true, message: 'Position rejected.' });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+
+// ── Company HR sub-users ─────────────────────────────────────────────────────
+// A company can add HRs and give each the skill categories they own. An HR signs
+// in with the same /company login and sees only the positions and candidates in
+// their categories — the company owner sees everything.
+//
+// Stored in `company_hr`, keyed by the company they belong to.
+const HR = db.collection('company_hr');
+const bcryptHr = require('bcryptjs');
+
+const hrShape = (doc) => {
+  const h = doc.data();
+  return {
+    id: doc.id, companyId: h.companyId, name: h.name || '', email: h.email || '',
+    phone: h.phone || '', skillCategories: Array.isArray(h.skillCategories) ? h.skillCategories : [],
+    accountStatus: h.accountStatus || 'approved',
+    createdAt: h.createdAt || null,
+  };
+};
+
+// Does this position fall in the HR's skill categories? Reuses the shared
+// matcher, so an HR set to "Technology" also sees an IT position.
+const hrOwnsPosition = (hr, pos) => {
+  if (!hr) return true;                                   // the company owner
+  const cats = hr.skillCategories || [];
+  if (!cats.length) return false;                          // no categories = nothing
+  const { positionMatchesSkills } = require('../utils/skillMatch');
+  return positionMatchesSkills(pos, cats);
+};
+
+// ── Company owner: manage HRs ────────────────────────────────────────────────
+router.get('/hrs', companyAuth, async (req, res) => {
+  try {
+    if (req.hr) return res.status(403).json({ message: 'Only the company account can manage HRs.' });
+    const snap = await HR.where('companyId', '==', req.company.id).get();
+    res.json({ success: true, hrs: snap.docs.map(hrShape).sort((a, b) => a.name.localeCompare(b.name)) });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+router.post('/hrs', companyAuth, async (req, res) => {
+  try {
+    if (req.hr) return res.status(403).json({ message: 'Only the company account can add HRs.' });
+    const name = String(req.body?.name || '').trim();
+    const email = lc(req.body?.email);
+    const phone = String(req.body?.phone || '').trim();
+    const password = String(req.body?.password || '');
+    const skillCategories = Array.isArray(req.body?.skillCategories)
+      ? [...new Set(req.body.skillCategories.map(x => String(x).trim()).filter(Boolean))] : [];
+
+    if (!name) return res.status(400).json({ message: 'Name is required.' });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: 'Enter a valid email.' });
+    if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    if (!skillCategories.length) return res.status(400).json({ message: 'Give this HR at least one skill category.' });
+
+    const dup = await HR.where('email', '==', email).limit(1).get();
+    if (!dup.empty) return res.status(409).json({ message: 'An HR with that email already exists.' });
+    const dupCompany = await db.collection('admin_db').where('email', '==', email).limit(1).get();
+    if (!dupCompany.empty) return res.status(409).json({ message: 'That email already belongs to another account.' });
+
+    const ref = await HR.add({
+      companyId: req.company.id, companyName: req.company.name || '',
+      name, email, phone,
+      password: await bcryptHr.hash(password, 10),
+      skillCategories, accountStatus: 'approved',
+      createdAt: new Date(), createdBy: req.company.email || '',
+    });
+
+    try {
+      const { sendEmailFull } = require('../utils/email');
+      await sendEmailFull({
+        to: email,
+        subject: `Your RecruiterV HR account for ${req.company.name || 'your company'}`,
+        htmlContent: `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111">
+          <p>Hi ${name},</p>
+          <p>An HR account has been created for you on RecruiterV for
+          <b>${req.company.name || 'your company'}</b>.</p>
+          <p><b>Sign in:</b> https://www.recruiterv.com/company<br/>
+             <b>Email:</b> ${email}<br/><b>Password:</b> ${password}</p>
+          <p>You'll see the positions and candidates in your skill areas:
+          <b>${skillCategories.join(', ')}</b>.</p>
+          <p>Please change your password after your first sign-in.</p>
+          <p>Regards,<br/>Team RecruiterV</p></div>`,
+      });
+    } catch (e) { console.error('HR welcome email failed:', e.message); }
+
+    res.json({ success: true, id: ref.id, message: 'HR added. Their sign-in details have been emailed.' });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+router.put('/hrs/:id', companyAuth, async (req, res) => {
+  try {
+    if (req.hr) return res.status(403).json({ message: 'Only the company account can edit HRs.' });
+    const ref = HR.doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists || doc.data().companyId !== req.company.id) {
+      return res.status(404).json({ message: 'HR not found.' });
+    }
+    const patch = {};
+    if (req.body?.name !== undefined) patch.name = String(req.body.name).trim();
+    if (req.body?.phone !== undefined) patch.phone = String(req.body.phone).trim();
+    if (req.body?.accountStatus !== undefined) {
+      patch.accountStatus = req.body.accountStatus === 'blocked' ? 'blocked' : 'approved';
+    }
+    if (Array.isArray(req.body?.skillCategories)) {
+      const cats = [...new Set(req.body.skillCategories.map(x => String(x).trim()).filter(Boolean))];
+      if (!cats.length) return res.status(400).json({ message: 'Give this HR at least one skill category.' });
+      patch.skillCategories = cats;
+    }
+    if (req.body?.password) {
+      if (String(req.body.password).length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+      patch.password = await bcryptHr.hash(String(req.body.password), 10);
+    }
+    patch.updatedAt = new Date();
+    await ref.set(patch, { merge: true });
+    res.json({ success: true, message: 'HR updated.' });
+  } catch (e) { res.status(500).json({ message: e.message }); }
+});
+
+router.delete('/hrs/:id', companyAuth, async (req, res) => {
+  try {
+    if (req.hr) return res.status(403).json({ message: 'Only the company account can remove HRs.' });
+    const doc = await HR.doc(req.params.id).get();
+    if (!doc.exists || doc.data().companyId !== req.company.id) {
+      return res.status(404).json({ message: 'HR not found.' });
+    }
+    await doc.ref.delete();
+    res.json({ success: true, message: 'HR removed.' });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
