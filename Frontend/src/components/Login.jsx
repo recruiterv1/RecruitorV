@@ -98,7 +98,7 @@ const Login = () => {
             profilePct = pcRes.data?.completion?.percentage ?? 0;
           } catch (_) {}
         }
-        const isVendorTeam = !!userData?.vendorEmail;
+        const isVendorTeam = !!userData?.vendorEmail || !!userData?.consultingFirmId;
         const readyForPositions = isVendorTeam || (agreementSigned && profilePct >= 80);
 
         if (role === 'Coach') {
@@ -201,7 +201,7 @@ const Login = () => {
           profilePct = pcRes.data?.completion?.percentage ?? 0;
         } catch (_) {}
       }
-      const isVendorTeam = !!userData?.vendorEmail;
+      const isVendorTeam = !!userData?.vendorEmail || !!userData?.consultingFirmId;
       const readyForPositions = isVendorTeam || (agreementSigned && profilePct >= 80);
 
       if (role === 'Coach') {

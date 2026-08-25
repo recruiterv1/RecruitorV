@@ -987,7 +987,10 @@ router.get('/check', authMiddleware, async (req,res)=>{
                     // dash_view page uses it to hide the Coach/Expert section,
                     // which is not relevant to a vendor's own recruiters.
                     vendorEmail: user.vendorEmail || '',
-                    isVendorSelf: !!user.isVendorSelf
+                    isVendorSelf: !!user.isVendorSelf,
+                    // Set for a consulting firm's own recruiters — they work
+                    // under the firm's agreement, same as a vendor's team.
+                    consultingFirmId: user.consultingFirmId || ''
                 }
             });
         }

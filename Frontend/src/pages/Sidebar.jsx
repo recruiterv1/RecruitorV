@@ -193,7 +193,9 @@ const Sidebar = () => {
   // Agreement gate ENABLED — but only ever true for accounts created BEFORE the
   // Terms & Conditions checkbox existed on the sign-up form. New sign-ups accept
   // the Terms at registration (agreementSigned = true) and are never locked.
-  const isVendorTeam   = !!user?.vendorEmail;   // recruiter registered by a vendor
+  // A recruiter registered by a vendor or a consulting firm — both work under
+  // their organisation's agreement, so neither is gated here.
+  const isVendorTeam   = !!user?.vendorEmail || !!user?.consultingFirmId;
   const needsAgreement = user && !isAdmin && !isClientSpoc && !isVendor && !isVendorTeam && !user?.agreementSigned;
   const agreementPath  = isCoach ? '/coach-agreement' : isExpert ? '/expert-agreement' : '/recruiter-agreement';
   const isGuardedRole  = (isCoachOrExpert || (!isClientSpoc && !isAdmin)) && !needsAgreement;

@@ -243,10 +243,21 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
   useEffect(() => {
     setSkillCatsLoading(true);
     axios.get('/candidate/skill-categories-hierarchical')
-      .then(res => { if (res.data.success) setSkillCategoryHierarchy(res.data.categories); })
+      .then(res => {
+        if (!res.data.success) return;
+        let cats = res.data.categories || [];
+        // A company HR may only post in the categories they own, so the dropdown
+        // offers just those. The server checks this too.
+        const allowed = companyMode?.allowedSkillCategories;
+        if (Array.isArray(allowed) && allowed.length) {
+          const want = allowed.map(c => String(c).toLowerCase().trim());
+          cats = cats.filter(c => want.includes(String(c.parent).toLowerCase().trim()));
+        }
+        setSkillCategoryHierarchy(cats);
+      })
       .catch(err => console.error('Failed to fetch skill categories:', err))
       .finally(() => setSkillCatsLoading(false));
-  }, []);
+  }, [companyMode]);
 
   // Fetch commission + company overview when client changes
   useEffect(() => {

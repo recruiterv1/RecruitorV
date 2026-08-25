@@ -943,6 +943,8 @@ export default function CompanyDashboard() {
   const tabs = isHr
     ? [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        // An HR can post, but only in their own skill categories.
+        { id: 'post', label: 'Post Position', icon: Plus },
         { id: 'positions', label: 'My Positions', icon: Briefcase },
         { id: 'candidates', label: 'Candidates', icon: Users },
       ]
@@ -1027,6 +1029,10 @@ export default function CompanyDashboard() {
                 companyName: me.name,
                 spocEmail: me.assignedClientspoc,
                 spocName: me.assignedClientspocName,
+                // An HR may only post in the categories they own. The server
+                // enforces this too; limiting the dropdown just avoids a
+                // rejection after the form is filled in.
+                allowedSkillCategories: isHr ? (me.hr?.skillCategories || []) : null,
                 onPosted: () => { setRefreshKey(k => k + 1); setTab('positions'); },
               }} />
             </div>

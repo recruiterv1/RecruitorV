@@ -42,7 +42,7 @@ const AgreementGuard = ({ children }) => {
   // Never gate while auth is still resolving, or for admins/clientspoc
   // A recruiter registered by a vendor works under that vendor's agreement, so
   // they are never asked to sign one themselves.
-  const isVendorTeam = !!user?.vendorEmail;
+  const isVendorTeam = !!user?.vendorEmail || !!user?.consultingFirmId;
   const needsAgreement = !isChecking && user && !isAdmin && !isClientSpoc && !isVendorTeam && !user.agreementSigned;
 
   return (

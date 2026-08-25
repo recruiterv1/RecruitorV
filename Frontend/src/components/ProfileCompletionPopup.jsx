@@ -17,7 +17,7 @@ const ProfileCompletionPopup = () => {
   const isClientSpoc = user?.roleCategory?.toLowerCase() === 'clientspoc';
   // Vendor-team recruiters keep a short profile of their own, so the full
   // profile-completion nudge does not apply to them.
-  const isVendorTeam = !!user?.vendorEmail;
+  const isVendorTeam = !!user?.vendorEmail || !!user?.consultingFirmId;
   const shouldCheck = user && !isAdmin && !isClientSpoc && !isVendorTeam && user.agreementSigned;
 
   useEffect(() => {

@@ -227,6 +227,21 @@ router.post('/positions', companyAuth, async (req, res) => {
     if (!(body.position || '').toString().trim()) return res.status(400).json({ message: 'Position title is required.' });
     if (!(body.skill_category || '').toString().trim()) return res.status(400).json({ message: 'Skill category is required.' });
 
+    // An HR may post, but only in the skill categories they own — checked on the
+    // server so restricting the dropdown is a convenience, not the control.
+    if (req.hr) {
+      const cats = req.hr.skillCategories || [];
+      if (!cats.length) {
+        return res.status(403).json({ message: 'You have no skill categories assigned, so you cannot post a position.' });
+      }
+      const { positionMatchesSkills } = require('../utils/skillMatch');
+      if (!positionMatchesSkills(body, cats)) {
+        return res.status(403).json({
+          message: `You can only post positions in your skill areas: ${cats.join(', ')}.`,
+        });
+      }
+    }
+
     // Force company-owned + pending; route to the assigned SPOC; brand as this company.
     const spocEmails = Array.isArray(c.assignedClientspocs) && c.assignedClientspocs.length
       ? c.assignedClientspocs.map(s => lc(s.email)).filter(Boolean)
@@ -241,6 +256,7 @@ router.post('/positions', companyAuth, async (req, res) => {
       postedByCompany: c.id,
       companyEmail: c.email,
       companyName: c.name,
+      ...(req.hr ? { postedByHrId: req.hr.id, postedByHrName: req.hr.name || '', postedByHrEmail: req.hr.email || '' } : {}),
     };
     const created = await adminF.CreatePosition(data);
     res.json({ success: true, message: 'Position submitted for ClientSPOC approval.', data: created });
