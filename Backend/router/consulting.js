@@ -93,7 +93,8 @@ router.post('/register', async (req, res) => {
     if (String(password).length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters.' });
     if (await firmF.findFirmByEmail(email)) return res.status(409).json({ success: false, message: 'A firm with this email already exists.' });
     const codPass = await bcrypt.hash(String(password), 10);
-    await firmF.createFirm({ name, email, phone, codPass, status: 'pending' });
+    await firmF.createFirm({ name, email, phone, codPass, status: 'pending',
+      chosenPlan: ['6month', '1year'].includes(req.body?.plan) ? req.body.plan : '6month' });
     res.json({ success: true, message: 'Registration received. Your account is pending administrator approval.' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -104,6 +105,22 @@ router.post('/login', async (req, res) => {
     const result = await firmF.checkFirmCredentials(email, pass);
     if (!result.success) return res.status(400).json({ message: result.message });
     const f = result.firm;
+
+    // A firm on a paid plan is refused once the term has lapsed. A failure in
+    // the check must never lock out a firm that has paid, so it fails open.
+    try {
+      const { assertSubscriptionActive } = require('./portalSubscription');
+      const st = await assertSubscriptionActive(f.email);
+      if (!st.active) {
+        return res.status(402).json({
+          expired: true,
+          message: st.reason === 'never-paid'
+            ? 'Your subscription has not been activated yet. Please complete the payment to sign in.'
+            : 'Your subscription has expired. Please renew to sign in again.',
+        });
+      }
+    } catch (e) { console.error('firm subscription check failed:', e.message); }
+
     const token = jwt.sign({ email: f.email, portal: 'consulting', firmId: f.id }, process.env.SECKEY, { expiresIn: '30d' });
     setSessionCookie(res, token);
     res.json({ message: 'Verified Successfully', firm: { id: f.id, name: f.name, email: f.email, status: f.status }, token });

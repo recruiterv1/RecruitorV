@@ -107,6 +107,27 @@ const checkCredentials = async(email,pass)=>{
             };
         }
 
+        // A vendor on a paid plan is refused once the term has lapsed. Other
+        // admin_db roles are unaffected.
+        if (String(admin.roleCategory || admin.role || '').toLowerCase().replace(/\s/g, '') === 'vendor') {
+            try {
+                const { assertSubscriptionActive } = require('../router/portalSubscription');
+                const st = await assertSubscriptionActive(admin.email);
+                if (!st.active) {
+                    return {
+                        success: false,
+                        expired: true,
+                        message: st.reason === 'never-paid'
+                            ? 'Your subscription has not been activated yet. Please complete the payment to sign in.'
+                            : 'Your subscription has expired. Please renew to sign in again.',
+                    };
+                }
+            } catch (e) {
+                // A failure here must not lock anyone out of an account that paid.
+                console.error('vendor subscription check failed:', e.message);
+            }
+        }
+
         return { success: true, message: "Verified Successfully", admin}
 
     } catch (error){

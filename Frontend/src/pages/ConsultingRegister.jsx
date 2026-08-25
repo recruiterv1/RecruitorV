@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { PlanPicker } from '../components/PortalSubscription';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { Landmark, Loader2, CheckCircle2 } from 'lucide-react';
@@ -8,6 +9,14 @@ import { Landmark, Loader2, CheckCircle2 } from 'lucide-react';
 export default function ConsultingRegister() {
   const navigate = useNavigate();
   const [f, setF] = useState({ name: '', email: '', phone: '', password: '', confirm: '' });
+  // Firms choose a plan at registration; payment happens after approval.
+  const [plans, setPlans] = useState([]);
+  const [plan, setPlan] = useState('6month');
+  useEffect(() => {
+    axios.get('/api/portal-subscription/plans')
+      .then(r => setPlans(r.data?.plans || []))
+      .catch(() => setPlans([]));
+  }, []);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [done, setDone] = useState(false);
@@ -19,7 +28,7 @@ export default function ConsultingRegister() {
     if (f.password !== f.confirm) { setMsg('Passwords do not match.'); return; }
     setBusy(true);
     try {
-      await axios.post('/api/consulting/register', { name: f.name.trim(), email: f.email.trim(), phone: f.phone.trim(), password: f.password });
+      await axios.post('/api/consulting/register', { name: f.name.trim(), email: f.email.trim(), phone: f.phone.trim(), password: f.password, plan });
       setDone(true);
     } catch (err) { setMsg(err.response?.data?.message || 'Registration failed.'); }
     finally { setBusy(false); }
@@ -51,6 +60,17 @@ export default function ConsultingRegister() {
           <label className="text-xs text-gray-500 block">Password *<input type="password" value={f.password} onChange={e => set('password', e.target.value)} required className={cls} /></label>
           <label className="text-xs text-gray-500 block">Confirm *<input type="password" value={f.confirm} onChange={e => set('confirm', e.target.value)} required className={cls} /></label>
         </div>
+
+        {plans.length > 0 && (
+          <div className="mt-5">
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Choose your plan *</label>
+            <PlanPicker plans={plans} selected={plan} onChoose={setPlan} />
+            <p className="text-[11px] text-gray-400 mt-2">
+              Nothing is charged now. Once your firm is approved you'll sign in and pay,
+              and your term starts from that point.
+            </p>
+          </div>
+        )}
 
         {msg && <p className="text-sm text-red-600 mt-3">{msg}</p>}
         <button type="submit" disabled={busy} className="w-full mt-5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl py-2.5 disabled:opacity-60 flex items-center justify-center gap-2">

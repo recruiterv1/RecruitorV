@@ -35,7 +35,7 @@ import {
   Landmark,
   Sparkles,
   MessageSquare,
-  BadgeCheck, Megaphone, ShieldCheck
+  BadgeCheck, Megaphone, ShieldCheck, CreditCard
 } from 'lucide-react';
 import SuperAdminAIReports from '../pages/SuperAdminAIReports';
 import ChatPanel from './ChatPanel';
@@ -64,6 +64,7 @@ import AllVendors from '../pages/AllVendors';
 import InternalMessageTemplates from '../pages/InternalMessageTemplates';
 import AnnouncementsAdmin from '../pages/AnnouncementsAdmin';
 import PortalApprovals from '../pages/PortalApprovals';
+import PortalSubscriptions from '../pages/PortalSubscriptions';
 import { AllCandidatesPanel, DirectCandidatesPanel, ActiveCandidatesPanel } from '../pages/SuperAdminCandidates';
 import SuperAdminAssignedPositions from '../pages/SuperAdminAssignedPositions';
 import CoachVendorRequests from '../pages/CoachVendorRequests';
@@ -289,6 +290,7 @@ const SuperAdmin = () => {
       { id: 'internal-message-templates', icon: MessageSquare, label: 'Internal Message Templates', component: <InternalMessageTemplates /> },
       { id: 'announcements', icon: Megaphone, label: 'Announcements', component: <AnnouncementsAdmin /> },
       { id: 'portal-approvals', icon: ShieldCheck, label: 'Portal Approvals', component: <PortalApprovals /> },
+      { id: 'portal-subscriptions', icon: CreditCard, label: 'Subscriptions', component: <PortalSubscriptions /> },
       { id: 'inbox-access', icon: Inbox, label: 'Inbox Access', component: <SuperAdminInboxAccess /> },
       ]
     },

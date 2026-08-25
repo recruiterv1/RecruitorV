@@ -66,6 +66,8 @@ router.post('/:portal/register', async (req, res) => {
       // Pending until a SuperAdmin approves — login is refused before that.
       accountStatus: 'pending',
       selfRegistered: true,
+      // Plan chosen at registration; payment happens after approval.
+      chosenPlan: ['6month', '1year'].includes(req.body?.plan) ? req.body.plan : '6month',
       registrationDate: new Date(),
       createdAt: new Date(),
     });

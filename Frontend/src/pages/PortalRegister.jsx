@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Loader2, CheckCircle2, LogIn } from 'lucide-react';
+import { PlanPicker } from '../components/PortalSubscription';
 import Header from './Header';
 import Footer from './Footer';
 
@@ -33,6 +34,16 @@ export default function PortalRegister({ portal = 'company' }) {
   const navigate = useNavigate();
   const copy = COPY[portal] || COPY.company;
   const [f, setF] = useState({ name: '', contactName: '', email: '', phone: '', password: '', confirm: '' });
+  // Vendors choose a plan at registration; they pay once approved and signed in.
+  const [plans, setPlans] = useState([]);
+  const [plan, setPlan] = useState('6month');
+
+  useEffect(() => {
+    if (portal !== 'vendor') return;
+    axios.get('/api/portal-subscription/plans')
+      .then(r => setPlans(r.data?.plans || []))
+      .catch(() => setPlans([]));
+  }, [portal]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
@@ -47,7 +58,7 @@ export default function PortalRegister({ portal = 'company' }) {
     try {
       const r = await axios.post(`/api/portal/${portal}/register`, {
         name: f.name, contactName: f.contactName, email: f.email,
-        phone: f.phone, password: f.password,
+        phone: f.phone, password: f.password, plan,
       });
       if (r.data?.success) setDone(true);
       else setError(r.data?.message || 'Could not register.');
@@ -115,6 +126,17 @@ export default function PortalRegister({ portal = 'company' }) {
                 <input required type="password" minLength={6} value={f.confirm} onChange={e => set('confirm', e.target.value)} className={inputCls} placeholder="Repeat it" />
               </div>
             </div>
+
+            {portal === 'vendor' && plans.length > 0 && (
+              <div className="mt-6">
+                <label className="block text-sm font-semibold text-gray-900 mb-2">Choose your plan *</label>
+                <PlanPicker plans={plans} selected={plan} onChoose={setPlan} />
+                <p className="text-[11px] text-gray-400 mt-2">
+                  Nothing is charged now. Once your account is approved you'll sign in and pay,
+                  and your term starts from that point.
+                </p>
+              </div>
+            )}
 
             <p className="mt-5 text-xs text-gray-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
               Accounts are reviewed before they go live. You'll be able to sign in once a

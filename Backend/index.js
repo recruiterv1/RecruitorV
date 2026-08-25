@@ -173,6 +173,7 @@ app.use("/api/email-templates", require("./router/emailTemplates"));
 app.use("/api/internal-templates", require("./router/internalMessageTemplates"));
 app.use("/api/announcements", require("./router/announcements"));
 app.use("/api/portal", require("./router/portalRegister"));
+app.use("/api/portal-subscription", require("./router/portalSubscription"));
 app.use("/api/manager", require("./router/manager"));
 app.use("/activity", require("./router/activity"));
 app.use("/api/app", require("./router/appMobile"));
