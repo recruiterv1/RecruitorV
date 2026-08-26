@@ -216,6 +216,7 @@ const SuperAdmin = () => {
         { id: 'coach-recruiter-assignments', icon: UserCheck, label: 'Coach→Recruiter Assignments', component: <CoachRecruiterAssignmentsAdmin /> },
         ]
       },
+      { id: 'portal-approvals', icon: ShieldCheck, label: 'Portal Approvals', component: <PortalApprovals /> },
       { id: 'teams', icon: Users, label: 'Teams', component: <SuperAdminTeams /> },
       { id: 'employees', icon: BadgeCheck, label: 'Employees', component: <SuperAdminEmployees /> },
       { id: 'clientspoc', icon: PlusCircle, label: 'Add User', component: <ClientSpocAdd /> },
@@ -248,6 +249,8 @@ const SuperAdmin = () => {
         ]
       },
       { id: 'vendor-management', icon: Store, label: 'Vendor Management', component: <VendorManagement /> },
+      { id: 'portal-subscriptions', icon: CreditCard, label: 'Subscriptions', component: <PortalSubscriptions /> },
+
       { id: 'consulting-firms', icon: Landmark, label: 'Consulting Firms', component: <SuperAdminConsultingFirms /> },
       { id: 'public-jobs', icon: Briefcase, label: 'Public Job Requests', component: <SuperAdminPublicJobs /> },
       { id: 'company-access', icon: Building2, label: 'Company Access', component: <SuperAdminCompanyAccess /> },
@@ -290,15 +293,13 @@ const SuperAdmin = () => {
       { id: 'email-templates', icon: Mail, label: 'Email Templates', component: <SuperAdminEmailTemplates /> },
       { id: 'internal-message-templates', icon: MessageSquare, label: 'Internal Message Templates', component: <InternalMessageTemplates /> },
       { id: 'announcements', icon: Megaphone, label: 'Announcements', component: <AnnouncementsAdmin /> },
-      { id: 'portal-approvals', icon: ShieldCheck, label: 'Portal Approvals', component: <PortalApprovals /> },
-      { id: 'portal-subscriptions', icon: CreditCard, label: 'Subscriptions', component: <PortalSubscriptions /> },
-      { id: 'agreement-templates', icon: FileSignature, label: 'Agreements', component: <AgreementTemplates /> },
       { id: 'inbox-access', icon: Inbox, label: 'Inbox Access', component: <SuperAdminInboxAccess /> },
       ]
     },
     {
       id: 'menu-content', icon: Layers, label: 'Content & Menus',
       children: [
+      { id: 'agreement-templates', icon: FileSignature, label: 'Agreements', component: <AgreementTemplates /> },
       { id: 'blogs', icon: BookOpen, label: 'Blog Management', component: <BlogManagement /> },
       { id: 'category-create', icon: PlusCircle, label: 'Create Menu', component: <CategoryCreate /> },
       { id: 'category-list', icon: List, label: 'All Menu', component: <CategoryList /> },
@@ -328,7 +329,11 @@ const SuperAdmin = () => {
     const pad = depth === 0 ? '' : depth === 1 ? 'ml-3' : 'ml-6';
 
     if (item.children && Array.isArray(item.children)) {
-      const isOpen = !!openGroups[item.id];
+      // A group opens when it is explicitly toggled, or when it contains the tab
+      // being viewed — otherwise every group is shut on load and the whole menu
+      // reads as empty.
+      const containsActive = (n) => (n.children || []).some(c => c.id === activeTab || containsActive(c));
+      const isOpen = openGroups[item.id] !== undefined ? openGroups[item.id] : containsActive(item);
       return (
         <li key={item.id} className={pad}>
           <button
