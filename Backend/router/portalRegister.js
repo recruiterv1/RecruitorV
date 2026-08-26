@@ -183,6 +183,26 @@ router.post('/pending/:id/decision', managerAuth, async (req, res) => {
   try {
     const source = req.body?.source === 'consulting_firms' ? 'consulting_firms' : 'admin_db';
     const approve = req.body?.approve === true;
+
+    // Payment terms set at approval: up to 5 rows of "x% after n days".
+    // They become part of the agreement this account is asked to accept.
+    const rawTerms = Array.isArray(req.body?.paymentTerms) ? req.body.paymentTerms : [];
+    const paymentTerms = rawTerms
+      .map(t => ({
+        percent: Number(t?.percent),
+        afterDays: Number(t?.afterDays),
+      }))
+      .filter(t => Number.isFinite(t.percent) && t.percent > 0 && t.percent <= 100
+                && Number.isFinite(t.afterDays) && t.afterDays >= 0 && t.afterDays <= 3650)
+      .slice(0, 5);
+
+    if (approve && rawTerms.length && !paymentTerms.length) {
+      return res.status(400).json({ success: false, message: 'Payment terms must be a percentage (1-100) and a number of days.' });
+    }
+    const totalPct = paymentTerms.reduce((n, t) => n + t.percent, 0);
+    if (paymentTerms.length && totalPct > 100) {
+      return res.status(400).json({ success: false, message: `Payment terms add up to ${totalPct}% — they cannot exceed 100%.` });
+    }
     const ref = db.collection(source).doc(req.params.id);
     const doc = await ref.get();
     if (!doc.exists) return res.status(404).json({ success: false, message: 'Account not found.' });
@@ -195,6 +215,7 @@ router.post('/pending/:id/decision', managerAuth, async (req, res) => {
       approvalDecidedBy: req.managerEmail,
       approvalDecidedAt: new Date(),
       approvalReason: approve ? '' : String(req.body?.reason || '').trim(),
+      ...(approve && paymentTerms.length ? { paymentTerms, paymentTermsSetAt: new Date() } : {}),
     }, { merge: true });
 
     // Tell them either way — an approval is useless if they never learn of it.
@@ -213,6 +234,14 @@ router.post('/pending/:id/decision', managerAuth, async (req, res) => {
           ? `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111">
                <p>Hi ${who},</p>
                <p>Good news — <b>${a.name || ''}</b> has been approved on RecruiterV.</p>
+               ${paymentTerms.length ? `
+                 <p><b>Your agreed payment terms</b></p>
+                 <ul style="margin:6px 0 12px 18px;padding:0">
+                   ${paymentTerms.map(t => `<li>${t.percent}% payable ${t.afterDays === 0
+                     ? 'on joining' : `after ${t.afterDays} days of the candidate joining`}.</li>`).join('')}
+                 </ul>
+                 <p style="font-size:13px;color:#555">These terms form part of the agreement you'll be
+                 asked to accept when you first sign in. A signed copy will be emailed to you as a PDF.</p>` : ''}
                <p>You can sign in here: <a href="${loginUrl}">${loginUrl}</a></p>
                <p>Regards,<br/>Team RecruiterV</p></div>`
           : `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111">

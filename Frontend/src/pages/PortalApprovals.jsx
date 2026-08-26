@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ShieldCheck, RefreshCw } from 'lucide-react';
+import { ShieldCheck, RefreshCw, Plus, X } from 'lucide-react';
 
 // SuperAdmin → approvals for the four portal account types. Company and Vendor
 // live in admin_db; a consulting firm has its own collection. Both are shown
@@ -31,6 +31,18 @@ export default function PortalApprovals() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(null);
+  // Payment terms, collected before approving. Max 5 instalments.
+  const [termsFor, setTermsFor] = useState(null);
+  const [terms, setTerms] = useState([{ percent: '', afterDays: '' }]);
+
+  const MAX_TERMS = 5;
+  const totalPct = terms.reduce((n, t) => n + (parseFloat(t.percent) || 0), 0);
+  const setTerm = (i, k, v) => setTerms(ts => ts.map((t, j) => j === i ? { ...t, [k]: v } : t));
+  const addTerm = () => setTerms(ts => ts.length < MAX_TERMS ? [...ts, { percent: '', afterDays: '' }] : ts);
+  const removeTerm = (i) => setTerms(ts => ts.length > 1 ? ts.filter((_, j) => j !== i) : ts);
+
+  // Approving opens the payment-terms panel first; rejecting goes straight through.
+  const startApprove = (row) => { setTermsFor(row); setTerms([{ percent: '', afterDays: '' }]); };
 
   const load = () => {
     setLoading(true);
@@ -41,7 +53,7 @@ export default function PortalApprovals() {
   };
   useEffect(() => { load(); }, [tab]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  const decide = async (row, approve) => {
+  const decide = async (row, approve, paymentTerms = []) => {
     const reason = approve ? '' : (window.prompt(`Reason for rejecting "${row.name}"? (optional)`) ?? '');
     if (!approve && reason === null) return;
     if (!window.confirm(
@@ -53,8 +65,9 @@ export default function PortalApprovals() {
     setBusy(row.id);
     try {
       const r = await axios.post(`/api/portal/pending/${row.id}/decision`,
-        { source: row.source, approve, reason }, { withCredentials: true });
+        { source: row.source, approve, reason, paymentTerms }, { withCredentials: true });
       alert(r.data?.message || 'Done.');
+      setTermsFor(null);
       load();
     } catch (e) {
       alert(e.response?.data?.message || 'Could not update this account.');
@@ -88,6 +101,60 @@ export default function PortalApprovals() {
         ))}
       </div>
 
+      {termsFor && (
+        <div className="bg-white rounded-2xl border-2 border-blue-200 shadow-sm p-5 mb-4">
+          <h3 className="font-bold text-gray-900">Payment terms for {termsFor.name}</h3>
+          <p className="text-xs text-gray-500 mt-1 mb-4">
+            How their payout is released. These become part of the agreement they accept and
+            appear in the signed PDF. Up to {MAX_TERMS} instalments — leave blank to approve
+            without setting terms.
+          </p>
+
+          <div className="space-y-2">
+            {terms.map((t, i) => (
+              <div key={i} className="flex items-center gap-2 flex-wrap">
+                <input type="number" min="1" max="100" value={t.percent}
+                  onChange={e => setTerm(i, 'percent', e.target.value)} placeholder="50"
+                  className="w-24 h-9 border-2 border-gray-200 rounded-lg px-3 text-sm focus:border-blue-500 outline-none" />
+                <span className="text-sm text-gray-600">% paid after</span>
+                <input type="number" min="0" max="3650" value={t.afterDays}
+                  onChange={e => setTerm(i, 'afterDays', e.target.value)} placeholder="30"
+                  className="w-24 h-9 border-2 border-gray-200 rounded-lg px-3 text-sm focus:border-blue-500 outline-none" />
+                <span className="text-sm text-gray-600">days of joining</span>
+                {terms.length > 1 && (
+                  <button onClick={() => removeTerm(i)} className="p-1.5 text-gray-400 hover:text-red-600 rounded">
+                    <X size={15} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3 mt-3 flex-wrap">
+            <button onClick={addTerm} disabled={terms.length >= MAX_TERMS}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-40">
+              <Plus size={13} /> Add instalment ({terms.length}/{MAX_TERMS})
+            </button>
+            <span className={`text-xs font-semibold ${totalPct > 100 ? 'text-red-600' : 'text-gray-500'}`}>
+              Total: {totalPct}%{totalPct > 100 ? ' — cannot exceed 100%' : ''}
+            </span>
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={() => decide(termsFor, true, terms.filter(t => t.percent !== '' && t.afterDays !== ''))}
+              disabled={busy === termsFor.id || totalPct > 100}
+              className="px-4 py-2 text-xs font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl disabled:opacity-40">
+              Approve with these terms
+            </button>
+            <button onClick={() => setTermsFor(null)}
+              className="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>
       ) : error ? (
@@ -113,7 +180,7 @@ export default function PortalApprovals() {
                 <p className="text-[11px] text-gray-400 mt-0.5">Registered {fmt(r.registeredAt)}</p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <button onClick={() => decide(r, true)} disabled={busy === r.id}
+                <button onClick={() => startApprove(r)} disabled={busy === r.id}
                   className="px-4 py-2 text-xs font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl disabled:opacity-50">
                   Approve
                 </button>

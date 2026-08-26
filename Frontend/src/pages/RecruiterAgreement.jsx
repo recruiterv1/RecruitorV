@@ -180,6 +180,29 @@ const FINAL_CONSENT = {
   ],
 };
 
+
+// Wording a SuperAdmin has published wins; otherwise the built-in CLAUSES above
+// are used, so nothing changes until someone deliberately edits it. Any payment
+// terms agreed at approval are appended as their own clause.
+function useLiveClauses() {
+  const [extra, setExtra] = React.useState({ clauses: null, payment: null });
+  React.useEffect(() => {
+    let live = true;
+    axios.get('/api/agreement-templates/for-me/recruiter', { withCredentials: true })
+      .then(r => {
+        if (!live) return;
+        setExtra({
+          clauses: (r.data?.usingCustom && r.data.clauses?.length) ? r.data.clauses : null,
+          payment: r.data?.paymentTermsClause || null,
+        });
+      })
+      .catch(() => { /* keep the built-in copy */ });
+    return () => { live = false; };
+  }, []);
+  const base = extra.clauses || CLAUSES;
+  return extra.payment ? [...base, extra.payment] : base;
+}
+
 const CHECKABLE = [...CLAUSES.filter(c => !c.headerOnly && !c.subClause), FINAL_CONSENT];
 const ALL_CLAUSE_IDS = CHECKABLE.map(c => c.id);
 
@@ -361,6 +384,7 @@ function buildPDF({ user, panNumber, address, timestamp, userIP }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 const RecruiterAgreement = () => {
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   return (
     <SidebarProvider>
@@ -384,6 +408,7 @@ const RecruiterAgreement = () => {
 
 // ─── Content ──────────────────────────────────────────────────────────────────
 const RecruiterContent = ({ setIsSidebarOpen }) => {
+  const liveClauses = useLiveClauses();
   const { isSidebarCollapsed } = useContext(SidebarContext);
   const dispatch = useContext(UserDispatchContext);
 
@@ -613,7 +638,7 @@ const RecruiterContent = ({ setIsSidebarOpen }) => {
 
           {/* Clauses */}
           <div className="space-y-3">
-            {CLAUSES.map(clause => {
+            {liveClauses.map(clause => {
               if (clause.headerOnly) {
                 return (
                   <div key={clause.id} className="bg-blue-50 border border-blue-200 rounded-xl p-4">
