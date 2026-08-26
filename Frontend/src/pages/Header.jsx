@@ -275,14 +275,10 @@ const Header = () => {
                     <Link to="/for-employer" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700">
                       For Employers
                     </Link>
-                    <Link to="/for-company" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700">
-                      For Companies
-                    </Link>
+                    {/* For Companies and For Consulting Firms are hidden from the
+                        menu for now — the pages themselves stay reachable by URL. */}
                     <Link to="/for-vendor" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700">
                       For Recruitment Vendors
-                    </Link>
-                    <Link to="/for-consulting" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700">
-                      For Consulting Firms
                     </Link>
                   </div>
                 </div>
@@ -453,9 +449,7 @@ const Header = () => {
               {/* Mobile: list the four audiences rather than a hover dropdown. */}
               {[
                 { to: '/for-employer', label: 'For Employers' },
-                { to: '/for-company', label: 'For Companies' },
                 { to: '/for-vendor', label: 'For Recruitment Vendors' },
-                { to: '/for-consulting', label: 'For Consulting Firms' },
               ].map(l => (
                 <Link
                   key={l.to}
