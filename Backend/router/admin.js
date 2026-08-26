@@ -1515,11 +1515,19 @@ const CANDIDATE_REPORT_FIELDS = [
   'clientspoc_name', 'recEmail', 'recruiterEmail', 'recName', 'recRole', 'recPhone',
   'statusa', 'status', 'source', 'matchPercent', 'rejectReason',
   'coachEmail', 'expertEmail', 'submittedBy',
-  'datePosted', 'createdAt', 'updatedAt',
+  'datePosted', 'createdAt', 'updatedAt', 'statusaDate',
   'autoScreenRejected', 'autoRejectedFrom', 'autoRejectedAt',
+  // Bulk-upload attribution on the ClientSPOC report — present on most rows, so
+  // dropping it made those counts read as zero.
+  'addedBy',
 ];
-const candidatesForReports = () =>
-  db.collection('candidate_db').select(...CANDIDATE_REPORT_FIELDS).get();
+// `db` is required inside each handler in this file, not at module scope, so it
+// has to be resolved here rather than closed over — otherwise this throws
+// "db is not defined" the moment any report runs.
+const candidatesForReports = () => {
+  const { db } = require('./firebase_ad');
+  return db.collection('candidate_db').select(...CANDIDATE_REPORT_FIELDS).get();
+};
 
 router.get('/reports/recruiters', adminAuthMiddleware, async (req, res) => {
   try {
