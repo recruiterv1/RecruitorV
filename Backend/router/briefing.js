@@ -544,3 +544,5 @@ router.post('/for-me/:posId/listened', authMiddleware, async (req, res) => {
 module.exports = router;
 module.exports.BRIEFING_AREAS = BRIEFING_AREAS;
 module.exports.AREA_KEYS = AREA_KEYS;
+module.exports.WINNING_TIP = WINNING_TIP;
+module.exports.BRIEFING_ITEMS = BRIEFING_ITEMS;

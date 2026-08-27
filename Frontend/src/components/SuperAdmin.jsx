@@ -35,7 +35,7 @@ import {
   Landmark,
   Sparkles,
   MessageSquare,
-  BadgeCheck, Megaphone, ShieldCheck, CreditCard, FileSignature
+  BadgeCheck, Megaphone, ShieldCheck, CreditCard, FileSignature, Mic
 } from 'lucide-react';
 import SuperAdminAIReports from '../pages/SuperAdminAIReports';
 import ChatPanel from './ChatPanel';
@@ -66,6 +66,7 @@ import AnnouncementsAdmin from '../pages/AnnouncementsAdmin';
 import PortalApprovals from '../pages/PortalApprovals';
 import PortalSubscriptions from '../pages/PortalSubscriptions';
 import AgreementTemplates from '../pages/AgreementTemplates';
+import { BriefingPositions, BriefingRecruiters, BriefingCoaches, BriefingClientSpocs, BriefingCompanies } from '../pages/BriefingsAdmin';
 import { AllCandidatesPanel, DirectCandidatesPanel, ActiveCandidatesPanel } from '../pages/SuperAdminCandidates';
 import SuperAdminAssignedPositions from '../pages/SuperAdminAssignedPositions';
 import CoachVendorRequests from '../pages/CoachVendorRequests';
@@ -236,6 +237,16 @@ const SuperAdmin = () => {
       children: [
       { id: 'all-positions', icon: Briefcase, label: 'All Positions', component: <AllPositions /> },
       { id: 'assigned-positions', icon: Users, label: 'All Assigned Positions', component: <SuperAdminAssignedPositions /> },
+      ]
+    },
+    {
+      id: 'menu-briefings', icon: Mic, label: 'Briefings',
+      children: [
+        { id: 'briefings-positions', icon: Briefcase, label: 'Positions', component: <BriefingPositions /> },
+        { id: 'briefings-recruiters', icon: Users, label: 'Recruiter', component: <BriefingRecruiters /> },
+        { id: 'briefings-coaches', icon: UserCheck, label: 'Coach', component: <BriefingCoaches /> },
+        { id: 'briefings-clientspocs', icon: Building2, label: 'ClientSPOC', component: <BriefingClientSpocs /> },
+        { id: 'briefings-companies', icon: Building2, label: 'Company', component: <BriefingCompanies /> },
       ]
     },
     {
