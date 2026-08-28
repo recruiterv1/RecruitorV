@@ -1,29 +1,95 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { Mic, RefreshCw, Search } from 'lucide-react';
+import { Mic, RefreshCw, Search, X } from 'lucide-react';
+import SpeakButton from '../components/SpeakButton';
 
 // SuperAdmin → Briefings. Five views over who has briefed what, and who has
 // listened. A light is green when the thing exists, red when it does not.
 
 // One glowing dot. Green = done, red = outstanding.
-const Light = ({ on, title }) => (
-  <span title={title} className="inline-flex items-center justify-center" style={{ width: 14, height: 14 }}>
+const Light = ({ on, title, onClick }) => {
+  const dot = (
     <span style={{
       width: 9, height: 9, borderRadius: '50%',
       background: on ? '#22c55e' : '#ef4444',
       boxShadow: `0 0 5px 1.5px ${on ? '#22c55e' : '#ef4444'}99`,
       animation: 'briefPulse 1.6s ease-in-out infinite',
     }} />
-  </span>
-);
+  );
+  // Answered items open; unanswered ones have nothing to show.
+  if (on && onClick) {
+    return (
+      <button type="button" onClick={onClick} title={title}
+        className="inline-flex items-center justify-center rounded-full hover:ring-2 hover:ring-green-300 transition"
+        style={{ width: 14, height: 14 }}>
+        {dot}
+      </button>
+    );
+  }
+  return (
+    <span title={title} className="inline-flex items-center justify-center" style={{ width: 14, height: 14 }}>
+      {dot}
+    </span>
+  );
+};
 
-const Lights = ({ lights = [], empty = 'Not started' }) => {
+// Read and play what was actually submitted.
+const BriefingReader = ({ open, onClose }) => {
+  if (!open) return null;
+  const { heading, sub, items, focus } = open;
+  const answered = (items || []).filter(i => i.on);
+  const all = answered.map(i => `${i.title}. ${i.text}`).join('. ');
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-5 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-lg font-bold text-white">{heading}</h3>
+            {sub && <p className="text-white/80 text-xs mt-0.5">{sub}</p>}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {all && <SpeakButton text={all} title="Play the whole briefing" tone="green" />}
+            <button onClick={onClose} className="p-2 bg-white/20 hover:bg-white/30 rounded-lg text-white">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-5">
+          {!answered.length ? (
+            <p className="text-sm text-gray-500 py-8 text-center">Nothing has been submitted yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {answered.map(i => (
+                <div key={i.key}
+                  className={`rounded-xl border p-4 ${i.key === focus ? 'border-blue-300 bg-blue-50/50' : 'border-gray-200'}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-bold text-gray-900">{i.title}</p>
+                    <SpeakButton text={`${i.title}. ${i.text}`} title={`Play: ${i.title}`} tone="green" compact />
+                  </div>
+                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap mt-2">{i.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Lights = ({ lights = [], empty = 'Not started', onOpen }) => {
   if (!lights.length) return <span className="text-[11px] text-gray-400">{empty}</span>;
   const done = lights.filter(l => l.on).length;
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className="inline-flex items-center gap-1">
-        {lights.map(l => <Light key={l.key} on={l.on} title={`${l.title} — ${l.on ? 'done' : 'not done'}`} />)}
+        {lights.map(l => (
+          <Light key={l.key} on={l.on}
+            title={`${l.title} — ${l.on ? 'submitted, click to read and play' : 'not submitted'}`}
+            onClick={onOpen ? () => onOpen(l.key) : undefined} />
+        ))}
       </span>
       <span className={`text-[11px] font-semibold ${done === lights.length ? 'text-green-600' : 'text-gray-400'}`}>
         {done}/{lights.length}
@@ -77,6 +143,7 @@ const Select = ({ value, onChange, options, placeholder }) => (
 // ── 1. Positions ─────────────────────────────────────────────────────────────
 export const BriefingPositions = () => {
   const { data, error, load } = useFeed('/api/briefing-admin/positions');
+  const [reader, setReader] = useState(null);
   const [q, setQ] = useState('');
   const [client, setClient] = useState('');
   const [cat, setCat] = useState('');
@@ -109,6 +176,8 @@ export const BriefingPositions = () => {
         <Select value={state} onChange={setState} options={['complete', 'none']} placeholder="Any state" />
       </div>
 
+      <BriefingReader open={reader} onClose={() => setReader(null)} />
+
       {error ? <p className="py-16 text-center text-red-500 text-sm">{error}</p>
         : !data ? <p className="py-16 text-center text-gray-400 text-sm">Loading…</p>
         : (
@@ -136,7 +205,12 @@ export const BriefingPositions = () => {
                     <td className="px-4 py-3 text-gray-600">{r.client || '—'}</td>
                     {['coach', 'clientspoc', 'vendor'].map(k => (
                       <td key={k} className="px-4 py-3">
-                        <Lights lights={r[k].lights} empty="No briefing" />
+                        <Lights lights={r[k].lights} empty="No briefing"
+                          onOpen={(focus) => setReader({
+                            heading: `${k === 'clientspoc' ? 'ClientSPOC' : k === 'vendor' ? 'Vendor' : 'Coach'} briefing`,
+                            sub: `${r.position} (#${r.pos_id})${r[k].author ? ` · ${r[k].author}` : ''}`,
+                            items: r[k].lights, focus,
+                          })} />
                         {r[k].author && <p className="text-[11px] text-gray-400 mt-0.5">{r[k].author}</p>}
                       </td>
                     ))}
@@ -226,6 +300,7 @@ export const BriefingRecruiters = () => {
 // ── 3 & 4. Coaches / ClientSPOCs ─────────────────────────────────────────────
 const AuthorView = ({ url, title, sub }) => {
   const { data, error, load } = useFeed(url);
+  const [reader, setReader] = useState(null);
   const [q, setQ] = useState('');
   const [author, setAuthor] = useState('');
 
@@ -249,6 +324,8 @@ const AuthorView = ({ url, title, sub }) => {
         </div>
         <Select value={author} onChange={setAuthor} options={data?.filters?.authors || []} placeholder="Everyone" />
       </div>
+
+      <BriefingReader open={reader} onClose={() => setReader(null)} />
 
       {error ? <p className="py-16 text-center text-red-500 text-sm">{error}</p>
         : !data ? <p className="py-16 text-center text-gray-400 text-sm">Loading…</p>
@@ -277,7 +354,14 @@ const AuthorView = ({ url, title, sub }) => {
                       <p className="text-gray-700">{r.position || '—'}</p>
                       <p className="text-xs text-gray-400">#{r.pos_id}{r.client ? ` · ${r.client}` : ''}</p>
                     </td>
-                    <td className="px-4 py-3"><Lights lights={r.lights} /></td>
+                    <td className="px-4 py-3">
+                      <Lights lights={r.lights}
+                        onOpen={(focus) => setReader({
+                          heading: `${r.author}'s briefing`,
+                          sub: `${r.position || 'Position'} (#${r.pos_id})${r.client ? ` · ${r.client}` : ''}`,
+                          items: r.lights, focus,
+                        })} />
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${
                         r.status === 'ready' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -349,8 +433,13 @@ export const BriefingCompanies = () => {
                   <td className="px-4 py-3">
                     <Light on={r.hasAudio} title={r.hasAudio ? 'Audio note added' : 'No audio note'} />
                   </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">
-                    {r.hasAudio ? `${r.preview}${r.length > 140 ? '…' : ''}` : '—'}
+                  <td className="px-4 py-3">
+                    {r.hasAudio ? (
+                      <div className="flex items-start gap-2">
+                        <SpeakButton text={r.audioText || r.preview} title={`Play ${r.company}'s audio note`} tone="green" compact />
+                        <span className="text-xs text-gray-500">{r.preview}{r.length > 140 ? '…' : ''}</span>
+                      </div>
+                    ) : <span className="text-xs text-gray-400">—</span>}
                   </td>
                 </tr>
               ))}

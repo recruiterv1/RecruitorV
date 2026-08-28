@@ -87,10 +87,11 @@ const answersOf = (b) => {
   return out;
 };
 
-/** One boolean per item — the lights. */
-const lightsFor = (answers) => ITEMS.map(i => ({
-  key: i.key, title: i.title, on: !!String(answers?.[i.key] || '').trim(),
-}));
+/** One light per item, carrying the answer so it can be read and played. */
+const lightsFor = (answers) => ITEMS.map(i => {
+  const text = String(answers?.[i.key] || '').trim();
+  return { key: i.key, title: i.title, on: !!text, text };
+});
 
 // Everything the five views need, read once.
 async function loadAll() {
@@ -156,12 +157,17 @@ router.get('/positions', managerAuth, async (req, res) => {
       const p = d.data();
       const pid = String(p.pos_id);
       const g = byPos[pid] || {};
-      const slot = (k) => ({
-        author: g[k]?.authorName || roles[g[k]?.authorEmail]?.name || '',
-        status: g[k]?.status || null,
-        lights: lightsFor(g[k]?.answers),
-        done: g[k] ? lightsFor(g[k].answers).filter(l => l.on).length : 0,
-      });
+      const slot = (k) => {
+        const lights = lightsFor(g[k]?.answers);
+        return {
+          author: g[k]?.authorName || roles[g[k]?.authorEmail]?.name || '',
+          authorEmail: g[k]?.authorEmail || '',
+          status: g[k]?.status || null,
+          updatedAt: g[k]?.updatedAt || null,
+          lights,
+          done: lights.filter(l => l.on).length,
+        };
+      };
       return {
         pos_id: pid,
         position: p.position || '',
@@ -318,6 +324,8 @@ router.get('/companies', managerAuth, async (req, res) => {
         id: d.id, company: c.name || '',
         hasAudio: !!text,
         preview: text.slice(0, 140),
+        // The full note, so playback is not cut off at the preview length.
+        audioText: text,
         length: text.length,
       };
     }).sort((a, b) => Number(a.hasAudio) - Number(b.hasAudio) || a.company.localeCompare(b.company));
