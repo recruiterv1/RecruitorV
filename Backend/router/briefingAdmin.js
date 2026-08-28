@@ -216,6 +216,9 @@ router.get('/recruiters', managerAuth, async (req, res) => {
     const positionAccess = require('../model_fire/positionAccessF');
     const recruiters = data.recSnap.docs.map(d => d.data()).filter(r => r.email);
 
+    const posName = {};
+    data.posSnap.docs.forEach(d => { posName[String(d.data().pos_id)] = d.data(); });
+
     const rows = [];
     await Promise.all(recruiters.map(async (r) => {
       const email = lc(r.email);
@@ -246,12 +249,18 @@ router.get('/recruiters', managerAuth, async (req, res) => {
           sourceKey: slot,
           briefings: list.length,
           listened: heard,
-          // All-heard turns the whole row green.
-          lights: list.map(b => ({
+          // One entry per position, named, so it is clear which briefing was
+          // heard rather than just how many.
+          positions: list.map(b => ({
             key: `${b.positionId}__${b.authorEmail}`,
-            title: `Position ${b.positionId} — ${b.authorName || b.authorEmail}`,
-            on: listened.has(`${b.positionId}__${b.authorEmail}__${email}`),
-          })),
+            pos_id: b.positionId,
+            position: posName[b.positionId]?.position || '',
+            client: posName[b.positionId]?.client || '',
+            author: b.authorName || b.authorEmail,
+            // A briefing counts as heard when this recruiter has played it.
+            heard: listened.has(`${b.positionId}__${b.authorEmail}__${email}`),
+            items: Object.keys(b.answers || {}).length,
+          })).sort((x, y) => String(x.position).localeCompare(String(y.position))),
         });
       });
     }));

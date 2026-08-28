@@ -285,7 +285,24 @@ export const BriefingRecruiters = () => {
                         {r.listened}/{r.briefings}
                       </span>
                     </td>
-                    <td className="px-4 py-3"><Lights lights={r.lights} /></td>
+                    <td className="px-4 py-3">
+                      {/* One line per position, so it is clear which briefing was
+                          heard rather than just a row of anonymous dots. */}
+                      <div className="space-y-1">
+                        {(r.positions || []).map(p => (
+                          <div key={p.key} className="flex items-center gap-2">
+                            <Light on={p.heard}
+                              title={p.heard ? 'Listened' : 'Not listened yet'} />
+                            <span className="text-xs text-gray-700 truncate max-w-[220px]">
+                              {p.position || `Position #${p.pos_id}`}
+                            </span>
+                            <span className="text-[11px] text-gray-400 whitespace-nowrap">
+                              #{p.pos_id} · {p.items} item{p.items === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
