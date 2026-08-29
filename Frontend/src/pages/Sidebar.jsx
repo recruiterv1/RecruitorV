@@ -309,6 +309,7 @@ const Sidebar = () => {
           { icon: Building2,     label: 'Companies',          path: '/vendor-dashboard#companies' },
         ],
       },
+      { icon: Gift, label: 'Refer & Earn', path: '/vendor-dashboard#referrals' },
       {
         icon: Mic,
         label: 'Position Briefings',

@@ -8,7 +8,7 @@ import {
   PlusCircle, FolderOpen, ClipboardList,
   ChevronDown, ChevronRight, ChevronLeft, AlertCircle, Building,
   Briefcase, Download, X, Hash, Store, Menu, Clock, MapPin,
-  IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox, Building2, Mic, LayoutDashboard, Trash2
+  IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox, Building2, Mic, LayoutDashboard, Trash2, Gift
 } from 'lucide-react';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import Ad_Candi from './Ad_Candi';
@@ -1179,6 +1179,176 @@ const VendorAssignedPositionsTab = () => {
   );
 };
 
+
+// Refer & Earn for the whole team, rolled up to the vendor's account.
+
+// Direct applicants, counted under the vendor's account.
+const VendorDirectRollup = () => {
+  const [d, setD] = useState(null);
+  useEffect(() => {
+    axios.get('/vendor/direct-candidates', { withCredentials: true })
+      .then(r => setD(r.data))
+      .catch(() => setD(null));
+  }, []);
+  if (!d) return null;
+  return (
+    <div className="mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <p className="text-3xl font-bold text-gray-900">{d.total}</p>
+          <p className="text-sm font-semibold text-gray-700 mt-1">Direct candidates</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Attributed to your account</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <p className="text-3xl font-bold text-amber-600">{d.awaitingVerification}</p>
+          <p className="text-sm font-semibold text-gray-700 mt-1">Awaiting verification</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">Still marked Applied</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <p className="text-3xl font-bold text-green-600">{d.total - d.awaitingVerification}</p>
+          <p className="text-sm font-semibold text-gray-700 mt-1">Verified &amp; submitted</p>
+        </div>
+      </div>
+      {(d.byRecruiter || []).length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <p className="text-xs font-bold text-gray-700 mb-2">Who shared the position</p>
+          <div className="flex flex-wrap gap-2">
+            {d.byRecruiter.map(r => (
+              <span key={r.email} className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1">
+                {r.name} · <b>{r.total}</b>
+                <span className="text-gray-400"> ({r.verified} verified)</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const VendorReferralsTab = () => {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [q, setQ] = useState('');
+
+  useEffect(() => {
+    axios.get('/vendor/referrals', { withCredentials: true })
+      .then(r => setData(r.data))
+      .catch(e => setError(e.response?.data?.message || 'Could not load referrals.'));
+  }, []);
+
+  if (error) return <div className="py-16 text-center text-red-500 text-sm">{error}</div>;
+  if (!data) return <div className="py-16 text-center text-gray-400 text-sm">Loading…</div>;
+
+  const needle = q.trim().toLowerCase();
+  const rows = (data.referrals || []).filter(r => !needle
+    || r.candidate.toLowerCase().includes(needle)
+    || String(r.referredBy).toLowerCase().includes(needle));
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-800">Refer &amp; Earn</h2>
+        <p className="text-sm text-gray-500">
+          Every referral made by your team. These count towards your vendor account.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <p className="text-3xl font-bold text-gray-900">{data.total}</p>
+          <p className="text-sm font-semibold text-gray-700 mt-1">Total referrals</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <p className="text-3xl font-bold text-green-600">
+            {(data.byRecruiter || []).reduce((n, r) => n + r.placed, 0)}
+          </p>
+          <p className="text-sm font-semibold text-gray-700 mt-1">Placed</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-gray-200 p-4">
+          <p className="text-3xl font-bold text-blue-600">
+            {(data.byRecruiter || []).reduce((n, r) => n + r.inProcess, 0)}
+          </p>
+          <p className="text-sm font-semibold text-gray-700 mt-1">In process</p>
+        </div>
+      </div>
+
+      {(data.byRecruiter || []).length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100">
+            <h3 className="font-bold text-gray-800 text-sm">By recruiter</h3>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
+                <th className="px-5 py-2.5 font-semibold">Recruiter</th>
+                <th className="px-5 py-2.5 font-semibold">Referrals</th>
+                <th className="px-5 py-2.5 font-semibold">In process</th>
+                <th className="px-5 py-2.5 font-semibold">Placed</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {data.byRecruiter.map(r => (
+                <tr key={r.email} className="hover:bg-gray-50/70">
+                  <td className="px-5 py-2.5">
+                    <p className="font-semibold text-gray-800">{r.name}</p>
+                    <p className="text-xs text-gray-400">{r.email}</p>
+                  </td>
+                  <td className="px-5 py-2.5 font-semibold text-gray-800">{r.total}</td>
+                  <td className="px-5 py-2.5 text-blue-600">{r.inProcess}</td>
+                  <td className="px-5 py-2.5 text-green-600">{r.placed}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search candidate or referrer"
+          className="h-9 w-full sm:w-72 border-2 border-gray-200 rounded-lg px-3 text-sm focus:border-blue-500 outline-none mb-3" />
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500">
+                  <th className="px-5 py-2.5 font-semibold">Candidate</th>
+                  <th className="px-5 py-2.5 font-semibold">Referred by</th>
+                  <th className="px-5 py-2.5 font-semibold">Status</th>
+                  <th className="px-5 py-2.5 font-semibold whitespace-nowrap">Referred on</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {!rows.length ? (
+                  <tr><td colSpan={4} className="px-5 py-12 text-center text-gray-400">
+                    {data.total ? 'No referrals match that search.' : 'Your team has not referred anyone yet.'}
+                  </td></tr>
+                ) : rows.map(r => (
+                  <tr key={r.id} className="hover:bg-gray-50/70">
+                    <td className="px-5 py-2.5">
+                      <p className="font-semibold text-gray-800">{r.candidate || '—'}</p>
+                      <p className="text-xs text-gray-400">{r.emails || r.mob}</p>
+                    </td>
+                    <td className="px-5 py-2.5 text-gray-600">{r.referredBy || '—'}</td>
+                    <td className="px-5 py-2.5">
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                        {r.statusa || '—'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-2.5 text-gray-500 whitespace-nowrap">
+                      {r.referredAt ? new Date(r.referredAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const VendorCompaniesTab = () => {
   const [rows, setRows] = useState(null);
   const [modal, setModal] = useState(null);   // { company, isNew }
@@ -1731,6 +1901,7 @@ const VendorDashboard = () => {
       ],
     },
     { id: 'companies', icon: Building2, label: 'Companies' },
+    { id: 'referrals', icon: Gift, label: 'Refer & Earn' },
     // Briefings live on their own pages (shared with coaches/experts), so this
     // entry navigates rather than switching a tab.
     {
@@ -1832,11 +2003,12 @@ const VendorDashboard = () => {
     recruiters: <MyRecruitersTab recruiters={recruiters} loading={loadingRecruiters} onRefresh={loadRecruiters} />,
     candidates: <Ad_Candi vendorView={true} />,
     positions: <OpenPositionsTab recruiters={recruiters} />,
-    'direct-applicants': <Ad_Candi vendorView={true} directOnly={true} />,
+    'direct-applicants': <><VendorDirectRollup /><Ad_Candi vendorView={true} directOnly={true} /></>,
     'assigned-positions': <VendorAssignedPositionsTab />,
     'add-position': <Ad_Pos vendorMode={{ onPosted: () => setActiveTab('added-positions') }} />,
     'added-positions': <VendorAddedPositionsTab />,
     'companies': <VendorCompaniesTab />,
+    'referrals': <VendorReferralsTab />,
     messages: <div className="h-[calc(100vh-160px)] min-h-[520px] bg-white rounded-xl border border-gray-200 overflow-hidden"><ChatPanel /></div>,
     inbox: <div className="h-[calc(100vh-160px)] min-h-[520px] bg-white rounded-xl border border-gray-200 overflow-hidden"><InboxPage title="Inbox" embedded /></div>,
     reports: <ReportsTab />,

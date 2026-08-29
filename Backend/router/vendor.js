@@ -1317,4 +1317,122 @@ router.get('/dashboard-stats', vendorAuth, async (req, res) => {
   }
 });
 
+
+// ── Refer & Earn and Direct Candidates, rolled up to the vendor ─────────────
+// Both resolve two ways: by the vendorEmail stamped on the record at write time,
+// and by current team membership. That way work done before stamping existed
+// still appears, and a recruiter leaving the team does not erase what they did.
+async function teamEmailsFor(vendorEmail) {
+  const snap = await db.collection('recruiter_db').where('vendorEmail', '==', vendorEmail).get();
+  return {
+    emails: [...new Set([vendorEmail, ...snap.docs.map(d => (d.data().email || '').toLowerCase())])].filter(Boolean),
+    names: Object.fromEntries(snap.docs.map(d => [(d.data().email || '').toLowerCase(), d.data().name || ''])),
+  };
+}
+
+async function candidatesForVendor(vendorEmail, source) {
+  const { emails, names } = await teamEmailsFor(vendorEmail);
+  const byId = {};
+
+  // Anything already attributed to this vendor.
+  try {
+    const stamped = await db.collection('candidate_db')
+      .where('vendorEmail', '==', vendorEmail).where('source', '==', source).get();
+    stamped.docs.forEach(d => { byId[d.id] = { id: d.id, ...d.data() }; });
+  } catch (_) { /* fall back to team membership alone */ }
+
+  // Plus anything by a current team member.
+  for (let i = 0; i < emails.length; i += 10) {
+    const snap = await db.collection('candidate_db')
+      .where('recEmail', 'in', emails.slice(i, i + 10)).where('source', '==', source).get();
+    snap.docs.forEach(d => { byId[d.id] = { id: d.id, ...d.data() }; });
+  }
+  return { rows: Object.values(byId), names, emails };
+}
+
+const stripHeavy = ({ resumeText, matchTokens, skillsTextTokens, ...rest }) => rest;
+
+const toDateIso = (v) => {
+  if (!v) return null;
+  if (v._seconds) return new Date(v._seconds * 1000).toISOString();
+  if (typeof v.toDate === 'function') return v.toDate().toISOString();
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+};
+
+// GET /vendor/referrals — every Refer & Earn submission by the vendor's team.
+router.get('/referrals', vendorAuth, async (req, res) => {
+  try {
+    const vendorEmail = (req.vendor.email || '').toLowerCase();
+    const { rows, names } = await candidatesForVendor(vendorEmail, 'referred');
+
+    // Per recruiter, so a vendor can see who is actually referring.
+    const byRecruiter = {};
+    rows.forEach(c => {
+      const who = (c.referredBy || c.recEmail || '').toLowerCase();
+      if (!byRecruiter[who]) {
+        byRecruiter[who] = {
+          email: who,
+          name: c.referredByName || names[who] || who.split('@')[0],
+          total: 0, placed: 0, inProcess: 0,
+        };
+      }
+      const b = byRecruiter[who];
+      b.total++;
+      const st = String(c.statusa || '').toLowerCase();
+      if (st.includes('joining') || st.includes('offer accepted') || st.includes('selected')) b.placed++;
+      else if (st && !st.includes('reject') && st !== 'resume bank') b.inProcess++;
+    });
+
+    res.json({
+      success: true,
+      total: rows.length,
+      byRecruiter: Object.values(byRecruiter).sort((a, b) => b.total - a.total),
+      referrals: rows.map(c => ({
+        id: c.id,
+        candidate: c.candidate || '', emails: c.emails || '', mob: c.mob || '',
+        referredBy: c.referredByName || names[(c.referredBy || '').toLowerCase()] || c.referredBy || '',
+        referredByEmail: (c.referredBy || c.recEmail || '').toLowerCase(),
+        statusa: c.statusa || '',
+        curr_emp: c.curr_emp || '', total_exp: c.total_exp || '',
+        referredAt: toDateIso(c.referredAt || c.datePosted),
+      })).sort((a, b) => (b.referredAt || '').localeCompare(a.referredAt || '')),
+    });
+  } catch (e) {
+    console.error('vendor/referrals error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /vendor/direct-candidates — direct applicants against positions the
+// vendor's team shared, counted under the vendor's account.
+router.get('/direct-candidates', vendorAuth, async (req, res) => {
+  try {
+    const vendorEmail = (req.vendor.email || '').toLowerCase();
+    const { rows, names } = await candidatesForVendor(vendorEmail, 'direct_apply');
+
+    const byRecruiter = {};
+    rows.forEach(c => {
+      const who = (c.recEmail || '').toLowerCase();
+      if (!byRecruiter[who]) {
+        byRecruiter[who] = { email: who, name: c.recName || names[who] || who.split('@')[0], total: 0, verified: 0 };
+      }
+      byRecruiter[who].total++;
+      // 'Applied' is the unverified landing state; anything beyond it has been acted on.
+      if (String(c.statusa || '').toLowerCase().trim() !== 'applied') byRecruiter[who].verified++;
+    });
+
+    res.json({
+      success: true,
+      total: rows.length,
+      awaitingVerification: rows.filter(c => String(c.statusa || '').toLowerCase().trim() === 'applied').length,
+      byRecruiter: Object.values(byRecruiter).sort((a, b) => b.total - a.total),
+      candidates: rows.map(stripHeavy),
+    });
+  } catch (e) {
+    console.error('vendor/direct-candidates error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 module.exports = router;

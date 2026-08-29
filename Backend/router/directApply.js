@@ -621,8 +621,25 @@ router.post('/submit', async (req, res) => {
       } catch (_) { /* use defaults */ }
     }
 
+    // When the position was shared by a recruiter who belongs to a vendor or a
+    // consulting firm, stamp that organisation on the candidate so the record
+    // counts towards their account permanently.
+    let orgStamp = {};
+    try {
+      if (recEmail && recEmail !== emails) {
+        const rSnap = await db.collection('recruiter_db')
+          .where('email', '==', String(recEmail).toLowerCase()).limit(1).get();
+        if (!rSnap.empty) {
+          const r = rSnap.docs[0].data();
+          if (r.vendorEmail) orgStamp.vendorEmail = String(r.vendorEmail).toLowerCase();
+          if (r.consultingFirmId) orgStamp.consultingFirmId = r.consultingFirmId;
+        }
+      }
+    } catch (_) { /* attribution is best-effort — never block the application */ }
+
     const user = await candida.createCandidate({
       ...referralFields,
+      ...orgStamp,
       recId,
       recEmail,
       recName,

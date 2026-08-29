@@ -128,9 +128,24 @@ router.post('/submit', isLoggedIn, async (req, res) => {
     let nontechSkillParsed = typeof nontech_skill === 'string' ? JSON.parse(nontech_skill || '[]') : (nontech_skill || []);
     let nontechExpParsed   = typeof nontech_exp   === 'string' ? JSON.parse(nontech_exp   || '[]') : (nontech_exp   || []);
 
+    // If the referrer belongs to a vendor or a consulting firm, stamp that on the
+    // record so the referral counts towards that organisation's account for good,
+    // rather than depending on team membership at the time it is read.
+    let orgStamp = {};
+    try {
+      const rSnap = await db.collection('recruiter_db')
+        .where('email', '==', referrerEmail).limit(1).get();
+      if (!rSnap.empty) {
+        const r = rSnap.docs[0].data();
+        if (r.vendorEmail) orgStamp.vendorEmail = String(r.vendorEmail).toLowerCase();
+        if (r.consultingFirmId) orgStamp.consultingFirmId = r.consultingFirmId;
+      }
+    } catch (_) { /* attribution is best-effort — never block the referral */ }
+
     // Store in candidate_db with source:'referred'
     const docRef = await db.collection('candidate_db').add({
       source:         'referred',
+      ...orgStamp,
       // ── Referrer identity (full snapshot for commission tracking) ─────────
       referredBy:     referrerEmail,
       referredById:   referrerId,
