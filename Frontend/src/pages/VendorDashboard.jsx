@@ -1205,8 +1205,8 @@ const VendorCompaniesTab = () => {
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Companies</h2>
           <p className="text-sm text-gray-500">
-            Add a company here, then a SuperAdmin approves it. Positions can be published
-            on RecruiterV only against an approved company.
+            Add a company here. Positions can be published on RecruiterV only against an
+            approval from RecruiterV admin.
           </p>
         </div>
         <button onClick={() => setModal({ company: {}, isNew: true })}

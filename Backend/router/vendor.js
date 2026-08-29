@@ -795,6 +795,74 @@ router.get('/recruiter-detail', vendorAuth, async (req, res) => {
 // Position briefings moved to their own router (/api/briefing) and a single
 // free-text briefing per position; see Backend/router/briefing.js.
 
+// POST /vendor/assign-me — the vendor takes a position onto their own account so
+// they can submit candidates from their own login.
+//
+// Every downstream flow (position access, candidate submission, attribution) is
+// keyed on a recruiter_db record, so we lazily create a "self" recruiter profile
+// for the vendor the first time they do this. It is flagged isVendorSelf so it can
+// be told apart from the recruiters they register, and excluded from team lists.
+router.post('/assign-me', vendorAuth, async (req, res) => {
+  try {
+    const pos_id = String(req.body?.pos_id || '');
+    if (!pos_id) return res.status(400).json({ success: false, message: 'pos_id is required' });
+
+    const email = (req.vendor.email || '').toLowerCase();
+    const posSnap = await db.collection('admin_AddPos').where('pos_id', '==', pos_id).limit(1).get();
+    if (posSnap.empty) return res.status(404).json({ success: false, message: 'Position not found' });
+
+    // Find or create the vendor's own recruiter profile.
+    let recId, recSnap = await db.collection('recruiter_db').where('email', '==', email).limit(1).get();
+    if (!recSnap.empty) {
+      recId = recSnap.docs[0].id;
+    } else {
+      const ref = await db.collection('recruiter_db').add({
+        name: req.vendor.name || email.split('@')[0],
+        email,
+        phone: req.vendor.phone || req.vendor.mobile || '',
+        roleCategory: 'Recruiter',
+        isVendorSelf: true,               // this IS the vendor, not one of their hires
+        vendorEmail: email,
+        vendorName: req.vendor.name || '',
+        isVerified: true,
+        accountStatus: 'approved',
+        agreementSigned: true,
+        planType: 1,
+        skillCategory: req.vendor.skillCategory || [],
+        createdAt: new Date(),
+        createdFromVendorSelfAssign: true,
+      });
+      recId = ref.id;
+    }
+
+    const positionAccess = require('../model_fire/positionAccessF');
+    const r = await positionAccess.createAssignRequest(
+      recId, email, pos_id, `Self-assigned by vendor ${req.vendor.name || email}`);
+
+    return res.json({
+      success: true,
+      status: r.status,
+      message: r.status === 'approved'
+        ? 'Position assigned to you — you can now submit candidates.'
+        : 'Assignment request sent — awaiting ClientSPOC approval.',
+    });
+  } catch (e) {
+    const msg = e.message || 'Failed to assign';
+    if (/already have/i.test(msg)) return res.status(400).json({ success: false, message: msg });
+    console.error('vendor/assign-me error:', msg);
+    return res.status(500).json({ success: false, message: msg });
+  }
+});
+
+// GET /vendor/position-access/:posId — does the vendor hold this position on
+// their own account? Drives Assign Me vs Submit Candidate on dash_view.
+router.get('/position-access/:posId', vendorAuth, async (req, res) => {
+  try {
+    const hasAccess = await vendorSelfAssigned(req.vendor.email, req.params.posId);
+    res.json({ success: true, hasAccess, status: hasAccess ? 'approved' : null });
+  } catch (e) { res.status(500).json({ success: false, hasAccess: false, message: e.message }); }
+});
+
 // GET /vendor/position-access/:posId — does the vendor hold this position on
 // their own account? Drives Assign Me vs Submit Candidate on dash_view.
 router.get('/position-access/:posId', vendorAuth, async (req, res) => {
