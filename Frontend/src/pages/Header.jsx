@@ -264,25 +264,22 @@ const Header = () => {
                 <span>Pricing</span>
               </Link>
 
-              {/* One entry for all four business audiences, so the header does
-                  not grow a link per portal. */}
-              <div className="relative group">
-                <button className="text-gray-700 hover:text-blue-600 font-medium px-3 py-2 rounded-lg hover:bg-blue-50 transition-all duration-300">
-                  For Business ▾
-                </button>
-                <div className="absolute left-0 top-full pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                  <div className="bg-white rounded-xl shadow-xl border border-gray-100 py-2 w-56">
-                    <Link to="/for-employer" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700">
-                      For Employers
-                    </Link>
-                    {/* For Companies and For Consulting Firms are hidden from the
-                        menu for now — the pages themselves stay reachable by URL. */}
-                    <Link to="/for-vendor" className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700">
-                      For Recruitment Vendors
-                    </Link>
-                  </div>
-                </div>
-              </div>
+              {/* The two business audiences sit in the header directly — the
+                  For Business dropdown is gone. The Companies and Consulting
+                  Firms pages stay reachable by URL. */}
+              <Link
+                to="/for-employer"
+                className="text-gray-700 hover:text-blue-600 font-medium px-3 py-2 rounded-lg hover:bg-blue-50 transition-all duration-300"
+              >
+                Employers
+              </Link>
+
+              <Link
+                to="/for-vendor"
+                className="text-gray-700 hover:text-blue-600 font-medium px-3 py-2 rounded-lg hover:bg-blue-50 transition-all duration-300"
+              >
+                ATS
+              </Link>
 
               <Link
                 to="/log_rec"
@@ -446,10 +443,10 @@ const Header = () => {
                 <span>Pricing</span>
               </Link>
 
-              {/* Mobile: list the four audiences rather than a hover dropdown. */}
+              {/* Same two entries as the desktop header. */}
               {[
-                { to: '/for-employer', label: 'For Employers' },
-                { to: '/for-vendor', label: 'For Recruitment Vendors' },
+                { to: '/for-employer', label: 'Employers' },
+                { to: '/for-vendor', label: 'ATS' },
               ].map(l => (
                 <Link
                   key={l.to}
