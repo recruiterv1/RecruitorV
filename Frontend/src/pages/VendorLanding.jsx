@@ -218,6 +218,17 @@ const ADVANTAGE = [
   ['➕', 'More', 'Access additional recruitment opportunities through the RecruiterV platform and grow your business.'],
 ];
 
+const REFER_EARN = [
+  ['👥', 'Your whole team refers under one account',
+   'Every recruiter you have registered can refer candidates. Each referral is attributed to your vendor account at the moment it is made, so nothing depends on who is still on the team later.'],
+  ['🔗', 'Shared positions bring candidates back to you',
+   'When a recruiter shares a position, the direct applicants land in that recruiter\'s dashboard as Applied for them to review — while the candidate and the count sit under your vendor account.'],
+  ['🏦', 'Credit follows the candidate, wherever they go',
+   'If a candidate your team brought in is later submitted to any position by any recruiter on the platform, the referral credit is carried forward to your account rather than to whoever made the submission.'],
+  ['📊', 'See who is earning, and on what',
+   'A per-recruiter breakdown of referrals, what is in process and what has been placed — so you know which part of your team the earnings are coming from.'],
+];
+
 const RESUME_BANK = [
   ['AR', 'Anjali Rao', 'Data Scientist', '6 yrs · Bangalore · Active 2 days ago', ['Python', 'ML', 'TensorFlow'], 88],
   ['RS', 'Rahul Singh', 'DevOps Engineer', '5 yrs · Pune · Active 1 week ago', ['Docker', 'Kubernetes', 'AWS'], 76],
@@ -546,6 +557,68 @@ export default function VendorLanding() {
               ))}
             </div>
           </div>
+        </Section>
+
+        {/* Refer & Earn */}
+        <Section dark>
+          <Eyebrow dark>Refer &amp; Earn</Eyebrow>
+          <H2 dark>Your Team Refers. Your Account Earns.</H2>
+          <Lead dark>
+            Every recruiter on your team can refer candidates and bring in direct applicants. The
+            credit does not scatter across individual logins — it rolls up to the vendor account.
+          </Lead>
+
+          <div className="grid lg:grid-cols-2 gap-8 items-start mt-10">
+            <div>
+              <div className="space-y-3">
+                {REFER_EARN.map(([icon, title, body]) => (
+                  <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 flex gap-4">
+                    <span className="text-xl flex-shrink-0">{icon}</span>
+                    <div>
+                      <h3 className="font-bold text-white text-[15px]">{title}</h3>
+                      <p className="text-[13px] text-slate-400 mt-1.5 leading-relaxed">{body}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Flow dark items={['Recruiter refers', 'Credit to vendor', 'Candidate used anywhere', 'Vendor earns']} />
+            </div>
+
+            {/* Vendor Refer & Earn rollup, as it appears in the dashboard */}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-orange-400">Vendor Account · Refer &amp; Earn</p>
+                <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400">This month</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-4">
+                {[['64', 'Referred'], ['21', 'In Process'], ['7', 'Earned']].map(([v, l]) => (
+                  <div key={l} className="rounded-xl bg-white/5 p-3 text-center">
+                    <p className="text-xl font-bold text-white" style={{ fontFamily: "'Outfit', system-ui, sans-serif" }}>{v}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{l}</p>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500 mt-5 mb-2">By recruiter</p>
+              {[['SK', 'Samira Kapoor', 24, 3], ['RV', 'Raj Verma', 19, 2], ['DP', 'Divya Pillai', 13, 1], ['AN', 'Amit Nair', 8, 1]].map(([i, n, ref, earn]) => (
+                <div key={i} className="flex items-center gap-2.5 py-1.5">
+                  <span className="w-7 h-7 rounded-full bg-white/10 text-white text-[10px] font-bold flex items-center justify-center">{i}</span>
+                  <span className="text-[13px] text-slate-200 flex-1">{n}</span>
+                  <span className="text-[11px] text-slate-400">{ref} referred</span>
+                  <span className="text-[11px] font-bold text-emerald-400">{earn} earned</span>
+                </div>
+              ))}
+
+              <p className="text-[12px] text-slate-400 bg-white/5 border border-white/10 rounded-xl px-3.5 py-3 mt-4 leading-relaxed">
+                🏦 A candidate your team referred was submitted by a recruiter outside your team.
+                <span className="text-emerald-400 font-semibold"> The credit still came to you.</span>
+              </p>
+            </div>
+          </div>
+
+          <p className="text-center text-white font-semibold mt-10">
+            One team. One account. One place the earnings land.
+          </p>
         </Section>
 
         {/* Real-time tracking */}

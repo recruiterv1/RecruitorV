@@ -1360,11 +1360,29 @@ const toDateIso = (v) => {
   return isNaN(d.getTime()) ? null : d.toISOString();
 };
 
+// Every later use of a candidate this vendor's team brought in. When any
+// recruiter anywhere submits that person to a position, the submission carries
+// `referralVendorEmail` forward, so the credit lands here rather than with
+// whoever happened to make the submission.
+async function creditedUsesFor(vendorEmail) {
+  try {
+    const snap = await db.collection('candidate_db')
+      .where('referralVendorEmail', '==', vendorEmail).get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.pos_id);
+  } catch (e) {
+    console.error('vendor credited uses lookup failed:', e.message);
+    return [];   // never fail the whole view over the credit rollup
+  }
+}
+
 // GET /vendor/referrals — every Refer & Earn submission by the vendor's team.
 router.get('/referrals', vendorAuth, async (req, res) => {
   try {
     const vendorEmail = (req.vendor.email || '').toLowerCase();
-    const { rows, names } = await candidatesForVendor(vendorEmail, 'referred');
+    const [{ rows, names }, credited] = await Promise.all([
+      candidatesForVendor(vendorEmail, 'referred'),
+      creditedUsesFor(vendorEmail),
+    ]);
 
     // Per recruiter, so a vendor can see who is actually referring.
     const byRecruiter = {};
@@ -1384,9 +1402,21 @@ router.get('/referrals', vendorAuth, async (req, res) => {
       else if (st && !st.includes('reject') && st !== 'resume bank') b.inProcess++;
     });
 
+    // Where a credited use came from a recruiter outside this vendor's team,
+    // it is credit the vendor earned without doing the submission themselves.
+    const teamSet = new Set(Object.keys(names).concat(vendorEmail));
+    const placedStates = ['joining', 'offer accepted', 'selected'];
+    const isPlaced = (c) => placedStates.some(st => String(c.statusa || '').toLowerCase().includes(st));
+
     res.json({
       success: true,
       total: rows.length,
+      credited: {
+        uses: credited.length,
+        placed: credited.filter(isPlaced).length,
+        byOutsideRecruiters: credited.filter(c => !teamSet.has((c.recEmail || '').toLowerCase())).length,
+        positions: [...new Set(credited.map(c => c.pos_id).filter(Boolean))].length,
+      },
       byRecruiter: Object.values(byRecruiter).sort((a, b) => b.total - a.total),
       referrals: rows.map(c => ({
         id: c.id,

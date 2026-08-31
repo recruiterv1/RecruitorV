@@ -19,6 +19,26 @@ const { sendEmail, sendEmailFull, renderEmail } = require('../utils/email');
 const { sendPushToEmails } = require('../utils/push');
 const { TEMPLATE_MAP, substitute } = require('../utils/emailTemplates');
 
+// Referral credit follows the organisation, not just the person. When a
+// candidate first enters the system through a vendor's (or consulting firm's)
+// recruiter — as a Refer & Earn upload or a direct applicant on a shared
+// position — that organisation is stamped on the record. Every later use of
+// that candidate, by any recruiter anywhere, carries the stamp forward under
+// `referralVendorEmail` / `referralFirmId` so the credit stays with them.
+//
+// Kept separate from `vendorEmail` on purpose: `vendorEmail` means "this record
+// was produced by that vendor's team", while these mean "that vendor owns the
+// referral credit for it", which are not the same once an outside recruiter
+// picks the candidate up.
+const referralOrgOf = (origin = {}) => {
+  const out = {};
+  const vendor = origin.referralVendorEmail || origin.vendorEmail;
+  const firm   = origin.referralFirmId     || origin.consultingFirmId;
+  if (vendor) out.referralVendorEmail = String(vendor).toLowerCase();
+  if (firm)   out.referralFirmId      = firm;
+  return out;
+};
+
 /**
  * Send email to ClientSPOC about new candidate submission
  */
@@ -460,6 +480,7 @@ let {
           referredByPlan:  origin.referredByPlan  || '',
           referrerProfile: origin.referrerProfile || {},
           referralCarried: true,   // commission owner inherited from an earlier referral
+          ...referralOrgOf(origin),
         };
       }
     } catch (_) { /* attribution is best-effort; never block a submission */ }
@@ -2254,6 +2275,7 @@ router.post('/pos/:pos_id/submit-from-bank', isLoggedIn, async (req, res) => {
         referredByPlan:  c.referredByPlan  || '',
         referrerProfile: c.referrerProfile || {},
         referralCarried: true,
+        ...referralOrgOf(c),
       } : {};
 
       const created = await candida.createCandidate({
