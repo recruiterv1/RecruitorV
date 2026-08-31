@@ -99,7 +99,7 @@ export default function VendorPublicPage() {
     );
   }
 
-  const { vendor: v, stats, positions, clients, showingPlatformPositions } = data;
+  const { vendor: v, stats, positions, clients } = data;
   const place = [v.city, v.state].filter(Boolean).join(', ');
   const socials = socialsOf(v);
 
@@ -231,9 +231,8 @@ export default function VendorPublicPage() {
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-orange-600 mb-3">Open Positions</p>
             <h2 className="text-[26px] sm:text-[32px] font-bold text-slate-900">Roles We Are Hiring For</h2>
             <p className="mt-3 text-slate-600 max-w-2xl leading-relaxed">
-              {showingPlatformPositions
-                ? `Live roles on the RecruiterV platform that ${v.name}'s recruiters can work on. Candidates are welcome to apply.`
-                : `Live requirements ${v.name} is working on right now. Recruiters can sign in to work these; candidates are welcome to apply.`}
+              Live roles {v.name}&apos;s recruiters are working on right now. Recruiters can sign in
+              to work these; candidates are welcome to apply.
             </p>
 
             {positions.length ? (
@@ -267,12 +266,6 @@ export default function VendorPublicPage() {
                   </div>
                 ))}
                 </div>
-                {showingPlatformPositions && (
-                  <p className="text-[12px] text-slate-500 mt-4">
-                    These are open roles on the RecruiterV platform, not {v.name}&apos;s own client
-                    requirements. Their recruiters are cleared to work on them.
-                  </p>
-                )}
               </>
             ) : (
               <div className="mt-10 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
@@ -302,10 +295,10 @@ export default function VendorPublicPage() {
               </p>
               {!!socials.length && (
                 <div className="flex flex-wrap gap-3 mt-6">
-                  {socials.map(({ key, label, Icon, url }) => (
-                    <a key={key} href={url} target="_blank" rel="noreferrer"
+                  {socials.map(sl => (
+                    <a key={sl.key} href={sl.url} target="_blank" rel="noreferrer"
                       className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 border border-slate-300 rounded-xl px-4 py-2 hover:bg-white">
-                      <Icon size={15} /> {label}
+                      <sl.Icon size={15} /> {sl.label}
                     </a>
                   ))}
                 </div>
@@ -432,10 +425,10 @@ export default function VendorPublicPage() {
               {place && <p className="text-[12px] text-slate-500 mt-3 flex items-center gap-1.5"><MapPin size={12} /> {place}</p>}
               {!!socials.length && (
                 <div className="flex flex-wrap gap-2 mt-4">
-                  {socials.map(({ key, label, Icon, url }) => (
-                    <a key={key} href={url} target="_blank" rel="noreferrer" title={label} aria-label={label}
+                  {socials.map(sl => (
+                    <a key={sl.key} href={sl.url} target="_blank" rel="noreferrer" title={sl.label} aria-label={sl.label}
                       className="h-9 w-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-200">
-                      <Icon size={16} />
+                      <sl.Icon size={16} />
                     </a>
                   ))}
                 </div>
