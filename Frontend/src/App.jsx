@@ -54,6 +54,7 @@ const Login_Con = React.lazy(() => import('./condition/Login_Con'));
 const Reg_Con = React.lazy(() => import('./condition/Reg_Con'));
 const RecruiterLanding = React.lazy(() => import('./pages/RecruiterLanding'));
 const CoachCandidates = React.lazy(() => import('./pages/CoachCandidates'));
+const VendorPublicPage = React.lazy(() => import('./pages/VendorPublicPage'));
 const MainFresher = React.lazy(() => import('./pages/MainFresher'));
 const MainCareerSwitch = React.lazy(() => import('./pages/MainCareerSwitch'));
 const MainCorporate = React.lazy(() => import('./pages/MainCorporate'));
@@ -420,6 +421,8 @@ const App = () => {
             <Route path='/log_rec' element={<Login/>} />
             <Route path='/clientspoc' element={<Ad_login/>} />
             <Route path='/vendor' element={<VendorLogin/>} />
+            {/* Every registered vendor's own public page, keyed by their name. */}
+            <Route path='/vendors/:slug' element={<VendorPublicPage/>} />
             <Route path='/ad_panel' element={<Admin/>} />
             <Route path='/cv_repo' element={<CV_repo/>} />
             <Route path='/position/:pos_id' element={<Dash_View />} />

@@ -1465,4 +1465,160 @@ router.get('/direct-candidates', vendorAuth, async (req, res) => {
   }
 });
 
+// ── Public vendor landing page ───────────────────────────────────────────────
+// Every registered vendor gets a public page at /vendors/:slug. It is the page
+// a vendor sends to a prospective client, so it is deliberately open — no login
+// and no session — and carries only what a vendor would put on a brochure.
+
+const slugify = (s) => String(s || '').toLowerCase().trim()
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+// What a vendor may write about themselves. Everything else on the page is
+// derived from their real activity, so it cannot be overstated.
+const VENDOR_PROFILE_FIELDS = [
+  'about', 'website', 'city', 'state', 'linkedin', 'logoUrl',
+  'tagline', 'specialisms', 'foundedYear', 'publicEmail', 'publicPhone',
+];
+
+const vendorIsPublic = (v) =>
+  String(v.accountStatus || '').toLowerCase() !== 'blocked';
+
+// GET /vendor/profile — what this vendor has written for their public page.
+router.get('/profile', vendorAuth, async (req, res) => {
+  try {
+    const doc = await db.collection('admin_db').doc(req.vendor.id).get();
+    const d = doc.data() || {};
+    const profile = {};
+    VENDOR_PROFILE_FIELDS.forEach(k => { profile[k] = d[k] ?? (k === 'specialisms' ? [] : ''); });
+    res.json({
+      success: true,
+      profile: { ...profile, name: d.name || '', email: d.email || '' },
+      slug: slugify(d.name || d.email || ''),
+      publicUrl: `/vendors/${slugify(d.name || d.email || '')}`,
+    });
+  } catch (e) {
+    console.error('vendor/profile GET error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// PUT /vendor/profile — save the public page copy.
+router.put('/profile', vendorAuth, async (req, res) => {
+  try {
+    const patch = {};
+    for (const k of VENDOR_PROFILE_FIELDS) {
+      if (req.body[k] === undefined) continue;
+      if (k === 'specialisms') {
+        const list = Array.isArray(req.body[k]) ? req.body[k] : String(req.body[k] || '').split(',');
+        patch[k] = list.map(x => String(x).trim()).filter(Boolean).slice(0, 12);
+      } else {
+        patch[k] = String(req.body[k] || '').trim().slice(0, k === 'about' ? 4000 : 300);
+      }
+    }
+    if (Object.keys(patch).length) await db.collection('admin_db').doc(req.vendor.id).update(patch);
+    res.json({ success: true, message: 'Your public page has been updated.' });
+  } catch (e) {
+    console.error('vendor/profile PUT error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// POST /vendor/logo — base64 upload, same approach as the consulting firms
+// (avoids multipart handling on Cloud Run).
+router.post('/logo', vendorAuth, async (req, res) => {
+  try {
+    const { filename, contentType, base64 } = req.body || {};
+    if (!base64 || !filename) return res.status(400).json({ success: false, message: 'filename and base64 are required.' });
+    if (!(contentType || '').startsWith('image/')) return res.status(400).json({ success: false, message: 'Please upload an image file.' });
+    const admin = require('firebase-admin');
+    const { v4: uuidv4 } = require('uuid');
+    const buffer = Buffer.from(base64, 'base64');
+    if (buffer.length > 3 * 1024 * 1024) return res.status(400).json({ success: false, message: 'Logo must be under 3 MB.' });
+    const bucket = admin.storage().bucket();
+    const token = uuidv4();
+    const safe = filename.replace(/[^\w.\-]+/g, '_');
+    const filepath = `vendor-logos/${req.vendor.id}/${Date.now()}_${safe}`;
+    await bucket.file(filepath).save(buffer, {
+      contentType, resumable: false,
+      metadata: { metadata: { firebaseStorageDownloadTokens: token } },
+    });
+    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
+    await db.collection('admin_db').doc(req.vendor.id).update({ logoUrl: url });
+    res.json({ success: true, url });
+  } catch (e) {
+    console.error('vendor/logo error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /vendor/public/:slug — the landing page itself. No auth.
+router.get('/public/:slug', async (req, res) => {
+  try {
+    const slug = String(req.params.slug || '').toLowerCase();
+
+    const snap = await db.collection('admin_db').get();
+    const vendors = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(v => String(v.roleCategory || v.role || '').toLowerCase().replace(/\s/g, '') === 'vendor');
+
+    // Match on the name slug, then the email slug, then the raw id, so older
+    // links and links built from an email both keep working.
+    const v = vendors.find(x => slugify(x.name) === slug)
+      || vendors.find(x => slugify(x.email) === slug)
+      || vendors.find(x => x.id === req.params.slug)
+      || null;
+
+    if (!v || !vendorIsPublic(v)) {
+      return res.status(404).json({ success: false, message: 'Vendor not found.' });
+    }
+
+    const email = (v.email || '').toLowerCase();
+    const [posSnap, compSnap, teamSnap] = await Promise.all([
+      db.collection('admin_AddPos').where('postedByVendor', '==', email).get(),
+      db.collection('Company_Overview').where('addedByVendor', '==', email).get(),
+      db.collection('recruiter_db').where('vendorEmail', '==', email).select('email').get(),
+    ]);
+
+    // Only live positions belong on a public page.
+    const positions = posSnap.docs.map(d => d.data())
+      .filter(p => {
+        const st = String(p.status || '').toLowerCase().trim();
+        return st === '' || st.includes('active');
+      })
+      .map(p => ({
+        pos_id: p.pos_id, position: p.position || '', client: p.client || '',
+        skill_category: p.skill_category || p.pos_cat || '',
+        location: p.location || '', experience: p.experience || '',
+        openings: p.openings || '', datePosted: p.datePosted || null,
+      }));
+
+    res.json({
+      success: true,
+      vendor: {
+        name: v.name || '', slug: slugify(v.name || v.email || ''),
+        about: v.about || '', tagline: v.tagline || '',
+        logoUrl: v.logoUrl || '', website: v.website || '',
+        city: v.city || '', state: v.state || '', linkedin: v.linkedin || '',
+        specialisms: Array.isArray(v.specialisms) ? v.specialisms : [],
+        foundedYear: v.foundedYear || '',
+        // Only the contact details the vendor chose to publish — never the
+        // login email or the phone captured at registration.
+        publicEmail: v.publicEmail || '', publicPhone: v.publicPhone || '',
+      },
+      stats: {
+        openPositions: positions.length,
+        recruiters: teamSnap.size,
+        clients: compSnap.size,
+      },
+      clients: compSnap.docs.map(d => ({
+        name: d.data().name || '', logoUrl: d.data().logoUrl || '',
+      })).filter(c => c.name),
+      positions,
+    });
+  } catch (e) {
+    console.error('vendor/public error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 module.exports = router;

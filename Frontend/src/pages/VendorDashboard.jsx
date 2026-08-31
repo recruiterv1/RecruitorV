@@ -8,7 +8,7 @@ import {
   PlusCircle, FolderOpen, ClipboardList,
   ChevronDown, ChevronRight, ChevronLeft, AlertCircle, Building,
   Briefcase, Download, X, Hash, Store, Menu, Clock, MapPin,
-  IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox, Building2, Mic, LayoutDashboard, Trash2, Gift
+  IndianRupee, BadgePercent, Search, UserCheck, FileText, ExternalLink, MessageSquare, Inbox, Building2, Mic, LayoutDashboard, Trash2, Gift, Globe
 } from 'lucide-react';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import Ad_Candi from './Ad_Candi';
@@ -1226,6 +1226,170 @@ const VendorDirectRollup = () => {
   );
 };
 
+
+// ── Public page ──────────────────────────────────────────────────────────────
+// Every registered vendor gets a public landing page at /vendor/<their-name>.
+// This is where they write what appears on it and copy the link to send out.
+const VendorPublicPageTab = () => {
+  const [form, setForm] = useState(null);
+  const [url, setUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    axios.get('/vendor/profile', { withCredentials: true })
+      .then(r => {
+        const p = r.data?.profile || {};
+        setForm({ ...p, specialisms: (p.specialisms || []).join(', ') });
+        setUrl(r.data?.publicUrl || '');
+      })
+      .catch(() => setToast('Could not load your public page settings.'));
+  }, []);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const save = async () => {
+    setSaving(true); setToast('');
+    try {
+      await axios.put('/vendor/profile', form, { withCredentials: true });
+      setToast('Saved — your public page is updated.');
+    } catch (e) {
+      setToast(e.response?.data?.message || 'Could not save.');
+    } finally { setSaving(false); setTimeout(() => setToast(''), 4000); }
+  };
+
+  const uploadLogo = async (file) => {
+    if (!file) return;
+    setUploading(true); setToast('');
+    try {
+      const base64 = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result.split(',')[1]);
+        r.onerror = rej;
+        r.readAsDataURL(file);
+      });
+      const r = await axios.post('/vendor/logo',
+        { filename: file.name, contentType: file.type, base64 }, { withCredentials: true });
+      set('logoUrl', r.data.url);
+      setToast('Logo uploaded.');
+    } catch (e) {
+      setToast(e.response?.data?.message || 'Could not upload the logo.');
+    } finally { setUploading(false); setTimeout(() => setToast(''), 4000); }
+  };
+
+  if (!form) return <div className="p-8 text-center text-gray-500">Loading…</div>;
+
+  const full = `${window.location.origin}${url}`;
+  const field = 'w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm focus:border-orange-400 outline-none';
+
+  return (
+    <div className="space-y-5">
+      <div className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-2xl p-5 text-white shadow-xl">
+        <h2 className="text-xl font-bold">Your Public Page</h2>
+        <p className="text-blue-100 text-sm mt-0.5">
+          The page you send to a company that wants to hire. It shows your open positions,
+          who you are, and how you work.
+        </p>
+        <div className="flex flex-wrap items-center gap-2 mt-4">
+          <span className="bg-white/20 rounded-lg px-3 py-2 text-sm font-mono break-all">{full}</span>
+          <button onClick={() => { navigator.clipboard?.writeText(full); setToast('Link copied.'); setTimeout(() => setToast(''), 2500); }}
+            className="px-4 py-2 rounded-lg bg-white text-orange-600 text-sm font-bold hover:bg-orange-50">
+            Copy link
+          </button>
+          <a href={url} target="_blank" rel="noreferrer"
+            className="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-sm font-semibold">
+            Preview ↗
+          </a>
+        </div>
+      </div>
+
+      {toast && (
+        <div className="px-4 py-3 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 text-sm">{toast}</div>
+      )}
+
+      <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-4">
+          {form.logoUrl
+            ? <img src={form.logoUrl} alt="Logo" className="h-16 w-16 rounded-xl object-cover border border-gray-200" />
+            : <div className="h-16 w-16 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No logo</div>}
+          <label className="px-4 py-2 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">
+            {uploading ? 'Uploading…' : 'Upload logo'}
+            <input type="file" accept="image/*" className="hidden"
+              onChange={(e) => uploadLogo(e.target.files?.[0])} disabled={uploading} />
+          </label>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">Tagline</label>
+          <input className={field} maxLength={120} value={form.tagline || ''}
+            onChange={(e) => set('tagline', e.target.value)}
+            placeholder="One line on what you do — e.g. Specialist BFSI hiring across India" />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">About your company</label>
+          <textarea className={field} rows={6} value={form.about || ''}
+            onChange={(e) => set('about', e.target.value)}
+            placeholder="Who you are, what you hire for, and what a company can expect working with you." />
+          <p className="text-[11px] text-gray-400 mt-1">
+            Leave this blank and a sensible default is shown, but your own words work better.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">What you specialise in</label>
+          <input className={field} value={form.specialisms || ''}
+            onChange={(e) => set('specialisms', e.target.value)}
+            placeholder="Comma separated — e.g. IT, BFSI, Sales Leadership" />
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">City</label>
+            <input className={field} value={form.city || ''} onChange={(e) => set('city', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">State</label>
+            <input className={field} value={form.state || ''} onChange={(e) => set('state', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Website</label>
+            <input className={field} value={form.website || ''} onChange={(e) => set('website', e.target.value)} placeholder="yourcompany.com" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">LinkedIn</label>
+            <input className={field} value={form.linkedin || ''} onChange={(e) => set('linkedin', e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Contact email shown on the page</label>
+            <input className={field} value={form.publicEmail || ''} onChange={(e) => set('publicEmail', e.target.value)}
+              placeholder="Leave blank to hide" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Contact phone shown on the page</label>
+            <input className={field} value={form.publicPhone || ''} onChange={(e) => set('publicPhone', e.target.value)}
+              placeholder="Leave blank to hide" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Founded</label>
+            <input className={field} value={form.foundedYear || ''} onChange={(e) => set('foundedYear', e.target.value)} placeholder="e.g. 2015" />
+          </div>
+        </div>
+
+        <p className="text-[11px] text-gray-500">
+          Your login email and registration phone are never shown publicly — only what you enter above.
+        </p>
+
+        <button onClick={save} disabled={saving}
+          className="px-6 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white text-sm font-bold">
+          {saving ? 'Saving…' : 'Save public page'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const VendorReferralsTab = () => {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -1813,7 +1977,8 @@ const VendorDashboard = () => {
 
   // Honour a #hash so the sidebar (and deep links) can open a specific tab.
   const VALID_TABS = ['register', 'recruiters', 'candidates', 'direct-applicants', 'positions',
-    'assigned-positions', 'add-position', 'added-positions', 'messages', 'inbox', 'reports'];
+    'assigned-positions', 'add-position', 'added-positions', 'messages', 'inbox', 'reports',
+    'referrals', 'companies', 'public-page'];
   const tabFromHash = () => {
     const h = (window.location.hash || '').replace('#', '').trim();
     return VALID_TABS.includes(h) ? h : 'dashboard';   // land on the dashboard
@@ -1902,6 +2067,7 @@ const VendorDashboard = () => {
     },
     { id: 'companies', icon: Building2, label: 'Companies' },
     { id: 'referrals', icon: Gift, label: 'Refer & Earn' },
+    { id: 'public-page', icon: Globe, label: 'My Public Page' },
     // Briefings live on their own pages (shared with coaches/experts), so this
     // entry navigates rather than switching a tab.
     {
@@ -2009,6 +2175,7 @@ const VendorDashboard = () => {
     'added-positions': <VendorAddedPositionsTab />,
     'companies': <VendorCompaniesTab />,
     'referrals': <VendorReferralsTab />,
+    'public-page': <VendorPublicPageTab />,
     messages: <div className="h-[calc(100vh-160px)] min-h-[520px] bg-white rounded-xl border border-gray-200 overflow-hidden"><ChatPanel /></div>,
     inbox: <div className="h-[calc(100vh-160px)] min-h-[520px] bg-white rounded-xl border border-gray-200 overflow-hidden"><InboxPage title="Inbox" embedded /></div>,
     reports: <ReportsTab />,
