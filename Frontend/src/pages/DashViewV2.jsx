@@ -902,7 +902,14 @@ function DashViewV2Inner() {
     let live = true;
     axios.get(`/api/briefing/for-me/${pos_id}`, { withCredentials: true })
       .then(r => { if (live) setTeamBriefings(r.data?.briefings || []); })
-      .catch(() => { if (live) setTeamBriefings([]); });
+      .catch(() => {
+        // Signed out, or the session expired. The ClientSPOC's briefing is open
+        // to everyone, so fall back to the public route rather than showing
+        // nothing — team briefings stay behind the authenticated call above.
+        axios.get(`/api/briefing/public/${pos_id}`)
+          .then(r => { if (live) setTeamBriefings(r.data?.briefings || []); })
+          .catch(() => { if (live) setTeamBriefings([]); });
+      });
     return () => { live = false; };
   }, [pos_id]);
 
@@ -917,6 +924,12 @@ function DashViewV2Inner() {
   }, [pos_id, isTeamLead]);
 
   // Tell the author this recruiter actually played their briefing.
+  // The ClientSPOC's briefing is the client's own word and is open to everyone
+  // on the page, so it rides in the blue header. Coach/vendor briefings stay in
+  // their own card below, visible only to that team.
+  const clientBriefing = teamBriefings.find(b => b.isPublic) || null;
+  const privateBriefings = teamBriefings.filter(b => !b.isPublic);
+
   const listenReported = useRef({});
   const markBriefingListened = (authorEmail) => {
     if (!authorEmail || !pos_id) return;
@@ -1468,20 +1481,61 @@ function DashViewV2Inner() {
               <div><span className="label">Openings</span><span className="val">{jd.openings}</span></div>
               <div><span className="label">Experience</span><span className="val">{jd.experience}</span></div>
             </div>
+
+            {/* Client SPOC briefing — open to every visitor on this page, with no
+                assignment and no account needed. Sits in the header so it is the
+                first thing anyone working the position sees. */}
+            {clientBriefing && (
+              <div style={{ position: 'relative', zIndex: 1, marginTop: 22, paddingTop: 18,
+                borderTop: '1px solid rgba(255,255,255,0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+                    background: 'rgba(244,123,32,0.18)', color: 'var(--orange)',
+                    border: '1px solid rgba(244,123,32,0.4)', fontSize: 11, fontWeight: 700,
+                    letterSpacing: '0.06em', textTransform: 'uppercase', padding: '4px 10px',
+                    borderRadius: 999 }}>
+                    🎙️ Client Briefing
+                  </span>
+                  <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.65)' }}>
+                    from {clientBriefing.authorName || 'the Client SPOC'} · open to everyone
+                  </span>
+                  {/* Play the whole briefing end to end. */}
+                  <SpeakButton
+                    text={(clientBriefing.items || []).map(it => `${it.title}. ${it.text}`).join(' ')}
+                    title="Play the whole client briefing"
+                    onPlay={() => markBriefingListened(clientBriefing.authorEmail)}
+                    compact
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gap: 8, marginTop: 14 }}>
+                  {(clientBriefing.items || []).map(it => (
+                    <div key={it.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 10,
+                      background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)',
+                      borderRadius: 12, padding: '10px 12px' }}>
+                      <span style={{ fontSize: 15, lineHeight: '20px', flexShrink: 0 }}>{it.icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#fff' }}>{it.title}</div>
+                        <div style={{ fontSize: 12.5, lineHeight: 1.6, color: 'rgba(255,255,255,0.72)',
+                          marginTop: 3, whiteSpace: 'pre-wrap' }}>{it.text}</div>
+                      </div>
+                      <SpeakButton text={`${it.title}. ${it.text}`} title={`Play: ${it.title}`}
+                        onPlay={() => markBriefingListened(clientBriefing.authorEmail)} compact />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Briefings shared with this recruiter by their own coach/vendor. The
-              server only ever returns briefings the viewer is entitled to. */}
-          {teamBriefings.length > 0 && teamBriefings.map(b => (
+          {/* Team-private briefings only — the client's own briefing is in the
+              header above, open to everyone. The server returns a coach/vendor
+              briefing solely to that author's own team. */}
+          {privateBriefings.length > 0 && privateBriefings.map(b => (
             <div className="card" style={{ marginBottom: 20 }} key={b.id}>
-              <h2>
-                {b.isPublic ? 'Client Briefing'
-                  : b.authorType === 'vendor' ? 'Vendor Briefing' : 'Coach Briefing'}
-              </h2>
+              <h2>{b.authorType === 'vendor' ? 'Vendor Briefing' : 'Coach Briefing'}</h2>
               <p className="card-sub">
-                {b.isPublic
-                  ? `${b.authorName || 'The Client SPOC'}'s briefing for this position — open to everyone working it.`
-                  : `${b.authorName || 'Your team lead'}'s guidance for your team.`}
+                {`${b.authorName || 'Your team lead'}'s guidance for your team.`}
                 {' '}Press a speaker to hear that item (English/Hindi &amp; more).
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>

@@ -505,6 +505,40 @@ router.get('/for-me/:posId', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/briefing/public/:posId — the ClientSPOC's briefing alone, with no
+// login required. The client's own word on a position is open to everyone:
+// no assignment, no team membership, and no account needed to hear it.
+// Coach and vendor briefings are deliberately NOT served here — those stay
+// private to their own team and remain behind /for-me.
+router.get('/public/:posId', async (req, res) => {
+  try {
+    const posId = String(req.params.posId);
+
+    const posSnap = await db.collection('admin_AddPos')
+      .where('pos_id', '==', posId).limit(1).get();
+    if (posSnap.empty) return res.json({ success: true, briefings: [] });
+
+    const spoc = (posSnap.docs[0].data().clientspoc || '').toLowerCase();
+    if (!spoc) return res.json({ success: true, briefings: [] });
+
+    const doc = await db.collection('position_coach_briefing').doc(`${posId}__${spoc}`).get();
+    if (!doc.exists || (doc.data().status || 'draft') !== 'ready') {
+      return res.json({ success: true, briefings: [] });
+    }
+
+    const b = shape(doc.data(), doc.id);
+    const items = BRIEFING_ITEMS
+      .filter(a => String(b.answers[a.key] || '').trim())
+      .map(a => ({ key: a.key, icon: a.icon, n: a.n, title: a.title, text: b.answers[a.key].trim() }));
+
+    res.json({ success: true, briefings: [{ ...b, items, isPublic: true }] });
+  } catch (err) {
+    console.error('briefing/public error:', err.message);
+    // A briefing failing to load must never take the position page down with it.
+    res.json({ success: true, briefings: [] });
+  }
+});
+
 // POST /api/briefing/for-me/:posId/listened { authorEmail }
 // Records that this recruiter actually played the briefing, so the author can
 // see who has heard it. Idempotent — repeat plays bump the counter.
