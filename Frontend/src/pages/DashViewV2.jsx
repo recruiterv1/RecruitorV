@@ -927,8 +927,14 @@ function DashViewV2Inner() {
   // The ClientSPOC's briefing is the client's own word and is open to everyone
   // on the page, so it rides in the blue header. Coach/vendor briefings stay in
   // their own card below, visible only to that team.
-  const clientBriefing = teamBriefings.find(b => b.isPublic) || null;
-  const privateBriefings = teamBriefings.filter(b => !b.isPublic);
+  // Client briefing first, then whatever team briefing this viewer is entitled
+  // to. The server has already decided entitlement: /for-me returns a
+  // coach/vendor briefing only to that author's own team, and the signed-out
+  // fallback returns the client's briefing alone.
+  const headerBriefings = [
+    ...teamBriefings.filter(b => b.isPublic),
+    ...teamBriefings.filter(b => !b.isPublic),
+  ];
   // The briefing item whose text is open in the reader. Set when its speaker is
   // pressed, so the audio and the words start together.
   const [briefingItem, setBriefingItem] = useState(null);
@@ -1485,79 +1491,62 @@ function DashViewV2Inner() {
               <div><span className="label">Experience</span><span className="val">{jd.experience}</span></div>
             </div>
 
-            {/* Client SPOC briefing — open to every visitor on this page, with no
-                assignment and no account needed. Titles only; the speaker plays
-                the item and opens its text at the same time. */}
-            {clientBriefing && (
+            {/* Briefings in the header, in order: the client's own briefing first
+                (open to everyone), then the viewer's coach/vendor briefing.
+                The coach/vendor ones only ever reach here for that author's own
+                team — the server decides that, not this component, and the
+                public fallback used when signed out returns the client's alone. */}
+            {headerBriefings.length > 0 && (
               <div style={{ position: 'relative', zIndex: 1, marginTop: 20, paddingTop: 16,
-                borderTop: '1px solid rgba(255,255,255,0.15)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
-                    background: 'rgba(244,123,32,0.18)', color: 'var(--orange)',
-                    border: '1px solid rgba(244,123,32,0.4)', fontSize: 11, fontWeight: 700,
-                    letterSpacing: '0.06em', textTransform: 'uppercase', padding: '4px 10px',
-                    borderRadius: 999 }}>
-                    🎙️ Client Briefing
-                  </span>
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
-                    from {clientBriefing.authorName || 'the Client SPOC'} · open to everyone
-                  </span>
-                </div>
+                borderTop: '1px solid rgba(255,255,255,0.15)', display: 'grid', gap: 16 }}>
+                {headerBriefings.map(b => {
+                  const label = b.isPublic ? '🎙️ Client Briefing'
+                    : b.authorType === 'vendor' ? '🎙️ Vendor Briefing' : '🎙️ Coach Briefing';
+                  const who = b.isPublic
+                    ? `from ${b.authorName || 'the Client SPOC'} · open to everyone`
+                    : `from ${b.authorName || 'your team lead'} · your team only`;
+                  return (
+                    <div key={b.id}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
+                          background: 'rgba(244,123,32,0.18)', color: 'var(--orange)',
+                          border: '1px solid rgba(244,123,32,0.4)',
+                          fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
+                          textTransform: 'uppercase', padding: '4px 10px', borderRadius: 999 }}>
+                          {label}
+                        </span>
+                        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{who}</span>
+                      </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-                  {(clientBriefing.items || []).map(it => (
-                    <span key={it.key}
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 8,
-                        background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
-                        borderRadius: 999, padding: '5px 6px 5px 12px' }}>
-                      <button type="button" onClick={() => setBriefingItem(it)}
-                        title={`Read: ${it.title}`}
-                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                          fontSize: 12.5, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-                        {it.icon} {it.title}
-                      </button>
-                      {/* Pressing play also opens the text, so it can be read while it plays. */}
-                      <SpeakButton
-                        text={`${it.title}. ${it.text}`}
-                        title={`Play: ${it.title}`}
-                        onPlay={() => { setBriefingItem(it); markBriefingListened(clientBriefing.authorEmail); }}
-                        compact
-                      />
-                    </span>
-                  ))}
-                </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                        {(b.items || []).map(it => (
+                          <span key={it.key}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 8,
+                              background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
+                              borderRadius: 999, padding: '5px 6px 5px 12px' }}>
+                            <button type="button" onClick={() => setBriefingItem({ ...it, label })}
+                              title={`Read: ${it.title}`}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                fontSize: 12.5, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+                              {it.icon} {it.title}
+                            </button>
+                            {/* Pressing play also opens the text, so it can be read while it plays. */}
+                            <SpeakButton
+                              text={`${it.title}. ${it.text}`}
+                              title={`Play: ${it.title}`}
+                              onPlay={() => { setBriefingItem({ ...it, label }); markBriefingListened(b.authorEmail); }}
+                              compact
+                            />
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Team-private briefings only — the client's own briefing is in the
-              header above, open to everyone. The server returns a coach/vendor
-              briefing solely to that author's own team. */}
-          {privateBriefings.length > 0 && privateBriefings.map(b => (
-            <div className="card" style={{ marginBottom: 20 }} key={b.id}>
-              <h2>{b.authorType === 'vendor' ? 'Vendor Briefing' : 'Coach Briefing'}</h2>
-              <p className="card-sub">
-                {`${b.authorName || 'Your team lead'}'s guidance for your team.`}
-                {' '}Press a speaker to hear that item (English/Hindi &amp; more).
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-                {(b.items || []).map(it => (
-                  <div key={it.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 10,
-                    padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
-                    <span style={{ fontSize: 16, lineHeight: '20px', flexShrink: 0 }}>{it.icon}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{it.title}</div>
-                      <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, whiteSpace: 'pre-wrap', marginTop: 2 }}>
-                        {it.text}
-                      </div>
-                    </div>
-                    <SpeakButton text={`${it.title}. ${it.text}`} title={`Play: ${it.title}`}
-                      tone="green" compact onPlay={() => markBriefingListened(b.authorEmail)} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
 
           <div className="grid">
             <div>
@@ -2330,7 +2319,9 @@ function DashViewV2Inner() {
               <span style={{ fontSize: 20, lineHeight: '26px' }}>{briefingItem.icon}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-                  textTransform: 'uppercase', color: '#f47b20' }}>Client Briefing</div>
+                  textTransform: 'uppercase', color: '#f47b20' }}>
+                  {(briefingItem.label || '🎙️ Client Briefing').replace('🎙️ ', '')}
+                </div>
                 <h3 style={{ margin: '2px 0 0', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
                   {briefingItem.title}
                 </h3>
