@@ -53,6 +53,7 @@ const Dash_RecruiterReports = React.lazy(() => import('./components/Dash_Recruit
 const Login_Con = React.lazy(() => import('./condition/Login_Con'));
 const Reg_Con = React.lazy(() => import('./condition/Reg_Con'));
 const RecruiterLanding = React.lazy(() => import('./pages/RecruiterLanding'));
+const CoachCandidates = React.lazy(() => import('./pages/CoachCandidates'));
 const MainFresher = React.lazy(() => import('./pages/MainFresher'));
 const MainCareerSwitch = React.lazy(() => import('./pages/MainCareerSwitch'));
 const MainCorporate = React.lazy(() => import('./pages/MainCorporate'));
@@ -413,6 +414,8 @@ const App = () => {
             <Route path='/dash_candidate' element={<Dash_Candidate/>} />
             <Route path='/recruiter-direct-applicants' element={<RecruiterDirectApplicantsPage />} />
             <Route path='/coach-expert-direct-applicants' element={<RecruiterDirectApplicantsPage />} />
+            <Route path='/coach-my-candidates' element={<CoachCandidates view='my' />} />
+            <Route path='/coach-team-candidates' element={<CoachCandidates view='team' />} />
             <Route path='/all-candidates' element={<AllCandidatesPage/>} />
             <Route path='/log_rec' element={<Login/>} />
             <Route path='/clientspoc' element={<Ad_login/>} />

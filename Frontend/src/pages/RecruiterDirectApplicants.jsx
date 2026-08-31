@@ -8,6 +8,8 @@ import {
 import { UserStateContext } from '../context/AuthPro';
 import AiMatchInfo from '../components/AiMatchInfo';
 import CvPreview from '../components/CvPreview';
+import CandidateFilterBar from '../components/CandidateFilterBar';
+import { applyCandidateFilters, EMPTY_FILTERS, facetsFromRows } from '../utils/candidateFilters';
 
 // True when AI auto-rejected this applicant via CV↔JD screening
 const aiRejected = (c) => c?.statusChangedBy === 'ai-screening' ||
@@ -229,6 +231,25 @@ const RecruiterDirectApplicants = () => {
   const pending  = useMemo(() => applicants.filter(a => (a.statusa||'').toLowerCase() === 'applied'), [applicants]);
   const others   = useMemo(() => applicants.filter(a => (a.statusa||'').toLowerCase() !== 'applied'), [applicants]);
 
+  // ── Filters ──────────────────────────────────────────────────────────────
+  // Direct applicants arrive against many positions at once, so the list needs
+  // narrowing before the score sort is useful.
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  // The filter bar reads recruiterName/recruiterEmail, which these rows spell
+  // recName/recEmail — mapped here rather than changing the shared matcher.
+  const forFilter = useMemo(() => applicants.map(a => ({
+    ...a,
+    recruiterName: a.recName || '',
+    recruiterEmail: (a.recEmail || '').toLowerCase(),
+  })), [applicants]);
+  // Every applicant here is a direct apply by the same recruiter, so the source
+  // and recruiter dropdowns would only ever hold one value — dropped.
+  const facets = useMemo(
+    () => ({ ...facetsFromRows(forFilter), sources: [], recruiters: [] }), [forFilter]);
+  const filteredIds = useMemo(
+    () => new Set(applyCandidateFilters(forFilter, filters).map(r => r.id)),
+    [forFilter, filters]);
+
   // ── Sort + paginate ──────────────────────────────────────────────────────
   // Highest match score first, lowest/unscored last; within the same score the
   // latest applicant is on top. 18 cards per page.
@@ -248,12 +269,13 @@ const RecruiterDirectApplicants = () => {
     // (reusable for other positions).
     return applicants
       .filter(a => (a.statusa || '').toLowerCase() !== 'screen reject')
+      .filter(a => filteredIds.has(a.id))
       .sort((a, b) => {
         const s = scoreOf(b) - scoreOf(a);        // score: high → low
         if (s !== 0) return s;
         return toMs(b.datePosted) - toMs(a.datePosted); // tie-break: latest first
       });
-  }, [applicants]);
+  }, [applicants, filteredIds]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / PER_PAGE));
   // Keep the current page valid when the list size changes.
@@ -310,6 +332,11 @@ const RecruiterDirectApplicants = () => {
           </div>
         </div>
       </div>
+
+      <CandidateFilterBar
+        value={filters} onChange={setFilters} facets={facets}
+        resultCount={sorted.length} totalCount={applicants.filter(a => (a.statusa || '').toLowerCase() !== 'screen reject').length}
+      />
 
       {/* Background evaluation status — the grid stays put, no reloads */}
       {evaluating && (

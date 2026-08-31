@@ -3284,6 +3284,157 @@ const { isRejectedStatus } = (() => {
 })();
 
 // GET /api/coach-expert/followups — the coach's follow-ups + today's eligible pairs.
+// ─── COACH CANDIDATES ────────────────────────────────────────────────────────
+// Three views behind the coach's Candidates menu: what the coach submitted
+// themselves, and what their team submitted. Direct applicants have their own
+// existing endpoint and are not duplicated here.
+
+// The fields these views actually render — projected so a coach with a large
+// team does not pull the whole candidate record for every row.
+const COACH_CAND_FIELDS = [
+  'candidate', 'emails', 'mob', 'pos_id', 'pos_name', 'client', 'clientspoc',
+  'recEmail', 'recName', 'recRole', 'statusa', 'source', 'matchPercent',
+  'curr_emp', 'curr_loc', 'total_exp', 'notice_period', 'current_ctc', 'exp_ctc',
+  'cv_data', 'datePosted', 'updatedAt', 'statusaDate',
+];
+
+const toIso = (v) => {
+  if (!v) return null;
+  if (v._seconds) return new Date(v._seconds * 1000).toISOString();
+  if (typeof v.toDate === 'function') return v.toDate().toISOString();
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+};
+
+const shapeCandidate = (id, d, nameByEmail = {}) => ({
+  id,
+  candidate: d.candidate || '',
+  emails: d.emails || '',
+  mob: d.mob || '',
+  pos_id: d.pos_id || '',
+  pos_name: d.pos_name || '',
+  client: d.client || '',
+  clientspoc: d.clientspoc || '',
+  statusa: d.statusa || '',
+  source: d.source || '',
+  matchPercent: d.matchPercent ?? null,
+  curr_emp: d.curr_emp || '',
+  curr_loc: d.curr_loc || '',
+  total_exp: d.total_exp || '',
+  notice_period: d.notice_period || '',
+  current_ctc: d.current_ctc || '',
+  exp_ctc: d.exp_ctc || '',
+  cv_data: d.cv_data || '',
+  // Who submitted — the column that makes the team view readable.
+  recruiterEmail: (d.recEmail || '').toLowerCase(),
+  recruiterName: d.recName || nameByEmail[(d.recEmail || '').toLowerCase()] || '',
+  recruiterRole: d.recRole || '',
+  submittedAt: toIso(d.datePosted),
+  statusChangedAt: toIso(d.statusaDate || d.updatedAt),
+});
+
+// Everything the filter bars offer, derived from the rows actually returned so
+// a coach never sees a filter that matches nothing.
+const facetsOf = (rows) => {
+  const uniq = (key) => [...new Set(rows.map(r => r[key]).filter(Boolean))].sort();
+  return {
+    statuses: uniq('statusa'),
+    positions: [...new Map(rows.filter(r => r.pos_id)
+      .map(r => [r.pos_id, { pos_id: r.pos_id, pos_name: r.pos_name || r.pos_id }])).values()]
+      .sort((a, b) => a.pos_name.localeCompare(b.pos_name)),
+    clients: uniq('client'),
+    sources: uniq('source'),
+    recruiters: [...new Map(rows.filter(r => r.recruiterEmail)
+      .map(r => [r.recruiterEmail, { email: r.recruiterEmail, name: r.recruiterName || r.recruiterEmail }])).values()]
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+};
+
+// Candidates a coach submitted under their own login.
+router.get('/my-candidates', authMiddleware, async (req, res) => {
+  try {
+    const email = (req.user.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ success: false, message: 'No account email on this session.' });
+
+    const snap = await db.collection('candidate_db')
+      .where('recEmail', '==', email).select(...COACH_CAND_FIELDS).get();
+    const rows = snap.docs
+      .map(d => shapeCandidate(d.id, d.data()))
+      .sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+
+    return res.json({ success: true, total: rows.length, candidates: rows, facets: facetsOf(rows) });
+  } catch (err) {
+    console.error('coach my-candidates error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Candidates submitted by the recruiters on this coach's team. The coach's own
+// submissions are excluded — those have their own view.
+router.get('/team-candidates', authMiddleware, async (req, res) => {
+  try {
+    const coachEmail = (req.user.email || '').toLowerCase().trim();
+
+    // Resolve the team the same way team/my-team-members does, so both agree.
+    const variants = [...new Set([coachEmail, req.user.email].filter(Boolean))];
+    const members = {};
+    for (const v of variants) {
+      const snap = await db.collection('coach_team_requests')
+        .where('coachEmail', '==', v).where('status', '==', 'approved').get();
+      snap.docs.forEach(d => {
+        const x = d.data();
+        const key = (x.recruiterId || x.recruiterEmail || '').toString();
+        if (key) members[key] = { recruiterId: x.recruiterId || '', recruiterEmail: x.recruiterEmail || '' };
+      });
+    }
+
+    const emails = [];
+    const nameByEmail = {};
+    for (const m of Object.values(members)) {
+      let rd = null;
+      if (m.recruiterId) {
+        const dd = await db.collection('recruiter_db').doc(m.recruiterId).get();
+        if (dd.exists) rd = dd.data();
+      }
+      if (!rd && m.recruiterEmail) {
+        const q = await db.collection('recruiter_db').where('email', '==', m.recruiterEmail).limit(1).get();
+        if (!q.empty) rd = q.docs[0].data();
+      }
+      const e = ((rd && rd.email) || m.recruiterEmail || '').toLowerCase();
+      if (e && e !== coachEmail) {
+        emails.push(e);
+        nameByEmail[e] = (rd && rd.name) || '';
+      }
+    }
+    const teamEmails = [...new Set(emails)];
+    if (!teamEmails.length) {
+      return res.json({
+        success: true, total: 0, candidates: [], teamSize: 0,
+        facets: { statuses: [], positions: [], clients: [], sources: [], recruiters: [] },
+      });
+    }
+
+    // Firestore caps an `in` filter at 10 values, so the team is queried in batches.
+    const byId = {};
+    for (let i = 0; i < teamEmails.length; i += 10) {
+      const snap = await db.collection('candidate_db')
+        .where('recEmail', 'in', teamEmails.slice(i, i + 10))
+        .select(...COACH_CAND_FIELDS).get();
+      snap.docs.forEach(d => { byId[d.id] = shapeCandidate(d.id, d.data(), nameByEmail); });
+    }
+    const rows = Object.values(byId)
+      .sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+
+    return res.json({
+      success: true, total: rows.length, teamSize: teamEmails.length,
+      candidates: rows, facets: facetsOf(rows),
+    });
+  } catch (err) {
+    console.error('coach team-candidates error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.get('/followups', authMiddleware, async (req, res) => {
   try {
     const emailLower = (req.user.email || '').toLowerCase();

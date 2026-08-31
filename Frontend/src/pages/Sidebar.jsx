@@ -81,7 +81,15 @@ const coachMenuItems = [
   { icon: Briefcase,       label: 'Open Positions',     path: '/coach-expert-positions' },
   { icon: Briefcase,       label: 'Assigned Positions', path: '/coach-expert-assigned-positions' },
   { icon: Mic, label: 'Position Briefings', path: '/my-briefings' },
-  { icon: UserPlus,        label: 'Direct Candidates',  path: '/coach-expert-direct-applicants' },
+  {
+    icon: Users,
+    label: 'Candidates',
+    children: [
+      { icon: Users,    label: 'My Candidate',      path: '/coach-my-candidates' },
+      { icon: UserPlus, label: 'Direct Applicant',  path: '/coach-expert-direct-applicants' },
+      { icon: Users,    label: 'Teams Candidates',  path: '/coach-team-candidates' },
+    ],
+  },
   { icon: Users,           label: 'Team',              path: '/coach-team' },
   {
     icon: Users,
