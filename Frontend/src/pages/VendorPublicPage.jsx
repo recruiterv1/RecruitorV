@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowRight, MapPin, Briefcase, Globe, Linkedin, Mail, Phone, Menu, X } from 'lucide-react';
+import { ArrowRight, MapPin, Briefcase, Globe, Linkedin, Facebook, Twitter, Instagram, Youtube, MessageCircle, Mail, Phone, Menu, X } from 'lucide-react';
 
 // Public landing page for a single vendor, at /vendors/:slug — the page a vendor
 // sends to a prospective client. It carries the VENDOR's own header and footer,
@@ -11,6 +11,26 @@ const NAVY = '#0F1D3C';
 const ORANGE = '#F47B20';
 
 const initials = (name) => (name || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+// Normalise whatever the vendor typed into a usable href.
+const href = (v, prefix = 'https://') => {
+  const t = String(v || '').trim();
+  if (!t) return '';
+  return /^https?:\/\//i.test(t) ? t : `${prefix}${t.replace(/^\/+/, '')}`;
+};
+
+// The social links a vendor can publish, in the order they appear.
+const socialsOf = (v) => [
+  { key: 'website',   label: 'Website',   Icon: Globe,          url: href(v.website) },
+  { key: 'linkedin',  label: 'LinkedIn',  Icon: Linkedin,       url: href(v.linkedin) },
+  { key: 'facebook',  label: 'Facebook',  Icon: Facebook,       url: href(v.facebook) },
+  { key: 'twitter',   label: 'X',         Icon: Twitter,        url: href(v.twitter) },
+  { key: 'instagram', label: 'Instagram', Icon: Instagram,      url: href(v.instagram) },
+  { key: 'youtube',   label: 'YouTube',   Icon: Youtube,        url: href(v.youtube) },
+  { key: 'whatsapp',  label: 'WhatsApp',  Icon: MessageCircle,
+    url: v.whatsapp ? (/^https?:/i.test(v.whatsapp) ? v.whatsapp
+      : `https://wa.me/${String(v.whatsapp).replace(/[^0-9]/g, '')}`) : '' },
+].filter(x => x.url);
 
 const NAV = [
   { id: 'positions', label: 'Open Positions' },
@@ -79,8 +99,9 @@ export default function VendorPublicPage() {
     );
   }
 
-  const { vendor: v, stats, positions, clients } = data;
+  const { vendor: v, stats, positions, clients, showingPlatformPositions } = data;
   const place = [v.city, v.state].filter(Boolean).join(', ');
+  const socials = socialsOf(v);
 
   return (
     <div className="min-h-screen bg-white flex flex-col" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -210,15 +231,25 @@ export default function VendorPublicPage() {
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-orange-600 mb-3">Open Positions</p>
             <h2 className="text-[26px] sm:text-[32px] font-bold text-slate-900">Roles We Are Hiring For</h2>
             <p className="mt-3 text-slate-600 max-w-2xl leading-relaxed">
-              Live requirements {v.name} is working on right now. Recruiters can sign in to work
-              these; candidates are welcome to apply.
+              {showingPlatformPositions
+                ? `Live roles on the RecruiterV platform that ${v.name}'s recruiters can work on. Candidates are welcome to apply.`
+                : `Live requirements ${v.name} is working on right now. Recruiters can sign in to work these; candidates are welcome to apply.`}
             </p>
 
             {positions.length ? (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-10">
+              <>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-10">
                 {positions.map(p => (
                   <div key={p.pos_id} className="rounded-2xl border border-slate-200 p-6 hover:shadow-lg transition">
-                    <h3 className="font-bold text-slate-900">{p.position}</h3>
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-bold text-slate-900">{p.position}</h3>
+                      {p.viaPlatform && (
+                        <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500"
+                          title="A RecruiterV platform role this team can work on">
+                          RecruiterV
+                        </span>
+                      )}
+                    </div>
                     {p.client && <p className="text-[13px] text-slate-500 mt-0.5">{p.client}</p>}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[12px] text-slate-500">
                       {p.location && <span className="inline-flex items-center gap-1"><MapPin size={12} /> {p.location}</span>}
@@ -235,7 +266,14 @@ export default function VendorPublicPage() {
                     </button>
                   </div>
                 ))}
-              </div>
+                </div>
+                {showingPlatformPositions && (
+                  <p className="text-[12px] text-slate-500 mt-4">
+                    These are open roles on the RecruiterV platform, not {v.name}&apos;s own client
+                    requirements. Their recruiters are cleared to work on them.
+                  </p>
+                )}
+              </>
             ) : (
               <div className="mt-10 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
                 <p className="font-semibold text-slate-700">No positions are open on this page right now.</p>
@@ -262,20 +300,14 @@ export default function VendorPublicPage() {
                 {v.about
                   || `${v.name} works as a recruitment partner for companies that need to hire well and hire quickly. Our recruiters work to a written brief for every position, so sourcing is aimed at the candidate you actually want — not a keyword match.`}
               </p>
-              {(v.website || v.linkedin) && (
+              {!!socials.length && (
                 <div className="flex flex-wrap gap-3 mt-6">
-                  {v.website && (
-                    <a href={v.website.startsWith('http') ? v.website : `https://${v.website}`} target="_blank" rel="noreferrer"
+                  {socials.map(({ key, label, Icon, url }) => (
+                    <a key={key} href={url} target="_blank" rel="noreferrer"
                       className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 border border-slate-300 rounded-xl px-4 py-2 hover:bg-white">
-                      <Globe size={15} /> Website
+                      <Icon size={15} /> {label}
                     </a>
-                  )}
-                  {v.linkedin && (
-                    <a href={v.linkedin.startsWith('http') ? v.linkedin : `https://${v.linkedin}`} target="_blank" rel="noreferrer"
-                      className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 border border-slate-300 rounded-xl px-4 py-2 hover:bg-white">
-                      <Linkedin size={15} /> LinkedIn
-                    </a>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
@@ -398,6 +430,16 @@ export default function VendorPublicPage() {
                 {v.tagline || 'Recruitment that reaches your shortlist faster.'}
               </p>
               {place && <p className="text-[12px] text-slate-500 mt-3 flex items-center gap-1.5"><MapPin size={12} /> {place}</p>}
+              {!!socials.length && (
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {socials.map(({ key, label, Icon, url }) => (
+                    <a key={key} href={url} target="_blank" rel="noreferrer" title={label} aria-label={label}
+                      className="h-9 w-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-200">
+                      <Icon size={16} />
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>

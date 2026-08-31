@@ -1476,8 +1476,10 @@ const slugify = (s) => String(s || '').toLowerCase().trim()
 // What a vendor may write about themselves. Everything else on the page is
 // derived from their real activity, so it cannot be overstated.
 const VENDOR_PROFILE_FIELDS = [
-  'about', 'website', 'city', 'state', 'linkedin', 'logoUrl',
+  'about', 'website', 'city', 'state', 'logoUrl',
   'tagline', 'specialisms', 'foundedYear', 'publicEmail', 'publicPhone',
+  // Social presence shown on the public page.
+  'linkedin', 'facebook', 'twitter', 'instagram', 'youtube', 'whatsapp',
 ];
 
 const vendorIsPublic = (v) =>
@@ -1579,18 +1581,52 @@ router.get('/public/:slug', async (req, res) => {
       db.collection('recruiter_db').where('vendorEmail', '==', email).select('email').get(),
     ]);
 
+    const isLive = (p) => {
+      const st = String(p.status || '').toLowerCase().trim();
+      return st === '' || st.includes('active');
+    };
+    const shapePos = (p, own) => ({
+      pos_id: p.pos_id, position: p.position || '', client: p.client || '',
+      skill_category: p.skill_category || p.pos_cat || '',
+      location: p.location || '', experience: p.experience || '',
+      openings: p.openings || '', datePosted: p.datePosted || null,
+      // Marks a RecruiterV platform role rather than one this vendor posted,
+      // so the page can label it honestly instead of implying it is their client.
+      viaPlatform: !own,
+    });
+
     // Only live positions belong on a public page.
-    const positions = posSnap.docs.map(d => d.data())
-      .filter(p => {
-        const st = String(p.status || '').toLowerCase().trim();
-        return st === '' || st.includes('active');
-      })
-      .map(p => ({
-        pos_id: p.pos_id, position: p.position || '', client: p.client || '',
-        skill_category: p.skill_category || p.pos_cat || '',
-        location: p.location || '', experience: p.experience || '',
-        openings: p.openings || '', datePosted: p.datePosted || null,
-      }));
+    const positions = posSnap.docs.map(d => d.data()).filter(isLive).map(p => shapePos(p, true));
+
+    // A vendor with nothing of their own still has roles their team can work,
+    // provided the SuperAdmin allows them onto RecruiterV positions — the same
+    // `allowPlatformPositions` flag the vendor dashboard uses. Another vendor's
+    // private roles are never included.
+    const allowPlatform = v.allowPlatformPositions !== false;   // default: allowed
+    let platformPositions = [];
+    if (!positions.length && allowPlatform) {
+      try {
+        // Not a `where('status','==','active')` query: most live positions carry
+        // no status at all, and the platform treats empty as active everywhere
+        // else. Projected so scanning the collection stays cheap.
+        const openSnap = await db.collection('admin_AddPos')
+          .select('pos_id', 'position', 'client', 'skill_category', 'pos_cat',
+                  'location', 'experience', 'openings', 'datePosted',
+                  'status', 'postedByVendor', 'vendorPrivate').get();
+        const pool = openSnap.docs.map(d => d.data())
+          .filter(p => p.vendorPrivate !== true && !p.postedByVendor)
+          .filter(isLive);
+        // Shuffled per request, so a visitor sees a different nine each load
+        // and no single position monopolises the page.
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        platformPositions = pool.slice(0, 9).map(p => shapePos(p, false));
+      } catch (e) {
+        console.error('vendor/public platform positions failed:', e.message);
+      }
+    }
 
     res.json({
       success: true,
@@ -1598,13 +1634,20 @@ router.get('/public/:slug', async (req, res) => {
         name: v.name || '', slug: slugify(v.name || v.email || ''),
         about: v.about || '', tagline: v.tagline || '',
         logoUrl: v.logoUrl || '', website: v.website || '',
-        city: v.city || '', state: v.state || '', linkedin: v.linkedin || '',
+        city: v.city || '', state: v.state || '',
+        linkedin: v.linkedin || '', facebook: v.facebook || '',
+        twitter: v.twitter || '', instagram: v.instagram || '',
+        youtube: v.youtube || '', whatsapp: v.whatsapp || '',
         specialisms: Array.isArray(v.specialisms) ? v.specialisms : [],
         foundedYear: v.foundedYear || '',
         // Only the contact details the vendor chose to publish — never the
         // login email or the phone captured at registration.
         publicEmail: v.publicEmail || '', publicPhone: v.publicPhone || '',
       },
+      // What the page shows, and where it came from — the frontend needs to
+      // know so it never presents a platform role as this vendor's own client.
+      showingPlatformPositions: !positions.length && platformPositions.length > 0,
+      allowPlatform,
       stats: {
         openPositions: positions.length,
         recruiters: teamSnap.size,
@@ -1613,7 +1656,7 @@ router.get('/public/:slug', async (req, res) => {
       clients: compSnap.docs.map(d => ({
         name: d.data().name || '', logoUrl: d.data().logoUrl || '',
       })).filter(c => c.name),
-      positions,
+      positions: positions.length ? positions : platformPositions,
     });
   } catch (e) {
     console.error('vendor/public error:', e.message);

@@ -1286,7 +1286,7 @@ const VendorPublicPageTab = () => {
   return (
     <div className="space-y-5">
       <div className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-2xl p-5 text-white shadow-xl">
-        <h2 className="text-xl font-bold">Your Public Page</h2>
+        <h2 className="text-xl font-bold">Your Profile &amp; Public Page</h2>
         <p className="text-blue-100 text-sm mt-0.5">
           The page you send to a company that wants to hire. It shows your open positions,
           who you are, and how you work.
@@ -1359,7 +1359,33 @@ const VendorPublicPageTab = () => {
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">LinkedIn</label>
-            <input className={field} value={form.linkedin || ''} onChange={(e) => set('linkedin', e.target.value)} />
+            <input className={field} value={form.linkedin || ''} onChange={(e) => set('linkedin', e.target.value)}
+              placeholder="linkedin.com/company/…" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Facebook</label>
+            <input className={field} value={form.facebook || ''} onChange={(e) => set('facebook', e.target.value)}
+              placeholder="facebook.com/…" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">X (Twitter)</label>
+            <input className={field} value={form.twitter || ''} onChange={(e) => set('twitter', e.target.value)}
+              placeholder="x.com/…" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Instagram</label>
+            <input className={field} value={form.instagram || ''} onChange={(e) => set('instagram', e.target.value)}
+              placeholder="instagram.com/…" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">YouTube</label>
+            <input className={field} value={form.youtube || ''} onChange={(e) => set('youtube', e.target.value)}
+              placeholder="youtube.com/@…" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">WhatsApp</label>
+            <input className={field} value={form.whatsapp || ''} onChange={(e) => set('whatsapp', e.target.value)}
+              placeholder="Number with country code, e.g. 919876543210" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">Contact email shown on the page</label>
@@ -2067,7 +2093,7 @@ const VendorDashboard = () => {
     },
     { id: 'companies', icon: Building2, label: 'Companies' },
     { id: 'referrals', icon: Gift, label: 'Refer & Earn' },
-    { id: 'public-page', icon: Globe, label: 'My Public Page' },
+    { id: 'public-page', icon: Globe, label: 'My Profile & Page' },
     // Briefings live on their own pages (shared with coaches/experts), so this
     // entry navigates rather than switching a tab.
     {
