@@ -19,7 +19,6 @@ import {
   PlusCircle,
   DollarSign,
   BarChart3,
-  HelpCircle,
   Inbox,
   UserPlus,
   UserCheck,
@@ -40,7 +39,7 @@ import axios from 'axios';
 
 // ── Recruiter menu definition ─────────────────────────────────────────────────
 // Items with `children` render as accordion groups.
-const buildRecruiterMenu = (planType) => [
+const buildRecruiterMenu = () => [
   { icon: LayoutDashboard, label: 'Dashboard',       path: '/dash_rec' },
   { icon: Briefcase,       label: 'Open Positions',  path: '/dash_position' },
   {
@@ -71,16 +70,6 @@ const buildRecruiterMenu = (planType) => [
       { icon: Store,          label: 'My Resume Bank', path: '/refer-and-earn/marketplace' },
       { icon: ClipboardCheck, label: 'My Referrals',  path: '/refer-and-earn/my-referrals' },
       { icon: Wallet,         label: 'Earnings',      path: '/refer-and-earn/earnings' },
-    ],
-  },
-  {
-    icon: ClipboardList,
-    label: 'Request',
-    children: [
-      ...(planType !== 0
-        ? [{ icon: FileText,     label: 'My Requests',        path: '/my-requests' }]
-        : []),
-      { icon: HelpCircle,  label: 'Coach/Expert Request', path: '/coach-expert-requests' },
     ],
   },
   { icon: DollarSign, label: 'My Earnings', path: '/my-earnings' },
@@ -369,7 +358,7 @@ const Sidebar = () => {
     ];
   } else {
     // Recruiter
-    menuItems = buildRecruiterMenu(user?.planType ?? 1);
+    menuItems = buildRecruiterMenu();
   }
 
   // Managers (employees with the "Manager" designation) get a Manager Panel.
