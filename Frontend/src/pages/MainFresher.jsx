@@ -642,7 +642,7 @@ const MainFresher = () => {
                   <ArrowRight size={20} />
                 </Link>
                 <Link
-                  to="/main/area"
+                  to="/recruiter"
                   className="inline-flex items-center justify-center gap-2 bg-transparent border-2 border-white/50 text-white px-8 py-4 rounded-full font-semibold hover:bg-white/10 transition-all"
                 >
                   <span>Learn More</span>

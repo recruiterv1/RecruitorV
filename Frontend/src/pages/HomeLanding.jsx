@@ -354,7 +354,7 @@ function CandidateDatabase() {
 function WhoWeServe() {
   const roles = [
     {
-      icon: UserSearch, title: "Recruiter", to: "/main/area",
+      icon: UserSearch, title: "Recruiter", to: "/recruiter",
       text: "Work on verified positions, submit candidates and earn fair commissions on every closure.",
       grad: "from-violet-500 to-indigo-600", soft: "bg-violet-50 text-violet-600",
     },

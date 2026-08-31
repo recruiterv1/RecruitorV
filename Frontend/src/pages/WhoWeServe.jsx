@@ -8,7 +8,7 @@ const WhoWeServe = () => {
       icon: Users,
       title: "Recruiter",
       description: "RecruiterV supports freelance recruiters with structure, coaching and clear mandates, handling clients and payouts, linking performance to outcomes, and turning rejections into learning to build accuracy, confidence and long-term capability.",
-      knowMoreLink: "/main/area",
+      knowMoreLink: "/recruiter",
       registerLink: "/reg",
       gradient: "from-blue-500 to-blue-600",
       iconBg: "from-blue-100 to-blue-200",

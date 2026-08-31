@@ -9,7 +9,7 @@ import { initNativeUI } from './lib/nativeUI';
 axios.defaults.withCredentials = true;
 configureApiBase();
 installAuthInterceptor();
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, Navigate } from 'react-router-dom'
 
 // Route-level code splitting: these are only rendered inside a <Route element>,
 // so lazy-loading them keeps the initial bundle small for every user instead of
@@ -52,7 +52,7 @@ const AllCandidatesPage = React.lazy(() => import('./components/AllCandidatesPag
 const Dash_RecruiterReports = React.lazy(() => import('./components/Dash_RecruiterReports'));
 const Login_Con = React.lazy(() => import('./condition/Login_Con'));
 const Reg_Con = React.lazy(() => import('./condition/Reg_Con'));
-const MainArea = React.lazy(() => import('./pages/MainArea'));
+const RecruiterLanding = React.lazy(() => import('./pages/RecruiterLanding'));
 const MainFresher = React.lazy(() => import('./pages/MainFresher'));
 const MainCareerSwitch = React.lazy(() => import('./pages/MainCareerSwitch'));
 const MainCorporate = React.lazy(() => import('./pages/MainCorporate'));
@@ -428,7 +428,9 @@ const App = () => {
             <Route path='/clientspoc-dash-view/:pos_id' element={<ClientSpocDashView/>} />
             <Route path='/login/con'  element={<Login_Con/>}/>
             <Route path='/reg/con' element={<Reg_Con/>} />
-            <Route path='/main/area' element={<MainArea/>} />
+            <Route path='/recruiter' element={<RecruiterLanding/>} />
+            {/* Old recruiter URL — kept as a redirect so existing links keep working. */}
+            <Route path='/main/area' element={<Navigate to='/recruiter' replace />} />
             <Route path='/fresher' element={<MainFresher/>} />
             <Route path='/switch-career' element={<MainCareerSwitch/>} />
             <Route path='/corporate' element={<MainCorporate/>} />

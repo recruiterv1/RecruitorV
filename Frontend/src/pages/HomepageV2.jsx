@@ -67,7 +67,7 @@ const testimonials = [
 ];
 
 const roles = [
-  { icon: Users, title: "Freelance Recruiter", tag: "Source & Earn", description: "Access verified mandates, submit curated CVs, and earn competitive commissions with full transparency and coaching support.", link: "/main/area", gradient: "from-blue-500 to-blue-700", light: "bg-blue-50", accent: "text-blue-600" },
+  { icon: Users, title: "Freelance Recruiter", tag: "Source & Earn", description: "Access verified mandates, submit curated CVs, and earn competitive commissions with full transparency and coaching support.", link: "/recruiter", gradient: "from-blue-500 to-blue-700", light: "bg-blue-50", accent: "text-blue-600" },
   { icon: Award, title: "Hiring Guru", tag: "Coach & Scale", description: "Guide recruiters on mandate clarity and screening quality. Get measured by outcomes and closures — not just activity.", link: "/coach", gradient: "from-orange-500 to-orange-600", light: "bg-orange-50", accent: "text-orange-600" },
   { icon: Lightbulb, title: "Industry Expert", tag: "Advise & Monetise", description: "Validate role fit and candidate expectations. Reduce hiring mismatches and monetise your domain expertise selectively.", link: "/expert", gradient: "from-purple-500 to-purple-700", light: "bg-purple-50", accent: "text-purple-600" },
   { icon: Building2, title: "Corporate TA Team", tag: "Hire Smarter", description: "Get a governed recruitment ecosystem with coached freelancers, domain experts, and enterprise-grade accountability.", link: "/corporate", gradient: "from-emerald-500 to-emerald-700", light: "bg-emerald-50", accent: "text-emerald-600" },
@@ -119,7 +119,7 @@ export default function HomepageV2() {
           </Link>
 
           <div className="hidden lg:flex items-center gap-8">
-            {[["For Recruiters", "/main/area"], ["For Corporates", "/corporate"], ["How It Works", "#how-it-works"], ["Blog", "/blog"]].map(([label, href]) => (
+            {[["For Recruiters", "/recruiter"], ["For Corporates", "/corporate"], ["How It Works", "#how-it-works"], ["Blog", "/blog"]].map(([label, href]) => (
               <a key={label} href={href} className={`text-sm font-semibold transition-colors ${scrolled ? "text-gray-700 hover:text-blue-600" : "text-white/90 hover:text-white"}`}>{label}</a>
             ))}
           </div>
@@ -138,7 +138,7 @@ export default function HomepageV2() {
 
         {mobileOpen && (
           <div className="lg:hidden bg-white border-t border-gray-100 px-4 py-4 space-y-3">
-            {[["For Recruiters", "/main/area"], ["For Corporates", "/corporate"], ["Blog", "/blog"]].map(([l, h]) => (
+            {[["For Recruiters", "/recruiter"], ["For Corporates", "/corporate"], ["Blog", "/blog"]].map(([l, h]) => (
               <a key={l} href={h} className="block text-gray-700 font-semibold py-2">{l}</a>
             ))}
             <div className="flex gap-3 pt-2">
@@ -485,7 +485,7 @@ export default function HomepageV2() {
             </div>
             <div>
               <div className="text-white font-bold mb-4 text-sm uppercase tracking-wider">Platform</div>
-              {[["For Recruiters","/main/area"],["For Coaches","/coach"],["For Experts","/expert"],["For Corporates","/corporate"],["Browse Jobs","https://www.recruiterv.com/apply"]].map(([l,h]) => (
+              {[["For Recruiters","/recruiter"],["For Coaches","/coach"],["For Experts","/expert"],["For Corporates","/corporate"],["Browse Jobs","https://www.recruiterv.com/apply"]].map(([l,h]) => (
                 <a key={l} href={h} className="block text-sm hover:text-white transition-colors mb-2">{l}</a>
               ))}
             </div>
