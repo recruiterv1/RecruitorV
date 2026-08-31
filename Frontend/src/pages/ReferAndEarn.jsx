@@ -165,7 +165,7 @@ export default function ReferAndEarn() {
 
   // Referrals tab
   const [referrals, setReferrals] = useState([]);
-  const [summary, setSummary] = useState({ total: 0, used: 0, available: 0, shortlisted: 0 });
+  const [summary, setSummary] = useState({ total: 0, shortlisted: 0, placed: 0, recruiters: 0 });
   const [loadingRef, setLoadingRef] = useState(false);
   const [refError, setRefError] = useState("");
   const [search, setSearch] = useState("");
@@ -665,10 +665,10 @@ export default function ReferAndEarn() {
             {/* Summary cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 14, marginBottom: 24 }}>
               {[
-                { label: "Total Referred",  value: summary.total,       color: "#2563eb", bg: "#eff6ff", icon: Users },
-                { label: "Used / Placed",   value: summary.used,        color: "#16a34a", bg: "#f0fdf4", icon: CheckCircle },
-                { label: "Available",       value: summary.available,   color: "#f97316", bg: "#fff7ed", icon: Clock },
-                { label: "Shortlisted",     value: summary.shortlisted, color: "#7e22ce", bg: "#fdf4ff", icon: Star },
+                { label: "Active Referrals",  value: summary.total,       color: "#2563eb", bg: "#eff6ff", icon: Users },
+                { label: "Shortlisted",       value: summary.shortlisted, color: "#7e22ce", bg: "#fdf4ff", icon: Star },
+                { label: "Selected / Placed", value: summary.placed,      color: "#16a34a", bg: "#f0fdf4", icon: CheckCircle },
+                { label: "Recruiters Working",value: summary.recruiters,  color: "#f97316", bg: "#fff7ed", icon: Clock },
               ].map(({ label, value, color, bg, icon: Icon }) => (
                 <div key={label} style={{ background: bg, border: `1.5px solid ${color}30`, borderRadius: 14, padding: "16px 18px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -689,11 +689,10 @@ export default function ReferAndEarn() {
               </div>
               <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...inp, flex: "0 1 170px" }}>
                 <option value="">All Statuses</option>
-                <option value="available">Available</option>
-                <option value="shortlisted">Shortlisted</option>
+                <option value="submitted">Submitted</option>
+                <option value="shortlist">Shortlisted</option>
+                <option value="interview">Interview</option>
                 <option value="selected">Selected</option>
-                <option value="reject">Rejected</option>
-                <option value="used">Used</option>
               </select>
               <button onClick={fetchReferrals} style={{ background: "#f97316", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 Refresh
@@ -716,8 +715,12 @@ export default function ReferAndEarn() {
             {!loadingRef && !refError && filteredReferrals.length === 0 && (
               <div style={{ textAlign: "center", padding: "60px 24px", color: "#94a3b8" }}>
                 <Gift size={40} style={{ margin: "0 auto 14px", opacity: 0.3 }} />
-                <p style={{ fontSize: 16, fontWeight: 700, color: "#64748b" }}>No referrals yet</p>
-                <p style={{ fontSize: 13 }}>Switch to the "Upload Resume" tab to refer your first candidate.</p>
+                <p style={{ fontSize: 16, fontWeight: 700, color: "#64748b" }}>No active referrals right now</p>
+                <p style={{ fontSize: 13, maxWidth: 420, margin: "0 auto", lineHeight: 1.6 }}>
+                  This page shows only referrals that another recruiter is currently working on a
+                  live position. Candidates you referred that are still unused, or that you
+                  submitted yourself, do not appear here.
+                </p>
               </div>
             )}
 

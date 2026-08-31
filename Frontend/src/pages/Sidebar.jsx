@@ -80,14 +80,7 @@ const coachMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard',           path: '/coach-dashboard' },
   { icon: Briefcase,       label: 'Open Positions',     path: '/coach-expert-positions' },
   { icon: Briefcase,       label: 'Assigned Positions', path: '/coach-expert-assigned-positions' },
-  {
-    icon: Mic,
-    label: 'Position Briefings',
-    children: [
-      { icon: ClipboardList, label: 'My Briefings',  path: '/my-briefings' },
-      { icon: Mic,           label: 'Add Briefing',  path: '/my-briefings#pending' },
-    ],
-  },
+  { icon: Mic, label: 'Position Briefings', path: '/my-briefings' },
   { icon: UserPlus,        label: 'Direct Candidates',  path: '/coach-expert-direct-applicants' },
   { icon: Users,           label: 'Team',              path: '/coach-team' },
   {
@@ -117,14 +110,7 @@ const coachMenuItems = [
 const expertMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard',        path: '/expert-dashboard' },
   { icon: Briefcase,       label: 'Open Positions',   path: '/coach-expert-positions' },
-  {
-    icon: Mic,
-    label: 'Position Briefings',
-    children: [
-      { icon: ClipboardList, label: 'My Briefings',  path: '/my-briefings' },
-      { icon: Mic,           label: 'Add Briefing',  path: '/my-briefings#pending' },
-    ],
-  },
+  { icon: Mic, label: 'Position Briefings', path: '/my-briefings' },
   { icon: UserPlus,        label: 'Direct Candidates', path: '/coach-expert-direct-applicants' },
   { icon: BarChart3,       label: 'Recruiter Stats',  path: '/coach-recruiter-stats' },
   { icon: BarChart3,       label: 'My Position Stats', path: '/coach-expert-position-stats' },
@@ -298,14 +284,7 @@ const Sidebar = () => {
         ],
       },
       { icon: Gift, label: 'Refer & Earn', path: '/vendor-dashboard#referrals' },
-      {
-        icon: Mic,
-        label: 'Position Briefings',
-        children: [
-          { icon: ClipboardList, label: 'My Briefings', path: '/my-briefings' },
-          { icon: Mic,           label: 'Add Briefing', path: '/my-briefings#pending' },
-        ],
-      },
+      { icon: Mic, label: 'Position Briefings', path: '/my-briefings' },
       { icon: BarChart3, label: 'Reports', path: '/vendor-dashboard#reports' },
     ];
   } else if (isClientSpoc) {

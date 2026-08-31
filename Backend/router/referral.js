@@ -225,7 +225,25 @@ router.get('/my-referrals', isLoggedIn, async (req, res) => {
       .where('referredBy', '==', referrerEmail)
       .get();
 
-    const referrals = snap.docs.map(doc => {
+    // Only referrals that are actually earning: the candidate has been picked up
+    // onto a position by a recruiter other than the referrer, and is still live
+    // in that pipeline. A referral sitting unused, or one the referrer submitted
+    // themselves, is not a Refer & Earn opportunity — those are shown elsewhere.
+    // "Active" reuses the platform's own rejection list so this page and the
+    // reports agree on what counts.
+    const { REJECTION_STATUSES } = require('../model_fire/adminF');
+    const rejected = new Set(REJECTION_STATUSES.map(s => s.toLowerCase()));
+    const isActive = (st) => {
+      const v = String(st || '').trim().toLowerCase();
+      return !!v && v !== 'available' && !rejected.has(v);
+    };
+    const usedByAnother = (d) =>
+      !!d.pos_id && (d.recEmail || '').toLowerCase() !== referrerEmail;
+
+    const referrals = snap.docs.filter(doc => {
+      const d = doc.data();
+      return usedByAnother(d) && isActive(d.statusa);
+    }).map(doc => {
       const d = doc.data();
       const referredAt = d.referredAt?._seconds
         ? new Date(d.referredAt._seconds * 1000).toISOString()
@@ -265,7 +283,8 @@ router.get('/my-referrals', isLoggedIn, async (req, res) => {
         pos_name:         d.pos_name || '',
         client:           d.client || '',
         usedBy:           d.usedBy || '',
-        usedByName:       d.usedByName || '',
+        usedByName:       d.usedByName || d.recName || '',
+        usedByEmail:      (d.recEmail || '').toLowerCase(),
         usedAt:           d.usedAt?._seconds ? new Date(d.usedAt._seconds * 1000).toISOString() : null,
         // Commission tracking fields
         referredById:     d.referredById || '',
@@ -284,13 +303,17 @@ router.get('/my-referrals', isLoggedIn, async (req, res) => {
     // Sort newest first
     referrals.sort((a, b) => (b.referredAt || '') > (a.referredAt || '') ? 1 : -1);
 
-    // Summary stats
-    const total    = referrals.length;
-    const used     = referrals.filter(r => r.pos_id).length;
-    const available = referrals.filter(r => !r.pos_id).length;
-    const shortlisted = referrals.filter(r => ['shortlisted','selected','offered','joined'].includes((r.statusa || '').toLowerCase())).length;
+    // Summary reflects what this view now holds: live referrals another
+    // recruiter is working. Counts of unused or rejected referrals would always
+    // read zero here, so they are not reported.
+    const stOf = (r) => String(r.statusa || '').toLowerCase();
+    const placedStates = ['selected', 'offered', 'offer accepted', 'joining', 'joined'];
+    const total       = referrals.length;
+    const shortlisted = referrals.filter(r => stOf(r).includes('shortlist')).length;
+    const placed      = referrals.filter(r => placedStates.some(p => stOf(r).includes(p))).length;
+    const recruiters  = new Set(referrals.map(r => (r.usedByEmail || '').toLowerCase()).filter(Boolean)).size;
 
-    return res.json({ success: true, referrals, summary: { total, used, available, shortlisted } });
+    return res.json({ success: true, referrals, summary: { total, shortlisted, placed, recruiters } });
   } catch (err) {
     console.error('referral/my-referrals error:', err.message);
     return res.status(500).json({ success: false, message: err.message });
