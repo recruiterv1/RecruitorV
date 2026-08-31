@@ -114,7 +114,9 @@ export default function VendorPublicPage() {
                   className="h-9 w-auto max-w-[150px] rounded-lg object-contain flex-shrink-0" />
               : <span className="h-9 w-9 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                   style={{ background: NAVY }}>{initials(v.name)}</span>}
-            <span className="font-bold text-slate-900 truncate">{v.name}</span>
+            {/* A logo usually carries the name already — only spell it out when
+                there is no logo to fall back on. */}
+            {!v.logoUrl && <span className="font-bold text-slate-900 truncate">{v.name}</span>}
           </button>
 
           <nav className="hidden lg:flex items-center gap-6 ml-4">
