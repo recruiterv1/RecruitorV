@@ -1178,6 +1178,47 @@ router.post('/admin/fix-user-plan-expiry', async (req, res) => {
 });
 
 
+
+// Password reset has to reach every kind of login, not just the three recruiter
+// collections. Admin-side accounts (ClientSPOC, Vendor, Admin, SuperAdmin) live
+// in admin_db and store their hash in `codPass` rather than `password`, so the
+// lookup returns which field to write back to.
+//
+// Returns { user, passwordField, update } or null.
+const findAccountForReset = async (email) => {
+  const lc = String(email || '').toLowerCase().trim();
+  if (!lc) return null;
+
+  const coach = require('../model_fire/coachF');
+  const expert = require('../model_fire/expertF');
+
+  const rec = await recruiter.findRecruiterByEmail(lc);
+  if (rec) return { user: rec, passwordField: 'password', kind: 'recruiter',
+    update: (id, data) => recruiter.updateRecruiter(id, data) };
+
+  const cch = await coach.findCoachByEmail(lc);
+  if (cch) return { user: cch, passwordField: 'password', kind: 'coach',
+    update: (id, data) => coach.updateCoach(id, data) };
+
+  const exp = await expert.findExpertByEmail(lc);
+  if (exp) return { user: exp, passwordField: 'password', kind: 'expert',
+    update: (id, data) => expert.updateExpert(id, data) };
+
+  // admin_db — ClientSPOC / Vendor / Admin / SuperAdmin
+  const { db } = require('./firebase_ad');
+  const snap = await db.collection('admin_db').where('email', '==', lc).limit(1).get();
+  if (!snap.empty) {
+    const d = snap.docs[0];
+    return {
+      user: { id: d.id, ...d.data() },
+      passwordField: 'codPass',
+      kind: (d.data().roleCategory || 'admin'),
+      update: (id, data) => db.collection('admin_db').doc(id).update(data),
+    };
+  }
+  return null;
+};
+
 // Forgot Password - Send Reset Link
 router.post('/forgot-password', async (req, res) => {
     try {
@@ -1190,32 +1231,16 @@ router.post('/forgot-password', async (req, res) => {
             });
         }
 
-        // Search across all three user collections
-        const coach = require('../model_fire/coachF');
-        const expert = require('../model_fire/expertF');
-
-        let user = null;
-        let updateFn = null;
-
-        const rec = await recruiter.findRecruiterByEmail(email);
-        if (rec) { user = rec; updateFn = (id, data) => recruiter.updateRecruiter(id, data); }
-
-        if (!user) {
-            const cch = await coach.findCoachByEmail(email);
-            if (cch) { user = cch; updateFn = (id, data) => coach.updateCoach(id, data); }
-        }
-
-        if (!user) {
-            const exp = await expert.findExpertByEmail(email);
-            if (exp) { user = exp; updateFn = (id, data) => expert.updateExpert(id, data); }
-        }
-
-        if (!user) {
+        const account = await findAccountForReset(email);
+        if (!account) {
+            console.log(`ℹ️  Password reset requested for an address with no account: ${email}`);
             return res.status(200).json({
                 success: true,
                 message: 'If an account exists with this email, a password reset link has been sent.'
             });
         }
+        const { user } = account;
+        const updateFn = account.update;
 
         // Generate reset token (valid for 1 hour)
         const resetToken = crypto.randomBytes(32).toString('hex');
@@ -1272,32 +1297,15 @@ router.post('/reset-password', async (req, res) => {
             });
         }
 
-        // Search across all three user collections
-        const coach = require('../model_fire/coachF');
-        const expert = require('../model_fire/expertF');
-
-        let user = null;
-        let updateFn = null;
-
-        const rec = await recruiter.findRecruiterByEmail(email);
-        if (rec) { user = rec; updateFn = (id, data) => recruiter.updateRecruiter(id, data); }
-
-        if (!user) {
-            const cch = await coach.findCoachByEmail(email);
-            if (cch) { user = cch; updateFn = (id, data) => coach.updateCoach(id, data); }
-        }
-
-        if (!user) {
-            const exp = await expert.findExpertByEmail(email);
-            if (exp) { user = exp; updateFn = (id, data) => expert.updateExpert(id, data); }
-        }
-
-        if (!user) {
+        const account = await findAccountForReset(email);
+        if (!account) {
             return res.status(400).json({
                 success: false,
                 message: 'Invalid or expired reset link'
             });
         }
+        const { user, passwordField } = account;
+        const updateFn = account.update;
 
         // Check if reset token exists and hasn't expired
         if (!user.resetToken || !user.resetExpires) {
@@ -1340,8 +1348,9 @@ router.post('/reset-password', async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPassword, salt);
 
+        // admin-side accounts keep their hash in codPass, everyone else in password
         await updateFn(user.id, {
-            password: hashedPassword,
+            [passwordField]: hashedPassword,
             resetToken: null,
             resetExpires: null
         });

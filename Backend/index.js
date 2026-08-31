@@ -365,11 +365,59 @@ app.get('/api/debug/brevo', async (req, res) => {
     hasNewline: key.includes('\n'),
     hasSpace: key.includes(' '),
   };
+  const h = { headers: { 'api-key': key, accept: 'application/json' } };
   try {
-    const r = await axios.get('https://api.brevo.com/v3/account', {
-      headers: { 'api-key': key, accept: 'application/json' }
+    const r = await axios.get('https://api.brevo.com/v3/account', h);
+
+    // Brevo accepts a send over the API and only then blocks it at delivery if
+    // the sender address is not verified — which looks exactly like "the email
+    // never arrived". Report the sender list so that is visible.
+    let senders = null;
+    try {
+      const sr = await axios.get('https://api.brevo.com/v3/senders', h);
+      senders = (sr.data?.senders || []).map(x => ({
+        email: x.email, name: x.name, active: x.active,
+      }));
+    } catch (e) { senders = { error: e.response?.data?.message || e.message }; }
+
+    // Domain authentication is what actually decides whether mail from
+    // noreply@recruiterv.com is trusted. A domain authenticated here covers
+    // every address on it, whether or not that address is in the sender list.
+    let domains = null;
+    try {
+      const dr = await axios.get('https://api.brevo.com/v3/senders/domains', h);
+      domains = (dr.data?.domains || []).map(x => ({
+        domain: x.domain, authenticated: x.authenticated, verified: x.verified,
+        dkim: x.dkim_verified ?? x.dkimVerified, spf: x.spf,
+      }));
+    } catch (e) { domains = { error: e.response?.data?.message || e.message }; }
+
+    // ?email=someone@example.com returns that address's recent delivery events
+    // (delivered / soft_bounce / hard_bounce / blocked / spam), which is the
+    // only place the real reason for a missing email shows up.
+    let events = null;
+    if (req.query.email) {
+      try {
+        const ev = await axios.get('https://api.brevo.com/v3/smtp/statistics/events', {
+          ...h, params: { email: String(req.query.email), limit: 20, days: 30 },
+        });
+        events = (ev.data?.events || []).map(x => ({
+          event: x.event, date: x.date, subject: x.subject, reason: x.reason,
+        }));
+      } catch (e) { events = { error: e.response?.data?.message || e.message }; }
+    }
+
+    // Is the address the app actually sends from among the verified senders?
+    const from = 'noreply@recruiterv.com';
+    const senderOk = Array.isArray(senders)
+      ? senders.some(x => (x.email || '').toLowerCase() === from && x.active !== false)
+      : null;
+
+    res.json({
+      keyInfo, brevoStatus: r.status, email: r.data.email,
+      appSendsFrom: from, appSenderVerified: senderOk,
+      senders, domains, events,
     });
-    res.json({ keyInfo, brevoStatus: r.status, email: r.data.email });
   } catch (err) {
     res.json({ keyInfo, brevoError: err.response?.status, brevoMsg: err.response?.data?.message || err.message });
   }
