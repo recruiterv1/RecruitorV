@@ -47,9 +47,9 @@ const buildRecruiterMenu = (planType) => [
     icon: FolderOpen,
     label: 'Your Positions',
     children: [
-      { icon: TrendingUp,  label: 'My Positions Stats', path: '/recruiter-position-stats' },
       { icon: Briefcase,   label: 'Assigned Position',  path: '/assigned-positions' },
       { icon: UserCheck,   label: 'Coach Assigned',     path: '/coach-assigned-positions' },
+      { icon: Lock,        label: 'Release Position',   path: '/my-access-requests' },
     ],
   },
   { icon: BookOpen, label: 'Resume Bank', path: '/all-candidates' },
@@ -80,7 +80,6 @@ const buildRecruiterMenu = (planType) => [
       ...(planType !== 0
         ? [{ icon: FileText,     label: 'My Requests',        path: '/my-requests' }]
         : []),
-      { icon: Lock,        label: 'My Access Requests', path: '/my-access-requests' },
       { icon: HelpCircle,  label: 'Coach/Expert Request', path: '/coach-expert-requests' },
     ],
   },

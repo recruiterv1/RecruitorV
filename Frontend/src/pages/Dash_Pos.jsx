@@ -541,7 +541,7 @@ const Dash_Pos= () => {
               <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
               <div>
                 <p className="font-semibold">{limitMessage.message}</p>
-                <p className="text-xs mt-0.5">Visit <a href="/my-access-requests" className="underline font-medium">My Access Requests</a> to manage.</p>
+                <p className="text-xs mt-0.5">Visit <a href="/my-access-requests" className="underline font-medium">Release Position</a> to manage.</p>
               </div>
             </div>
           ) : (

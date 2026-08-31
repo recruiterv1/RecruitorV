@@ -396,9 +396,9 @@ const MyAccessRequestsContent = () => {
               <Users size={28} className="text-white" />
             </div>
             <div>
-              <h3 className="text-2xl font-bold text-white">My Access Requests</h3>
+              <h3 className="text-2xl font-bold text-white">Release Position</h3>
               <p className="text-blue-100 text-sm">
-                Track your position access requests and approvals
+                Free a slot by releasing a position, and track your access requests
               </p>
             </div>
           </div>
