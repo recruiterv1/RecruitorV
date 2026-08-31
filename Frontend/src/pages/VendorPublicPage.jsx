@@ -110,7 +110,8 @@ export default function VendorPublicPage() {
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center gap-4">
           <button onClick={() => go('top')} className="flex items-center gap-2.5 min-w-0">
             {v.logoUrl
-              ? <img src={v.logoUrl} alt={v.name} className="h-9 w-9 rounded-lg object-cover flex-shrink-0" />
+              ? <img src={v.logoUrl} alt={v.name}
+                  className="h-9 w-auto max-w-[150px] rounded-lg object-contain flex-shrink-0" />
               : <span className="h-9 w-9 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                   style={{ background: NAVY }}>{initials(v.name)}</span>}
             <span className="font-bold text-slate-900 truncate">{v.name}</span>
@@ -171,7 +172,8 @@ export default function VendorPublicPage() {
           <div className="relative max-w-6xl mx-auto px-4 py-16 sm:py-20">
             <div className="flex items-center gap-4">
               {v.logoUrl
-                ? <img src={v.logoUrl} alt={v.name} className="h-16 w-16 rounded-xl object-cover bg-white" />
+                ? <img src={v.logoUrl} alt={v.name}
+                    className="h-16 w-auto max-w-[240px] rounded-xl object-contain bg-white p-1.5" />
                 : <span className="h-16 w-16 rounded-xl bg-white/10 flex items-center justify-center text-white text-lg font-bold">
                     {initials(v.name)}
                   </span>}
@@ -240,15 +242,7 @@ export default function VendorPublicPage() {
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-10">
                 {positions.map(p => (
                   <div key={p.pos_id} className="rounded-2xl border border-slate-200 p-6 hover:shadow-lg transition">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-bold text-slate-900">{p.position}</h3>
-                      {p.viaPlatform && (
-                        <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500"
-                          title="A RecruiterV platform role this team can work on">
-                          RecruiterV
-                        </span>
-                      )}
-                    </div>
+                    <h3 className="font-bold text-slate-900">{p.position}</h3>
                     {p.client && <p className="text-[13px] text-slate-500 mt-0.5">{p.client}</p>}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-[12px] text-slate-500">
                       {p.location && <span className="inline-flex items-center gap-1"><MapPin size={12} /> {p.location}</span>}
@@ -413,7 +407,8 @@ export default function VendorPublicPage() {
             <div className="lg:col-span-2">
               <div className="flex items-center gap-2.5">
                 {v.logoUrl
-                  ? <img src={v.logoUrl} alt={v.name} className="h-9 w-9 rounded-lg object-cover bg-white" />
+                  ? <img src={v.logoUrl} alt={v.name}
+                    className="h-9 w-auto max-w-[150px] rounded-lg object-contain bg-white p-1" />
                   : <span className="h-9 w-9 rounded-lg bg-white/10 flex items-center justify-center text-white text-xs font-bold">
                       {initials(v.name)}
                     </span>}

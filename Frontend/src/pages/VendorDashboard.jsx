@@ -1311,13 +1311,18 @@ const VendorPublicPageTab = () => {
       <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4">
         <div className="flex items-center gap-4">
           {form.logoUrl
-            ? <img src={form.logoUrl} alt="Logo" className="h-16 w-16 rounded-xl object-cover border border-gray-200" />
+            ? <img src={form.logoUrl} alt="Logo"
+              className="h-16 w-auto max-w-[220px] rounded-xl object-contain border border-gray-200 bg-white p-1.5" />
             : <div className="h-16 w-16 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No logo</div>}
           <label className="px-4 py-2 rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 cursor-pointer">
             {uploading ? 'Uploading…' : 'Upload logo'}
             <input type="file" accept="image/*" className="hidden"
               onChange={(e) => uploadLogo(e.target.files?.[0])} disabled={uploading} />
           </label>
+          <p className="text-[11px] text-gray-500">
+            PNG or JPG, up to 3&nbsp;MB. The whole logo is shown — it is never cropped —
+            so a transparent PNG works best.
+          </p>
         </div>
 
         <div>
