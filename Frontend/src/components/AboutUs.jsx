@@ -18,6 +18,17 @@ const SERIF = "'DM Serif Display', Georgia, serif";
 const SANS = "'Outfit', system-ui, sans-serif";
 
 const FOUNDER_IMG = '/founder-roshan-kumar-rawat.jpg';
+const HERO_IMG = '/about-hero.jpg';
+
+// The design's own in-page nav. It sits under the site header and jumps
+// between sections — it does not replace the site navigation.
+const SECTION_NAV = [
+  ['why', 'Why RecruiterV'],
+  ['story', 'Our Story'],
+  ['founder', 'The Founder'],
+  ['believe', 'What We Believe'],
+  ['ecosystem', 'The Ecosystem'],
+];
 
 /* ── building blocks ───────────────────────────────────────────────── */
 
@@ -26,6 +37,9 @@ const Eyebrow = ({ children, dark }) => (
     {children}
   </p>
 );
+
+// The design sets the second line of every display heading in serif italic.
+const Ital = ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>;
 
 const Display = ({ children, dark, center, size = 'md' }) => (
   <h2
@@ -44,8 +58,8 @@ const Lead = ({ children, dark, center }) => (
   </p>
 );
 
-const Section = ({ children, className = '', style, dark }) => (
-  <section className={`px-4 py-16 sm:py-24 ${className}`} style={{ ...(dark ? { background: INK } : null), ...style }}>
+const Section = ({ children, className = '', style, dark, id }) => (
+  <section id={id} className={`px-4 py-16 sm:py-24 ${className}`} style={{ ...(dark ? { background: INK } : null), ...style }}>
     <div className="max-w-6xl mx-auto">{children}</div>
   </section>
 );
@@ -105,55 +119,84 @@ export default function AboutUs() {
       <Header />
 
       <main className="flex-1">
-        {/* Hero */}
-        <section style={{ background: INK }} className="px-4 py-20 sm:py-28">
-          <div className="max-w-6xl mx-auto">
-            <Eyebrow dark>About RecruiterV</Eyebrow>
-            <h1 className="text-white leading-[1.1] text-[38px] sm:text-[56px] max-w-3xl" style={{ fontFamily: SERIF }}>
-              Reimagining How<br />Recruitment Works
-            </h1>
-            <p className="mt-7 text-slate-300 text-[15px] sm:text-lg leading-relaxed max-w-2xl">
-              RecruiterV is a product of Changeleaders Consulting Private Limited, built on years of
-              real recruitment experience and a belief that technology can make hiring more
-              flexible, collaborative, and rewarding.
-            </p>
-            <p className="mt-10 text-[11px] font-bold uppercase tracking-[0.28em] text-orange-400">
-              Experience · Technology · Freedom
-            </p>
+        {/* In-page section nav */}
+        <nav className="border-b border-slate-200 bg-white/95 backdrop-blur sticky top-0 z-30">
+          <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-2 overflow-x-auto">
+            <span className="text-[10px] font-bold uppercase tracking-[0.18em] px-2.5 py-1 rounded"
+              style={{ background: 'rgba(242,140,40,0.14)', color: ORANGE }}>About Us</span>
+            <div className="flex items-center gap-5 ml-3">
+              {SECTION_NAV.map(([id, label]) => (
+                <button key={id}
+                  onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  className="text-[13px] font-medium text-slate-600 hover:text-slate-900 whitespace-nowrap">
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        </section>
+        </nav>
 
-        {/* Founded on */}
-        <section className="px-4 py-12 border-b border-slate-200" style={{ background: '#F7F9FA' }}>
-          <div className="max-w-6xl mx-auto">
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-orange-500">Founded on</p>
-            <p className="text-[24px] sm:text-[30px] mt-2 text-slate-900" style={{ fontFamily: SERIF }}>
-              Real Recruitment Experience
-            </p>
+        {/* Hero */}
+        <section id="why" className="px-4 py-16 sm:py-24 bg-white">
+          <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <Eyebrow>About RecruiterV</Eyebrow>
+              <h1 className="leading-[1.1] text-[38px] sm:text-[52px] text-slate-900" style={{ fontFamily: SERIF }}>
+                Reimagining How<br /><Ital>Recruitment Works</Ital>
+              </h1>
+              <p className="mt-6 text-slate-600 text-[15px] leading-relaxed max-w-lg">
+                RecruiterV is a product of{' '}
+                <span className="font-semibold text-slate-900">Changeleaders Consulting Private Limited</span>,
+                built on years of real recruitment experience and a belief that technology can make
+                hiring more flexible, collaborative, and rewarding.
+              </p>
+              <p className="mt-8 flex items-center gap-3 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-600">
+                <span className="h-px w-8" style={{ background: ORANGE }} />
+                Experience · Technology · Freedom
+              </p>
+            </div>
+
+            {/* Image with the Founded On card overlapping its lower-left corner */}
+            <div className="relative">
+              <img src={HERO_IMG} alt="Recruitment professionals collaborating in an office"
+                className="w-full rounded-2xl object-cover" style={{ aspectRatio: '4 / 3' }} />
+              <div className="sm:absolute sm:-bottom-8 sm:-left-6 mt-4 sm:mt-0 rounded-2xl p-5 max-w-[240px] shadow-xl"
+                style={{ background: ORANGE }}>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-white/80">Founded on</p>
+                <p className="text-[19px] text-white mt-1 leading-snug" style={{ fontFamily: SERIF }}>
+                  Real Recruitment Experience
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 
         {/* The idea */}
-        <Section>
-          <Eyebrow>The Idea Behind RecruiterV</Eyebrow>
-          <Display>Recruitment Is Changing.<br />The Way We Work Should Too.</Display>
+        <Section id="story" style={{ background: '#F7F9FA' }} className="border-y border-slate-200">
+          <div className="text-center">
+            <Eyebrow>The Idea Behind RecruiterV</Eyebrow>
+            <Display center>Recruitment Is Changing.<br /><Ital>The Way We Work Should Too.</Ital></Display>
+          </div>
           <div className="grid md:grid-cols-3 gap-5 mt-12">
-            {SHIFT.map(([title, body], i) => (
-              <div key={title} className="rounded-2xl p-7"
-                style={i === 2
-                  ? { background: INK, color: '#fff' }
-                  : { background: '#F7F9FA', border: '1px solid #E5EAED' }}>
-                <h3 className="text-[19px]" style={{ fontFamily: SERIF, color: i === 2 ? '#fff' : INK }}>{title}</h3>
-                <p className={`text-[14px] mt-3 leading-relaxed ${i === 2 ? 'text-slate-300' : 'text-slate-600'}`}>{body}</p>
-              </div>
-            ))}
+            {SHIFT.map(([title, body], i) => {
+              // The middle card — The Shift — is the highlighted one.
+              const hi = i === 1;
+              return (
+                <div key={title} className="rounded-2xl p-7"
+                  style={hi ? { background: INK, color: '#fff' } : { background: '#fff', border: '1px solid #E5EAED' }}>
+                  <span className="block h-px w-8 mb-4" style={{ background: ORANGE }} />
+                  <h3 className="text-[19px]" style={{ fontFamily: SERIF, color: hi ? '#fff' : INK }}>{title}</h3>
+                  <p className={`text-[14px] mt-3 leading-relaxed ${hi ? 'text-slate-300' : 'text-slate-600'}`}>{body}</p>
+                </div>
+              );
+            })}
           </div>
         </Section>
 
         {/* The experience behind */}
-        <Section style={{ background: '#F7F9FA' }} className="border-y border-slate-200">
+        <Section>
           <Eyebrow>The Experience Behind RecruiterV</Eyebrow>
-          <Display>Built on Real<br />Recruitment Experience</Display>
+          <Display>Built on Real<br /><Ital>Recruitment Experience</Ital></Display>
           <div className="grid lg:grid-cols-2 gap-10 mt-10">
             <div>
               <p className="text-[15px] text-slate-600 leading-relaxed">
@@ -170,7 +213,8 @@ export default function AboutUs() {
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
               {STRENGTHS.map(([tag, body]) => (
-                <div key={tag} className="rounded-2xl bg-white border border-slate-200 p-5">
+                <div key={tag} className="rounded-2xl p-5" style={{ background: '#F7F9FA', border: '1px solid #E5EAED' }}>
+                  <span className="block h-px w-7 mb-3" style={{ background: ORANGE }} />
                   <p className="text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: ORANGE }}>{tag}</p>
                   <p className="text-[14px] font-semibold text-slate-800 mt-2 leading-snug">{body}</p>
                 </div>
@@ -178,23 +222,13 @@ export default function AboutUs() {
             </div>
           </div>
 
-          {/* Pull quote */}
-          <div className="rounded-2xl p-8 sm:p-10 mt-10" style={{ background: PANEL }}>
-            <p className="text-white text-[20px] sm:text-[26px] leading-snug max-w-3xl" style={{ fontFamily: SERIF }}>
-              &ldquo;Technology should not replace recruitment experience. It should help experienced
-              people create more impact.&rdquo;
-            </p>
-            <p className="mt-5 text-[14px] font-semibold text-orange-400">Roshan Kumar Rawat</p>
-            <p className="text-[12px] text-slate-400">Founder, RecruiterV</p>
-          </div>
         </Section>
 
         {/* The founder */}
-        <Section>
-          <Eyebrow>The Founder&apos;s Perspective</Eyebrow>
-          <Display>Built by Someone Who Has<br />Lived Recruitment</Display>
-          <div className="grid lg:grid-cols-[minmax(0,380px)_1fr] gap-10 mt-12 items-start">
-            <div>
+        <Section id="founder" style={{ background: '#F7F9FA' }} className="border-y border-slate-200">
+          <div className="grid lg:grid-cols-[minmax(0,400px)_1fr] gap-12 items-start">
+            {/* Photo, with the founder's quote overlapping its lower-right */}
+            <div className="relative">
               <img
                 src={FOUNDER_IMG}
                 alt="Roshan Kumar Rawat, Founder of ChangeLeaders and RecruiterV"
@@ -202,10 +236,23 @@ export default function AboutUs() {
                 style={{ aspectRatio: '3 / 4' }}
                 loading="lazy"
               />
-              <p className="text-[20px] mt-5 text-slate-900" style={{ fontFamily: SERIF }}>Roshan Kumar Rawat</p>
-              <p className="text-[13px] text-slate-500">Founder, ChangeLeaders &amp; RecruiterV</p>
+              <div className="lg:absolute lg:-right-10 lg:bottom-10 mt-4 lg:mt-0 rounded-2xl bg-white shadow-xl p-5 max-w-[300px]"
+                style={{ border: '1px solid #E5EAED' }}>
+                <p className="text-[13px] leading-relaxed text-slate-700 italic" style={{ fontFamily: SERIF }}>
+                  &ldquo;Technology should not replace recruitment experience. It should help
+                  experienced people create more impact.&rdquo;
+                </p>
+                <span className="block h-px w-7 my-3" style={{ background: ORANGE }} />
+                <p className="text-[12px] font-semibold text-slate-900">Roshan Kumar Rawat</p>
+                <p className="text-[11px] text-slate-500">Founder, RecruiterV</p>
+              </div>
             </div>
-            <div className="lg:pt-2">
+
+            <div>
+              <Eyebrow>The Founder&apos;s Perspective</Eyebrow>
+              <Display>Built by Someone Who Has<br /><Ital>Lived Recruitment</Ital></Display>
+              <p className="text-[16px] font-semibold text-slate-900 mt-7">Roshan Kumar Rawat</p>
+              <p className="text-[13px] mb-5" style={{ color: ORANGE }}>Founder, ChangeLeaders &amp; RecruiterV</p>
               <p className="text-[15px] text-slate-600 leading-relaxed">
                 Roshan is an HR and recruitment professional with experience spanning corporate HR,
                 talent acquisition, and entrepreneurship. He holds an MBA in HR and a Master&apos;s in
@@ -217,24 +264,25 @@ export default function AboutUs() {
                 across recruitment, technology, and people development led to the creation of
                 ChangeLeaders — and ultimately to the idea behind RecruiterV.
               </p>
-              <p className="text-[15px] text-slate-800 leading-relaxed mt-4 font-medium">
-                His vision: use technology to unlock the value of recruitment experience and make
-                the way recruiters work more flexible.
+              <p className="text-[15px] text-slate-600 leading-relaxed mt-4">
+                His vision: <span className="font-semibold text-slate-900">use technology to unlock
+                the value of recruitment experience and make the way recruiters work more
+                flexible.</span>
               </p>
             </div>
           </div>
         </Section>
 
         {/* What we believe */}
-        <Section dark>
+        <Section id="believe" dark>
           <Eyebrow dark>What We Believe</Eyebrow>
-          <Display dark>Experience Should<br />Create More Impact.</Display>
+          <Display dark>Experience Should<br /><Ital>Create More Impact.</Ital></Display>
           <div className="grid md:grid-cols-3 gap-5 mt-12">
             {BELIEFS.map(([n, title, body]) => (
               <div key={n} className="rounded-2xl p-7"
                 style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}>
-                <p className="text-[13px] font-bold" style={{ color: ORANGE }}>{n}</p>
-                <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-white mt-3">{title}</h3>
+                <p className="text-[34px] leading-none" style={{ fontFamily: SERIF, color: 'rgba(242,140,40,0.55)' }}>{n}</p>
+                <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-white mt-4">{title}</h3>
                 <p className="text-[14px] text-slate-400 mt-3 leading-relaxed">{body}</p>
               </div>
             ))}
@@ -244,7 +292,7 @@ export default function AboutUs() {
         {/* Gig economy */}
         <Section style={{ background: '#F7F9FA' }} className="border-y border-slate-200">
           <Eyebrow>Our View of the Gig Economy</Eyebrow>
-          <Display>Work Should Fit Into Life —<br />Not the Other Way Around.</Display>
+          <Display>Work Should Fit Into Life —<br /><Ital>Not the Other Way Around.</Ital></Display>
           <Lead>
             The gig economy is changing how professionals think about work. RecruiterV is built
             around the idea that experienced recruitment professionals should be able to participate
@@ -293,7 +341,7 @@ export default function AboutUs() {
         {/* Technology belief */}
         <Section dark>
           <Eyebrow dark>Our Technology Belief</Eyebrow>
-          <Display dark>Automate the Process.<br />Empower the People.</Display>
+          <Display dark>Automate the Process.<br /><Ital>Empower the People.</Ital></Display>
           <div className="grid lg:grid-cols-2 gap-10 mt-10">
             <div>
               <p className="text-[15px] text-slate-300 leading-relaxed">
@@ -317,9 +365,9 @@ export default function AboutUs() {
         </Section>
 
         {/* Ecosystem */}
-        <Section>
+        <Section id="ecosystem">
           <Eyebrow>What RecruiterV Is Building</Eyebrow>
-          <Display>A Recruitment Ecosystem Where<br />Everyone Creates More Value</Display>
+          <Display>A Recruitment Ecosystem Where<br /><Ital>Everyone Creates More Value</Ital></Display>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-12">
             {ECOSYSTEM.map(([title, body], i) => (
               <div key={title} className="rounded-2xl p-6"
@@ -351,7 +399,7 @@ export default function AboutUs() {
 
         {/* Closing */}
         <Section>
-          <Display center size="lg">The Future of Recruitment<br />Is More Flexible.</Display>
+          <Display center size="lg">The Future of Recruitment<br /><Ital>Is More Flexible.</Ital></Display>
           <Lead center>
             We are building a platform where experience, technology and freedom come together to
             create more value for everyone involved in recruitment.
