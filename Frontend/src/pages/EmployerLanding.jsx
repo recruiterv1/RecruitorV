@@ -13,6 +13,7 @@ import Footer from './Footer';
 const INK = '#263238';
 const PANEL = '#243746';
 const ORANGE = '#F28C28';
+const DEEP = '#1A2A36';   // the closing band, the darkest tone on the page
 
 /* ── building blocks ───────────────────────────────────────────────── */
 
@@ -153,38 +154,64 @@ export default function EmployerLanding() {
 
       <main className="flex-1">
         {/* Hero */}
-        <section style={{ background: INK }}>
-          <div className="max-w-6xl mx-auto px-4 py-16 sm:py-24">
-            <Eyebrow>For Employers</Eyebrow>
-            <h1 className="text-white font-bold leading-[1.12] text-[32px] sm:text-[46px] max-w-4xl">
-              Your Position. An Experienced Recruitment Network Working to{' '}
-              <span className="text-orange-500">Close It.</span>
-            </h1>
-            <p className="mt-6 text-slate-300 text-[15px] sm:text-base leading-relaxed max-w-2xl">
-              RecruiterV connects your hiring requirements with experienced recruiters working
-              alongside highly experienced Coaches — all coordinated through one Client SPOC.
-            </p>
-            <p className="mt-7 inline-flex items-center gap-2.5 text-[13px] font-semibold text-slate-200 border border-white/15 bg-white/[0.06] rounded-full px-4 py-2.5">
-              <span className="text-orange-500">✦</span>
-              Experienced Recruiters + Experienced Coaches + One Client SPOC
-            </p>
-            <div className="flex flex-wrap gap-3 mt-8">
-              <Primary onClick={post}>Post a Position</Primary>
-              <Secondary dark onClick={talk}>Talk to RecruiterV</Secondary>
+        <section style={{ background: '#F7F9FA' }} className="border-b border-slate-200">
+          <div className="max-w-6xl mx-auto px-4 py-16 sm:py-20 grid lg:grid-cols-[1fr_320px] gap-12 items-center">
+            <div>
+              <Eyebrow>For Employers</Eyebrow>
+              <h1 className="font-bold leading-[1.12] text-[34px] sm:text-[46px] text-slate-900 max-w-2xl">
+                Your Position. An Experienced Recruitment Network Working to Close It.
+              </h1>
+              <p className="mt-6 text-slate-600 text-[15px] leading-relaxed max-w-xl">
+                RecruiterV connects your hiring requirements with experienced recruiters working
+                alongside highly experienced Coaches — all coordinated through one Client SPOC.
+              </p>
+              <p className="mt-7 inline-flex items-center gap-2.5 text-[13px] font-semibold text-slate-700 border border-slate-200 bg-white rounded-full px-4 py-2.5">
+                <span style={{ color: ORANGE }}>✦</span>
+                Experienced Recruiters + Experienced Coaches + One Client SPOC
+              </p>
+              <div className="flex flex-wrap gap-3 mt-8">
+                <Primary onClick={post}>Post a Position</Primary>
+                <Secondary onClick={talk}>Talk to RecruiterV</Secondary>
+              </div>
+              <p className="mt-8 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
+                One Network. One Hiring Objective.
+              </p>
             </div>
-          </div>
-          <div className="border-t border-white/10">
-            <p className="max-w-6xl mx-auto px-4 py-5 text-[11px] font-bold uppercase tracking-[0.28em] text-slate-500">
-              One Network. One Hiring Objective.
-            </p>
+
+            {/* The route a position takes, from posting to a hire */}
+            <div className="rounded-2xl bg-white p-5 shadow-lg" style={{ border: '1px solid #E5EAED' }}>
+              <div className="rounded-xl px-4 py-3 text-center" style={{ background: INK }}>
+                <p className="text-[13px] font-semibold text-white">Your Position</p>
+                <p className="text-[11px] text-slate-400">Senior Product Manager</p>
+              </div>
+              <Down />
+              <Node tone="light">Client SPOC</Node>
+              <Down />
+              <Node tone="orange">RecruiterV</Node>
+              <Down />
+              <div className="rounded-xl px-4 py-3 text-center" style={{ background: '#fff', border: '1px solid #E5EAED' }}>
+                <p className="text-[13px] font-semibold" style={{ color: INK }}>Coach</p>
+                <p className="text-[11px] text-slate-500">Experienced Recruitment Leader</p>
+              </div>
+              <Down />
+              <div className="grid grid-cols-4 gap-2">
+                {['R1', 'R2', 'R3', 'R4'].map(r => <Node key={r} tone="light" small>{r}</Node>)}
+              </div>
+              <Down />
+              <Node tone="light">Candidates</Node>
+              <Down />
+              <Node tone="orange">Successful Hire</Node>
+            </div>
           </div>
         </section>
 
         {/* The three pillars */}
         <section className="px-4 py-16 sm:py-20">
           <div className="max-w-6xl mx-auto">
-            <Eyebrow>More Than a Recruiter Network</Eyebrow>
-            <H2>Recruitment Expertise That Works Together</H2>
+            <div className="text-center">
+              <Eyebrow>More Than a Recruiter Network</Eyebrow>
+              <H2 center>Recruitment Expertise That Works Together</H2>
+            </div>
             <div className="grid sm:grid-cols-3 gap-5 mt-10">
               {PILLARS.map(([title, body]) => (
                 <div key={title} className="rounded-2xl border border-slate-200 p-6 hover:shadow-lg transition">
@@ -193,7 +220,7 @@ export default function EmployerLanding() {
                 </div>
               ))}
             </div>
-            <p className="mt-8 text-[15px] font-semibold text-slate-900">
+            <p className="mt-8 text-[15px] font-semibold text-slate-900 text-center">
               You get the network. We manage the coordination.
             </p>
           </div>
@@ -217,7 +244,7 @@ export default function EmployerLanding() {
         </section>
 
         {/* One position, multiple perspectives */}
-        <section className="px-4 py-16 sm:py-20" style={{ background: INK }}>
+        <section className="px-4 py-16 sm:py-20" style={{ background: PANEL }}>
           <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-10 items-center">
             <div>
               <H2 dark>One Position. Multiple Recruitment Perspectives.</H2>
@@ -334,7 +361,7 @@ export default function EmployerLanding() {
         </section>
 
         {/* Why employers choose RecruiterV */}
-        <section className="px-4 py-16 sm:py-20" style={{ background: INK }}>
+        <section className="px-4 py-16 sm:py-20" style={{ background: PANEL }}>
           <div className="max-w-6xl mx-auto">
             <H2 dark>Why Employers Choose RecruiterV</H2>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-10">
@@ -358,17 +385,17 @@ export default function EmployerLanding() {
         </section>
 
         {/* Closing */}
-        <section className="px-4 py-16 sm:py-20 border-t border-slate-200" style={{ background: '#F7F9FA' }}>
+        <section className="px-4 py-16 sm:py-24" style={{ background: DEEP }}>
           <div className="max-w-3xl mx-auto text-center">
-            <H2 center>Give Your Position the Power of a Recruitment Network.</H2>
-            <p className="mt-4 text-[15px] text-slate-600">
+            <H2 dark center>Give Your Position the Power of a Recruitment Network.</H2>
+            <p className="mt-4 text-[15px] text-slate-300">
               Experienced recruiters. Experienced Coaches. One Client SPOC.
             </p>
             <div className="flex flex-wrap justify-center gap-3 mt-8">
               <Primary onClick={post}>Post Your Position</Primary>
-              <Secondary onClick={talk}>Talk to RecruiterV</Secondary>
+              <Secondary dark onClick={talk}>Talk to RecruiterV</Secondary>
             </div>
-            <p className="mt-10 text-[11px] font-bold uppercase tracking-[0.28em] text-slate-400">
+            <p className="mt-12 text-[11px] font-bold uppercase tracking-[0.28em] text-orange-400">
               Hire Smarter · Earn Together
             </p>
           </div>
