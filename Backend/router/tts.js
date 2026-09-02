@@ -34,7 +34,10 @@ async function googleTranslate(text, target) {
 // Languages Google's free TTS can actually voice clearly (verified). Odia ('or')
 // is intentionally absent — Google TTS returns 400 for it, so there's no free
 // clear voice; the frontend keeps it out of the menu.
-const TTS_LANGS = new Set(['hi', 'bn', 'ta', 'te', 'mr', 'gu', 'kn', 'ml', 'pa', 'ur']);
+// 'en' is included so the briefing player can serve a real MP3 for every
+// language. The browser's own speech synthesis cannot be seeked, paused
+// reliably or replayed, which a player with controls needs.
+const TTS_LANGS = new Set(['en', 'hi', 'bn', 'ta', 'te', 'mr', 'gu', 'kn', 'ml', 'pa', 'ur']);
 
 // Split text into ≤180-char chunks on word boundaries (Google TTS caps ~200/req).
 const chunkText = (text) => {
@@ -61,7 +64,8 @@ const fetchTtsChunk = async (chunk, lang, idx, total) => {
 
 // POST /api/tts/speak  { text, lang }  →  audio/mpeg (MP3)
 // Translates the text into `lang` (unless it's already there) and returns clear
-// synthesized speech. English is handled by the browser, so it's not routed here.
+// synthesized speech as MP3 — including English, so a player with real
+// controls can be used for every language.
 router.post('/speak', async (req, res) => {
   try {
     const raw = String(req.body?.text || '').trim();
@@ -72,6 +76,7 @@ router.post('/speak', async (req, res) => {
     // Translate to the target language first (cached), then synthesize.
     let text = raw;
     try {
+      if (lang === 'en') throw new Error('source is already english');   // no translation needed
       const key = `${lang}:${raw}`;
       const hit = cacheGet(key);
       if (hit !== undefined) text = hit;

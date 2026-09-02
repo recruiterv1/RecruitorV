@@ -10,6 +10,7 @@ import Footer from './Footer';
 import { indiaStatesAndCities } from './Ad_Pos';
 import { formatCommission } from '../lib/commission';
 import SpeakButton from '../components/SpeakButton';
+import BriefingPlayer from '../components/BriefingPlayer';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EXPERIMENTAL layout for the position / JD-submission page. Isolated on its own
@@ -935,9 +936,6 @@ function DashViewV2Inner() {
     ...teamBriefings.filter(b => b.isPublic),
     ...teamBriefings.filter(b => !b.isPublic),
   ];
-  // The briefing item whose text is open in the reader. Set when its speaker is
-  // pressed, so the audio and the words start together.
-  const [briefingItem, setBriefingItem] = useState(null);
 
   const listenReported = useRef({});
   const markBriefingListened = (authorEmail) => {
@@ -1518,26 +1516,13 @@ function DashViewV2Inner() {
                         <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{who}</span>
                       </div>
 
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+                      {/* Audio only — the briefing is heard, never read. Each item
+                          gets its own player so it can be paused, scrubbed and
+                          repeated on its own. */}
+                      <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
                         {(b.items || []).map(it => (
-                          <span key={it.key}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 8,
-                              background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
-                              borderRadius: 999, padding: '5px 6px 5px 12px' }}>
-                            <button type="button" onClick={() => setBriefingItem({ ...it, label })}
-                              title={`Read: ${it.title}`}
-                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                                fontSize: 12.5, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-                              {it.icon} {it.title}
-                            </button>
-                            {/* Pressing play also opens the text, so it can be read while it plays. */}
-                            <SpeakButton
-                              text={`${it.title}. ${it.text}`}
-                              title={`Play: ${it.title}`}
-                              onPlay={() => { setBriefingItem({ ...it, label }); markBriefingListened(b.authorEmail); }}
-                              compact
-                            />
-                          </span>
+                          <BriefingPlayer key={it.key} item={it}
+                            onPlay={() => markBriefingListened(b.authorEmail)} />
                         ))}
                       </div>
                     </div>
@@ -2304,42 +2289,6 @@ function DashViewV2Inner() {
           </div>
         );
       })()}
-
-      {/* Briefing item reader — opens with the audio so it can be read while it plays. */}
-      {briefingItem && (
-        <div onClick={() => setBriefingItem(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,20,35,0.55)', zIndex: 400,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 16, width: 'min(620px, 100%)',
-              maxHeight: '80vh', display: 'flex', flexDirection: 'column',
-              boxShadow: '0 24px 60px -12px rgba(0,0,0,0.45)' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '18px 20px 14px',
-              borderBottom: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: 20, lineHeight: '26px' }}>{briefingItem.icon}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-                  textTransform: 'uppercase', color: '#f47b20' }}>
-                  {(briefingItem.label || '🎙️ Client Briefing').replace('🎙️ ', '')}
-                </div>
-                <h3 style={{ margin: '2px 0 0', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
-                  {briefingItem.title}
-                </h3>
-              </div>
-              {/* Replay, or switch language, without closing the reader. */}
-              <SpeakButton text={`${briefingItem.title}. ${briefingItem.text}`}
-                title={`Play: ${briefingItem.title}`} compact />
-              <button type="button" onClick={() => setBriefingItem(null)} aria-label="Close"
-                style={{ background: 'none', border: 'none', fontSize: 22, lineHeight: 1,
-                  color: '#94a3b8', cursor: 'pointer', padding: '0 2px' }}>×</button>
-            </div>
-            <div style={{ padding: '16px 20px 20px', overflowY: 'auto', fontSize: 14, lineHeight: 1.75,
-              color: '#334155', whiteSpace: 'pre-wrap' }}>
-              {briefingItem.text}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Toast */}
       {toast && (
