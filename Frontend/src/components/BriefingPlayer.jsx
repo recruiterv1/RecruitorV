@@ -72,12 +72,14 @@ export default function BriefingPlayer({ item, onPlay, dark = true }) {
 
   return (
     <div className="rounded-2xl p-3" style={chip}>
-      <div className="flex items-center gap-3 flex-wrap">
-        <span style={{ fontSize: 16, lineHeight: '20px', flexShrink: 0 }}>{item.icon}</span>
-        <span className="text-[12.5px] font-semibold flex-1 min-w-[140px]" style={{ color: titleColor }}>
+      <div className="flex items-start gap-2">
+        <span style={{ fontSize: 15, lineHeight: '18px', flexShrink: 0 }}>{item.icon}</span>
+        <span className="text-[12.5px] font-semibold leading-snug flex-1 min-w-0" style={{ color: titleColor }}>
           {item.title}
         </span>
+      </div>
 
+      <div className="flex items-center gap-2 mt-2.5">
         {!url && (
           <button
             type="button"
@@ -97,7 +99,7 @@ export default function BriefingPlayer({ item, onPlay, dark = true }) {
           value={lang}
           onChange={(e) => changeLang(e.target.value)}
           aria-label="Audio language"
-          className="text-[11px] rounded-lg px-2 py-1.5 outline-none"
+          className="text-[11px] rounded-lg px-2 py-1.5 outline-none flex-1 min-w-0"
           style={dark
             ? { background: 'rgba(255,255,255,0.10)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }
             : { background: '#fff', color: '#334155', border: '1px solid #e2e8f0' }}

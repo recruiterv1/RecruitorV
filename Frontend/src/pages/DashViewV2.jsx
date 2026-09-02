@@ -1519,7 +1519,8 @@ function DashViewV2Inner() {
                       {/* Audio only — the briefing is heard, never read. Each item
                           gets its own player so it can be paused, scrubbed and
                           repeated on its own. */}
-                      <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
+                      <div style={{ display: 'grid', gap: 8, marginTop: 12,
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
                         {(b.items || []).map(it => (
                           <BriefingPlayer key={it.key} item={it}
                             onPlay={() => markBriefingListened(b.authorEmail)} />
