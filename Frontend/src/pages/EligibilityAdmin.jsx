@@ -219,6 +219,104 @@ export function EligibilityQuestions() {
           </div>
         )}
       </div>
+
+      {/* One attempt in full */}
+      {detail && (
+        <div onClick={() => setDetail(null)}
+          className="fixed inset-0 z-[300] bg-black/50 flex items-start justify-center p-4 overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl w-full max-w-3xl my-8 shadow-2xl">
+            {/* Header — who, and how they scored */}
+            <div className="p-5 border-b border-gray-200">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{detail.row.name}</h3>
+                  <p className="text-[13px] text-gray-500">{detail.row.email} · {detail.row.phone}</p>
+                  <p className="text-[12px] text-gray-400 mt-0.5">{detail.row.role} check</p>
+                </div>
+                <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Score</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {detail.row.status === 'submitted' ? `${detail.row.percent}%` : '—'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Correct</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {detail.row.status === 'submitted' ? `${detail.row.correct}/${detail.row.total}` : '—'}
+                  </p>
+                </div>
+                <div className={`rounded-xl border p-3 ${detail.row.passed ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                  <p className="text-[10px] uppercase tracking-wider opacity-70">Result</p>
+                  <p className={`text-sm font-bold mt-1.5 ${detail.row.passed ? 'text-green-700' : 'text-red-700'}`}>
+                    {detail.row.status !== 'submitted' ? 'Not submitted' : detail.row.passed ? 'Passed' : 'Failed'}
+                  </p>
+                </div>
+                <div className={`rounded-xl border p-3 ${detail.row.registered ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200'}`}>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Registered</p>
+                  <p className={`text-sm font-bold mt-1.5 ${detail.row.registered ? 'text-indigo-700' : 'text-gray-500'}`}>
+                    {!detail.row.passed ? '—' : detail.row.registered ? 'Registered' : 'Not registered'}
+                  </p>
+                </div>
+              </div>
+              {detail.row.timedOut && (
+                <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                  Time ran out — whatever was selected at that point was submitted.
+                </p>
+              )}
+            </div>
+
+            {/* Every question, with what was ticked */}
+            <div className="p-5 max-h-[55vh] overflow-y-auto">
+              {detailLoading ? (
+                <p className="py-10 text-center text-gray-500 text-sm">Loading the answers…</p>
+              ) : detail.error ? (
+                <p className="py-10 text-center text-red-600 text-sm">{detail.error}</p>
+              ) : !detail.attempt?.detail?.length ? (
+                <p className="py-10 text-center text-gray-500 text-sm">
+                  {detail.row.status === 'submitted'
+                    ? 'No answer breakdown was recorded for this attempt.'
+                    : 'This attempt was never submitted, so there are no answers to show.'}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {detail.attempt.detail.map((d, i) => (
+                    <div key={d.questionId || i}
+                      className={`rounded-xl border p-4 ${d.correct ? 'border-green-200 bg-green-50/40' : 'border-red-200 bg-red-50/40'}`}>
+                      <div className="flex items-start gap-3">
+                        <span className={`flex-shrink-0 h-6 w-6 rounded-full text-white text-[11px] font-bold flex items-center justify-center ${
+                          d.correct ? 'bg-green-600' : 'bg-red-500'}`}>{i + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-gray-900 text-[14px] whitespace-pre-wrap">{d.question}</p>
+                          <div className="mt-3 space-y-1.5 text-[13px]">
+                            <p className="text-green-800">
+                              <span className="font-semibold">Correct answer:</span>{' '}
+                              {(detail.attempt.questionOptions?.[d.questionId] || [])[d.correctIndex]
+                                ?? `Option ${Number(d.correctIndex) + 1}`}
+                            </p>
+                            <p className={d.correct ? 'text-green-800' : 'text-red-700'}>
+                              <span className="font-semibold">They ticked:</span>{' '}
+                              {d.chosen === -1 || d.chosen === undefined || d.chosen === null
+                                ? <em className="text-gray-500">left unanswered</em>
+                                : ((detail.attempt.questionOptions?.[d.questionId] || [])[d.chosen]
+                                    ?? `Option ${Number(d.chosen) + 1}`)}
+                              {d.correct ? ' ✓' : ' ✕'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -322,6 +420,21 @@ export function EligibilityResults() {
   const [role, setRole] = useState('');
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
+  const [detail, setDetail] = useState(null);       // the attempt opened in the modal
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  // Open one attempt in full: every question, what the candidate ticked and
+  // what the right answer was.
+  const openDetail = async (row) => {
+    setDetail({ row, attempt: null });
+    setDetailLoading(true);
+    try {
+      const r = await axios.get(`/api/eligibility/admin/results/${row.id}`, { withCredentials: true });
+      setDetail({ row, attempt: r.data?.attempt || null });
+    } catch (e) {
+      setDetail({ row, attempt: null, error: e.response?.data?.message || 'Could not load this attempt.' });
+    } finally { setDetailLoading(false); }
+  };
 
   const load = () => {
     setLoading(true);
@@ -347,10 +460,11 @@ export function EligibilityResults() {
   }, [rows, role, q]);
 
   const exportCsv = () => {
-    const head = ['Name', 'Email', 'Phone', 'Role', 'Score %', 'Correct', 'Total', 'Result', 'Timed out', 'Started', 'Submitted'];
+    const head = ['Name', 'Email', 'Phone', 'Role', 'Score %', 'Correct', 'Total', 'Result', 'Registered', 'Timed out', 'Started', 'Submitted'];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const body = filtered.map(r => [r.name, r.email, r.phone, r.role, r.percent ?? '', r.correct ?? '', r.total ?? '',
       r.status !== 'submitted' ? 'Not submitted' : (r.passed ? 'Passed' : 'Failed'),
+      r.passed ? (r.registered ? 'Yes' : 'No') : '',
       r.timedOut ? 'Yes' : 'No', r.startedAt || '', r.submittedAt || ''].map(esc).join(','));
     const blob = new Blob([[head.map(esc).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
@@ -374,12 +488,13 @@ export function EligibilityResults() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-5">
         {[['Attempts', summary.total, 'bg-white border-gray-200 text-gray-800'],
-          ['Completed', summary.completed, 'bg-blue-50 border-blue-200 text-blue-700'],
           ['Passed', summary.passed, 'bg-green-50 border-green-200 text-green-700'],
           ['Failed', summary.failed, 'bg-red-50 border-red-200 text-red-700'],
-          ['Not submitted', summary.abandoned, 'bg-amber-50 border-amber-200 text-amber-700']].map(([l, v, cls]) => (
+          ['Not submitted', summary.abandoned, 'bg-amber-50 border-amber-200 text-amber-700'],
+          ['Registered', summary.registered, 'bg-indigo-50 border-indigo-200 text-indigo-700'],
+          ['Passed, not registered', summary.notRegistered, 'bg-orange-50 border-orange-200 text-orange-700']].map(([l, v, cls]) => (
           <div key={l} className={`rounded-2xl border p-4 ${cls}`}>
             <p className="text-[11px] uppercase tracking-wider opacity-70">{l}</p>
             <p className="text-2xl font-bold mt-1">{v ?? 0}</p>
@@ -411,13 +526,16 @@ export function EligibilityResults() {
                   <th className="px-4 py-3 font-semibold">Role</th>
                   <th className="px-4 py-3 font-semibold">Score</th>
                   <th className="px-4 py-3 font-semibold">Result</th>
+                  <th className="px-4 py-3 font-semibold">Registered</th>
                   <th className="px-4 py-3 font-semibold whitespace-nowrap">Started</th>
                   <th className="px-4 py-3 font-semibold whitespace-nowrap">Submitted</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map(r => (
-                  <tr key={r.id} className="hover:bg-gray-50/70">
+                  <tr key={r.id} onClick={() => openDetail(r)}
+                    className="hover:bg-gray-50/70 cursor-pointer"
+                    title="Open this attempt">
                     <td className="px-4 py-3">
                       <p className="font-semibold text-gray-900">{r.name}</p>
                       <p className="text-[11px] text-gray-500">{r.email}</p>
@@ -436,6 +554,18 @@ export function EligibilityResults() {
                           ? <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-200"><CheckCircle2 size={11} /> Passed</span>
                           : <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200"><XCircle size={11} /> Failed</span>}
                       {r.timedOut && <span className="block text-[10px] text-amber-600 mt-1">timed out</span>}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {!r.passed
+                        ? <span className="text-gray-300 text-[11px]">—</span>
+                        : r.registered
+                          ? <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              <CheckCircle2 size={11} /> Registered
+                            </span>
+                          : <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-200"
+                              title="Cleared the check but has not created their account yet">
+                              <Clock size={11} /> Not registered
+                            </span>}
                     </td>
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmt(r.startedAt)}</td>
                     <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmt(r.submittedAt)}</td>

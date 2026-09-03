@@ -136,6 +136,38 @@ router.post('/register',async (req,res)=>{
       : {};
 
     try{
+        // ── Eligibility gate ────────────────────────────────────────────────
+        // A Coach, Expert or Recruiter signing themselves up must have cleared
+        // the eligibility check for that role first. Enforced here rather than
+        // only in the form, so it cannot be skipped by posting directly.
+        //
+        // Accounts created by an admin, vendor or consulting firm go through
+        // their own routes and are unaffected. A role with no active questions
+        // is not gated — hasPassed's caller checks that first.
+        if (['Recruiter', 'Coach', 'Expert'].includes(roleCategory)) {
+            try {
+                const eligibility = require('./eligibility');
+                const { db } = require('./firebase_ad');
+                const qSnap = await db.collection('eligibility_questions')
+                    .where('role', '==', roleCategory).where('active', '==', true).limit(1).get();
+
+                if (!qSnap.empty) {                       // a check exists for this role
+                    const pass = await eligibility.hasPassed(email, roleCategory);
+                    if (!pass) {
+                        return res.status(403).json({
+                            message: `Please clear the ${roleCategory} eligibility check before registering.`,
+                            errorCode: 'ELIGIBILITY_REQUIRED',
+                            role: roleCategory,
+                            checkUrl: '/check-eligibility',
+                        });
+                    }
+                }
+            } catch (gateErr) {
+                // Never let a fault in the gate block legitimate sign-ups.
+                console.error('eligibility gate skipped:', gateErr.message);
+            }
+        }
+
         // Check user based on role - different collections for different roles
         let existingUser = null;
         

@@ -41,6 +41,20 @@ export default function CheckEligibility() {
     axios.get('/api/eligibility/public/config')
       .then(r => setCfg(r.data))
       .catch(() => setCfg({ roles: ['Coach', 'Expert', 'Recruiter'], config: {} }));
+
+    // Registration sends people here with their role and email already known,
+    // so they do not retype them — and so the pass is recorded against the
+    // same address they will register with.
+    const p = new URLSearchParams(window.location.search);
+    const role = p.get('role') || '';
+    const email = p.get('email') || '';
+    if (role || email) {
+      setForm(f => ({
+        ...f,
+        role: ['Coach', 'Expert', 'Recruiter'].includes(role) ? role : f.role,
+        email: email || f.email,
+      }));
+    }
   }, []);
 
   const submit = useCallback(async (timedOut = false) => {
@@ -268,11 +282,17 @@ export default function CheckEligibility() {
               )}
 
               {result.passed && (
-                <a href="/reg"
-                  className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl text-white font-bold text-sm shadow-lg mt-8"
-                  style={{ background: ORANGE }}>
-                  Continue to Registration <ArrowRight size={16} />
-                </a>
+                <>
+                  <a href={`/reg?email=${encodeURIComponent(form.email.trim())}&role=${encodeURIComponent(form.role)}`}
+                    className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl text-white font-bold text-sm shadow-lg mt-8"
+                    style={{ background: ORANGE }}>
+                    Continue to Registration <ArrowRight size={16} />
+                  </a>
+                  <p className="text-[12px] text-slate-500 mt-3">
+                    Register with <span className="font-semibold">{form.email.trim()}</span> — your pass is
+                    recorded against this address.
+                  </p>
+                </>
               )}
             </div>
           </section>

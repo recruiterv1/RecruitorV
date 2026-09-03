@@ -546,9 +546,9 @@ function FinalCTA() {
 /* ─────────────────────────  ELIGIBILITY CHECK  ───────────────────────── */
 function EligibilityCheck() {
   const points = [
-    ["Takes a few minutes", "A short multiple-choice check you can finish in one sitting."],
+    ["Required before you register", "Recruiters, Coaches and Experts clear the check first — it takes a few minutes."],
     ["Know straight away", "Your result appears the moment you submit — no waiting to hear back."],
-    ["Pick your role", "Separate checks for Recruiter, Coach and Expert."],
+    ["Pass, then register", "Clear it and you go straight on to registration with the same email."],
   ];
   return (
     <section className="py-20 bg-white">
@@ -560,21 +560,17 @@ function EligibilityCheck() {
                 <ClipboardCheck size={13} /> Eligibility Check
               </span>
               <h2 className="mt-5 text-3xl sm:text-4xl font-extrabold text-white leading-tight">
-                Not sure if you qualify?<br />Find out in minutes.
+Start with the<br />eligibility check.
               </h2>
               <p className="mt-4 text-slate-300 leading-relaxed max-w-lg">
-                Before you register, take our short eligibility check. Answer a few
-                multiple-choice questions for the role you want — Recruiter, Coach or Expert —
-                and see your result immediately.
+                The eligibility check is the first step to joining as a Recruiter, Coach or
+                Expert. Answer a few multiple-choice questions for the role you want, see your
+                result immediately, and go straight on to registration once you pass.
               </p>
               <div className="mt-8 flex flex-wrap gap-4">
                 <Link to="/check-eligibility"
                   className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-7 py-3.5 font-bold shadow-lg shadow-violet-500/25 transition-all">
-                  Check Your Eligibility <ArrowRight size={18} />
-                </Link>
-                <Link to="/reg"
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 text-white px-7 py-3.5 font-bold transition-all">
-                  Register Directly
+                  Start Your Eligibility Check <ArrowRight size={18} />
                 </Link>
               </div>
             </div>

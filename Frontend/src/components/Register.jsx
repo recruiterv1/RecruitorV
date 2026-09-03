@@ -125,6 +125,52 @@ export default function Register() {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Eligibility gate. A Coach, Expert or Recruiter has to clear the check
+  // before they can register — the server enforces it, and this tells them
+  // before they fill the whole form in.
+  const [eligibility, setEligibility] = useState(null);   // null | {required, passed}
+  const [checkingEligibility, setCheckingEligibility] = useState(false);
+
+  useEffect(() => {
+    const role = form.roleCategory;
+    const email = form.email.trim().toLowerCase();
+    if (!['Recruiter', 'Coach', 'Expert'].includes(role)) { setEligibility(null); return; }
+
+    // Say straight away that this role needs the check, before an email is even
+    // typed — otherwise the requirement only appears once the form is half done.
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      let live2 = true;
+      axios.get('/api/eligibility/public/status', { params: { role, email: 'unknown@placeholder.invalid' } })
+        .then(r => { if (live2) setEligibility(r.data?.required ? { required: true, passed: false, needEmail: true } : null); })
+        .catch(() => { if (live2) setEligibility(null); });
+      return () => { live2 = false; };
+    }
+
+    let live = true;
+    setCheckingEligibility(true);
+    const t = setTimeout(() => {
+      axios.get('/api/eligibility/public/status', { params: { role, email } })
+        .then(r => { if (live) setEligibility(r.data); })
+        .catch(() => { if (live) setEligibility(null); })
+        .finally(() => { if (live) setCheckingEligibility(false); });
+    }, 500);   // debounce while the email is being typed
+    return () => { live = false; clearTimeout(t); };
+  }, [form.roleCategory, form.email]);
+
+  // Arriving from the eligibility check: carry the email and role across so the
+  // pass matches the address being registered.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const email = p.get('email') || '';
+    const role = p.get('role') || '';
+    if (!email && !role) return;
+    setForm(f => ({
+      ...f,
+      email: email || f.email,
+      roleCategory: ['Recruiter', 'Coach', 'Expert'].includes(role) ? role : f.roleCategory,
+    }));
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -232,6 +278,9 @@ export default function Register() {
       console.error("Error status:", err.response?.status);
       console.error("Full error:", err);
 
+      if (err.response?.data?.errorCode === 'ELIGIBILITY_REQUIRED') {
+        setEligibility({ required: true, passed: false });
+      }
       setMessage(
         err.response?.data?.error ||
         err.response?.data?.message ||
@@ -864,9 +913,35 @@ export default function Register() {
             </div>
 
             {/* Submit Button */}
+            {/* Coach, Expert and Recruiter sign-ups must clear the eligibility
+                check first. The server enforces this; this makes it actionable. */}
+            {eligibility?.required && !eligibility?.passed && (
+              <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 mb-4">
+                <p className="font-bold text-amber-900 text-sm">
+                  Clear the {form.roleCategory} eligibility check first
+                </p>
+                <p className="text-[13px] text-amber-800 mt-1 leading-relaxed">
+                  {eligibility.needEmail
+                    ? 'Registration for this role opens once you have passed the short multiple-choice check. Enter your email above and we will look up whether you have already cleared it.'
+                    : 'Registration for this role opens once you have passed the short multiple-choice check. Use the same email address you entered above.'}
+                </p>
+                <a href={`/check-eligibility?role=${encodeURIComponent(form.roleCategory)}&email=${encodeURIComponent(form.email.trim())}`}
+                  className="inline-flex items-center gap-2 mt-3 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold">
+                  Take the Eligibility Check →
+                </a>
+              </div>
+            )}
+            {eligibility?.required && eligibility?.passed && (
+              <p className="rounded-xl border border-green-200 bg-green-50 text-green-800 text-[13px] font-semibold px-4 py-3 mb-4">
+                ✓ Eligibility check cleared{eligibility.pass?.percent !== undefined ? ` — ${eligibility.pass.percent}%` : ''}. You can complete your registration.
+              </p>
+            )}
+            {checkingEligibility && (
+              <p className="text-[12px] text-gray-500 mb-3">Checking your eligibility…</p>
+            )}
             <button
               type="submit"
-              disabled={loading || resumeUploading}
+              disabled={loading || resumeUploading || (eligibility?.required && !eligibility?.passed)}
               className="w-full bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white py-3.5 rounded-xl font-semibold text-base transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
             >
               {resumeUploading ? (

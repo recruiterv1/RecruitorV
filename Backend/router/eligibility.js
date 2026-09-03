@@ -214,6 +214,52 @@ router.post('/public/submit', async (req, res) => {
   }
 });
 
+// Has this email already cleared the check for this role? Used both by the
+// public status endpoint and by registration, which will not create a
+// self-registered Coach, Expert or Recruiter without a pass.
+const hasPassed = async (email, role) => {
+  const e = String(email || '').trim().toLowerCase();
+  if (!e || !isRole(role)) return null;
+  try {
+    const snap = await ATTEMPTS()
+      .where('email', '==', e).where('role', '==', role).where('passed', '==', true).get();
+    if (snap.empty) return null;
+    // Most recent pass wins.
+    const best = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => {
+        const ta = a.submittedAt?._seconds || 0, tb = b.submittedAt?._seconds || 0;
+        return tb - ta;
+      })[0];
+    return { attemptId: best.id, percent: best.percent, passedAt: toIso(best.submittedAt) };
+  } catch (e2) {
+    console.error('eligibility hasPassed error:', e2.message);
+    return null;
+  }
+};
+
+// GET /eligibility/public/status?email=&role=
+// Lets the registration form tell someone what to do before they fill it in.
+router.get('/public/status', async (req, res) => {
+  try {
+    const role = String(req.query.role || '').trim();
+    if (!isRole(role)) return res.status(400).json({ success: false, message: 'Unknown role.' });
+
+    // A role with no questions cannot gate anything — say so plainly rather
+    // than locking people out of registering.
+    const qSnap = await QUESTIONS().where('role', '==', role).where('active', '==', true).get();
+    if (qSnap.empty) {
+      return res.json({ success: true, required: false, passed: true, reason: 'no_check_configured' });
+    }
+
+    const pass = await hasPassed(req.query.email, role);
+    res.json({ success: true, required: true, passed: !!pass, pass: pass || null });
+  } catch (e) {
+    console.error('eligibility/public/status error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 /* ── SuperAdmin: questions ────────────────────────────────────────────────── */
 
 router.get('/admin/questions', adminAuth, async (req, res) => {
@@ -343,8 +389,28 @@ router.get('/admin/results', adminAuth, async (req, res) => {
     if (isRole(role)) q = q.where('role', '==', role);
     const snap = await q.get();
 
+    // Did they go on to register? Look the email up in the collection that
+    // matches the role they took the check for. Fetched once and matched in
+    // memory rather than a query per attempt.
+    const COLLECTION = { Recruiter: 'recruiter_db', Coach: 'coach_db', Expert: 'expert_db' };
+    const accounts = {};
+    for (const [r, col] of Object.entries(COLLECTION)) {
+      accounts[r] = {};
+      try {
+        const accSnap = await db.collection(col).select('email', 'isVerified', 'createdAt', 'datePosted').get();
+        accSnap.docs.forEach(d => {
+          const e = String(d.data().email || '').trim().toLowerCase();
+          if (e) accounts[r][e] = { isVerified: d.data().isVerified !== false };
+        });
+      } catch (e2) {
+        console.error(`eligibility results: could not read ${col}:`, e2.message);
+      }
+    }
+
     const rows = snap.docs.map(d => {
       const a = d.data();
+      const email = String(a.email || '').trim().toLowerCase();
+      const acc = accounts[a.role]?.[email] || null;
       return {
         id: d.id,
         name: a.name || '', email: a.email || '', phone: a.phone || '',
@@ -354,6 +420,9 @@ router.get('/admin/results', adminAuth, async (req, res) => {
         percent: a.percent ?? null,
         passed: a.passed === true,
         timedOut: a.timedOut === true,
+        // Whether the candidate went on to create the account they were cleared for.
+        registered: !!acc,
+        accountVerified: acc ? acc.isVerified : null,
         startedAt: toIso(a.startedAt),
         submittedAt: toIso(a.submittedAt),
       };
@@ -369,6 +438,9 @@ router.get('/admin/results', adminAuth, async (req, res) => {
         passed: done.filter(r => r.passed).length,
         failed: done.filter(r => !r.passed).length,
         abandoned: rows.length - done.length,
+        // Of those cleared to register, how many actually did.
+        registered: done.filter(r => r.passed && r.registered).length,
+        notRegistered: done.filter(r => r.passed && !r.registered).length,
       },
     });
   } catch (e) {
@@ -383,10 +455,25 @@ router.get('/admin/results/:id', adminAuth, async (req, res) => {
     const doc = await ATTEMPTS().doc(req.params.id).get();
     if (!doc.exists) return res.status(404).json({ success: false, message: 'Attempt not found.' });
     const a = doc.data();
+
+    // The attempt stores the chosen and correct indexes; pull the option text
+    // so the console can show the actual answers rather than "Option 2".
+    // A question edited or deleted since simply has no text to show.
+    const ids = [...new Set([
+      ...(Array.isArray(a.questionIds) ? a.questionIds : []),
+      ...((a.detail || []).map(d => d.questionId).filter(Boolean)),
+    ])];
+    const questionOptions = {};
+    const qDocs = await Promise.all(ids.map(id => QUESTIONS().doc(id).get()));
+    qDocs.forEach(qd => {
+      if (qd.exists && Array.isArray(qd.data().options)) questionOptions[qd.id] = qd.data().options;
+    });
+
     res.json({
       success: true,
       attempt: {
         id: doc.id, ...a,
+        questionOptions,
         startedAt: toIso(a.startedAt), submittedAt: toIso(a.submittedAt),
       },
     });
@@ -396,3 +483,6 @@ router.get('/admin/results/:id', adminAuth, async (req, res) => {
 });
 
 module.exports = router;
+// Exported so registration can enforce the gate server-side.
+module.exports.hasPassed = hasPassed;
+module.exports.ROLES = ROLES;
