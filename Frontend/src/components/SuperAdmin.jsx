@@ -67,6 +67,7 @@ import PortalApprovals from '../pages/PortalApprovals';
 import PortalSubscriptions from '../pages/PortalSubscriptions';
 import AgreementTemplates from '../pages/AgreementTemplates';
 import { EligibilityQuestions, EligibilitySettings, EligibilityResults } from '../pages/EligibilityAdmin';
+import TrainingManualsAdmin from '../pages/TrainingManualsAdmin';
 import { BriefingPositions, BriefingRecruiters, BriefingCoaches, BriefingClientSpocs, BriefingCompanies } from '../pages/BriefingsAdmin';
 import { AllCandidatesPanel, DirectCandidatesPanel, ActiveCandidatesPanel } from '../pages/SuperAdminCandidates';
 import SuperAdminAssignedPositions from '../pages/SuperAdminAssignedPositions';
@@ -325,6 +326,7 @@ const SuperAdmin = () => {
         { id: 'eligibility-results', icon: ClipboardCheck, label: 'Results', component: <EligibilityResults /> },
       ],
     },
+    { id: 'training-manuals', icon: BookOpen, label: 'Training Manuals', component: <TrainingManualsAdmin /> },
     { id: 'admin-tools', icon: Wrench, label: 'Admin Tools', component: <AdminTools /> },
   ];
 

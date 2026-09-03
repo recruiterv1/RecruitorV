@@ -353,6 +353,13 @@ const Sidebar = () => {
     menuItems = [{ icon: UserCheck, label: 'Manager Panel', path: '/manager' }, ...menuItems];
   }
 
+  // Every user type gets their own training manual, always as the last entry.
+  // Appending here rather than in each role's array keeps it in one place and
+  // guarantees the position.
+  if (Array.isArray(menuItems)) {
+    menuItems = [...menuItems, { icon: BookOpen, label: 'Training Manual', path: '/training-manual' }];
+  }
+
   const isActive = (path) => {
     if (path.includes('#')) {
       return location.pathname === path.split('#')[0] && location.hash === '#' + path.split('#')[1];

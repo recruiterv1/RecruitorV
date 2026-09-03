@@ -23,7 +23,8 @@ import {
   FileText,
   MessageSquare,
   UploadCloud,
-  Building2
+  Building2,
+  BookOpen,
 } from 'lucide-react';
 
 const clientSpocMenuItems = [
@@ -72,6 +73,8 @@ const clientSpocMenuItems = [
     ],
   },
   { icon: DollarSign, label: 'My Earnings', path: '/my-earnings' },
+  // Last entry, matching every other user type's sidebar.
+  { icon: BookOpen, label: 'Training Manual', path: '/training-manual' },
 ];
 
 const ClientSpocSidebar = () => {
