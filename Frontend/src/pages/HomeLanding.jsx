@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Briefcase, Users, GitBranch, Handshake, BarChart3,
   MessageSquare, Settings, Gift, Star, CheckCircle2,
   Search, Heart, Zap, Clock, Bookmark, Rocket, FileUp, Share2, Trophy,
-  Lock, Quote, UserSearch, GraduationCap, Lightbulb, Building2
+  Lock, Quote, UserSearch, GraduationCap, Lightbulb, Building2, ClipboardCheck
 } from "lucide-react";
 
 /* ─────────────────────────  DASHBOARD MOCKUP  ───────────────────────── */
@@ -192,9 +192,14 @@ function SharedRewards() {
             <p className="mt-4 text-slate-600 max-w-lg leading-relaxed">
               When a position is closed, every contributor earns a fair, pre-agreed reward — recruiters, experts, coaches and referrers all win together. Your exact share is shown transparently inside your dashboard.
             </p>
-            <Link to="/reg" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 font-bold shadow-lg shadow-violet-500/25 transition-all">
-              Start Earning Together <ArrowRight size={16} />
-            </Link>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link to="/reg" className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 font-bold shadow-lg shadow-violet-500/25 transition-all">
+                Start Earning Together <ArrowRight size={16} />
+              </Link>
+              <Link to="/check-eligibility" className="inline-flex items-center gap-2 rounded-xl border-2 border-violet-200 text-violet-700 hover:bg-violet-50 px-6 py-3 font-bold transition-all">
+                <ClipboardCheck size={16} /> Check Eligibility
+              </Link>
+            </div>
           </div>
           <div className="flex items-center justify-center">
             <div className="relative w-64 h-64">
@@ -527,6 +532,67 @@ function FinalCTA() {
               <Link to="/smart-apply" className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/30 px-7 py-3.5 font-bold transition-all">
                 Apply as Candidate
               </Link>
+              <Link to="/check-eligibility" className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/30 px-7 py-3.5 font-bold transition-all">
+                <ClipboardCheck size={18} /> Check Eligibility
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────  ELIGIBILITY CHECK  ───────────────────────── */
+function EligibilityCheck() {
+  const points = [
+    ["Takes a few minutes", "A short multiple-choice check you can finish in one sitting."],
+    ["Know straight away", "Your result appears the moment you submit — no waiting to hear back."],
+    ["Pick your role", "Separate checks for Recruiter, Coach and Expert."],
+  ];
+  return (
+    <section className="py-20 bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="rounded-3xl bg-gradient-to-br from-[#0b0f1e] via-[#15162b] to-[#1b1033] px-6 sm:px-12 py-12 sm:py-14">
+          <div className="grid lg:grid-cols-2 gap-10 items-center">
+            <div>
+              <span className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/20 px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-violet-200">
+                <ClipboardCheck size={13} /> Eligibility Check
+              </span>
+              <h2 className="mt-5 text-3xl sm:text-4xl font-extrabold text-white leading-tight">
+                Not sure if you qualify?<br />Find out in minutes.
+              </h2>
+              <p className="mt-4 text-slate-300 leading-relaxed max-w-lg">
+                Before you register, take our short eligibility check. Answer a few
+                multiple-choice questions for the role you want — Recruiter, Coach or Expert —
+                and see your result immediately.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-4">
+                <Link to="/check-eligibility"
+                  className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-7 py-3.5 font-bold shadow-lg shadow-violet-500/25 transition-all">
+                  Check Your Eligibility <ArrowRight size={18} />
+                </Link>
+                <Link to="/reg"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 text-white px-7 py-3.5 font-bold transition-all">
+                  Register Directly
+                </Link>
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              {points.map(([title, text]) => (
+                <div key={title} className="rounded-2xl bg-white/[0.06] border border-white/10 p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 flex-shrink-0 h-7 w-7 rounded-lg bg-violet-500/20 text-violet-300 flex items-center justify-center">
+                      <CheckCircle2 size={15} />
+                    </span>
+                    <div>
+                      <p className="font-bold text-white text-[15px]">{title}</p>
+                      <p className="text-sm text-slate-400 mt-1 leading-relaxed">{text}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -545,6 +611,7 @@ export default function HomeLanding() {
       <HowItWorks />
       <CandidateDatabase />
       <WhoWeServe />
+      <EligibilityCheck />
       <ReferEarn />
       <StatsBar />
       <Testimonials />

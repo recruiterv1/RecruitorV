@@ -1,6 +1,6 @@
 import React, { useState, useContext, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Menu, X, LogOut, LayoutDashboard, Database, User as UserIcon, BookOpen, DollarSign, User, Settings } from "lucide-react";
+import { Menu, X, LogOut, LayoutDashboard, Database, User as UserIcon, User, Settings } from "lucide-react";
 import axios from "axios";
 import { UserStateContext, UserDispatchContext } from "../context/AuthPro";
 
@@ -234,19 +234,12 @@ const Header = () => {
           ) : (
             /* ---------------- GUEST NAV ---------------- */
             <div className="flex items-center space-x-3">
+              {/* Order: Home, About, Blog, then the business audiences. */}
               <Link
                 to="/"
                 className="text-gray-700 hover:text-blue-600 font-medium px-3 py-2 rounded-lg hover:bg-blue-50 transition-all duration-300"
               >
                 Home
-              </Link>
-
-              <Link
-                to="/blog"
-                className="flex items-center gap-2 text-gray-700 hover:text-blue-600 font-medium px-3 py-2 rounded-lg hover:bg-blue-50 transition-all duration-300"
-              >
-                <BookOpen size={18} />
-                <span>Blog</span>
               </Link>
 
               <Link
@@ -257,11 +250,10 @@ const Header = () => {
               </Link>
 
               <Link
-                to="/pricing"
-                className="flex items-center gap-2 text-gray-700 hover:text-blue-600 font-medium px-3 py-2 rounded-lg hover:bg-blue-50 transition-all duration-300"
+                to="/blog"
+                className="text-gray-700 hover:text-blue-600 font-medium px-3 py-2 rounded-lg hover:bg-blue-50 transition-all duration-300"
               >
-                <DollarSign size={18} />
-                <span>Pricing</span>
+                Blog
               </Link>
 
               {/* The two business audiences sit in the header directly — the
@@ -418,15 +410,6 @@ const Header = () => {
               </Link>
 
               <Link
-                to="/blog"
-                onClick={() => setIsMenuOpen(false)}
-                className="w-full flex items-center justify-center gap-2 text-gray-700 font-medium px-4 py-3 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-all duration-300 border-2 border-gray-200"
-              >
-                <BookOpen size={20} />
-                <span>Blog</span>
-              </Link>
-
-              <Link
                 to="/about"
                 onClick={() => setIsMenuOpen(false)}
                 className="w-full flex items-center justify-center gap-2 text-gray-700 font-medium px-4 py-3 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-all duration-300 border-2 border-gray-200"
@@ -435,12 +418,11 @@ const Header = () => {
               </Link>
 
               <Link
-                to="/pricing"
+                to="/blog"
                 onClick={() => setIsMenuOpen(false)}
                 className="w-full flex items-center justify-center gap-2 text-gray-700 font-medium px-4 py-3 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-all duration-300 border-2 border-gray-200"
               >
-                <DollarSign size={20} />
-                <span>Pricing</span>
+                <span>Blog</span>
               </Link>
 
               {/* Same two entries as the desktop header. */}
