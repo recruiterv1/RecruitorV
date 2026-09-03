@@ -220,103 +220,6 @@ export function EligibilityQuestions() {
         )}
       </div>
 
-      {/* One attempt in full */}
-      {detail && (
-        <div onClick={() => setDetail(null)}
-          className="fixed inset-0 z-[300] bg-black/50 flex items-start justify-center p-4 overflow-y-auto">
-          <div onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-2xl w-full max-w-3xl my-8 shadow-2xl">
-            {/* Header — who, and how they scored */}
-            <div className="p-5 border-b border-gray-200">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">{detail.row.name}</h3>
-                  <p className="text-[13px] text-gray-500">{detail.row.email} · {detail.row.phone}</p>
-                  <p className="text-[12px] text-gray-400 mt-0.5">{detail.row.role} check</p>
-                </div>
-                <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-                <div className="rounded-xl border border-gray-200 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Score</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {detail.row.status === 'submitted' ? `${detail.row.percent}%` : '—'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-gray-200 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Correct</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {detail.row.status === 'submitted' ? `${detail.row.correct}/${detail.row.total}` : '—'}
-                  </p>
-                </div>
-                <div className={`rounded-xl border p-3 ${detail.row.passed ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
-                  <p className="text-[10px] uppercase tracking-wider opacity-70">Result</p>
-                  <p className={`text-sm font-bold mt-1.5 ${detail.row.passed ? 'text-green-700' : 'text-red-700'}`}>
-                    {detail.row.status !== 'submitted' ? 'Not submitted' : detail.row.passed ? 'Passed' : 'Failed'}
-                  </p>
-                </div>
-                <div className={`rounded-xl border p-3 ${detail.row.registered ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200'}`}>
-                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Registered</p>
-                  <p className={`text-sm font-bold mt-1.5 ${detail.row.registered ? 'text-indigo-700' : 'text-gray-500'}`}>
-                    {!detail.row.passed ? '—' : detail.row.registered ? 'Registered' : 'Not registered'}
-                  </p>
-                </div>
-              </div>
-              {detail.row.timedOut && (
-                <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
-                  Time ran out — whatever was selected at that point was submitted.
-                </p>
-              )}
-            </div>
-
-            {/* Every question, with what was ticked */}
-            <div className="p-5 max-h-[55vh] overflow-y-auto">
-              {detailLoading ? (
-                <p className="py-10 text-center text-gray-500 text-sm">Loading the answers…</p>
-              ) : detail.error ? (
-                <p className="py-10 text-center text-red-600 text-sm">{detail.error}</p>
-              ) : !detail.attempt?.detail?.length ? (
-                <p className="py-10 text-center text-gray-500 text-sm">
-                  {detail.row.status === 'submitted'
-                    ? 'No answer breakdown was recorded for this attempt.'
-                    : 'This attempt was never submitted, so there are no answers to show.'}
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {detail.attempt.detail.map((d, i) => (
-                    <div key={d.questionId || i}
-                      className={`rounded-xl border p-4 ${d.correct ? 'border-green-200 bg-green-50/40' : 'border-red-200 bg-red-50/40'}`}>
-                      <div className="flex items-start gap-3">
-                        <span className={`flex-shrink-0 h-6 w-6 rounded-full text-white text-[11px] font-bold flex items-center justify-center ${
-                          d.correct ? 'bg-green-600' : 'bg-red-500'}`}>{i + 1}</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-gray-900 text-[14px] whitespace-pre-wrap">{d.question}</p>
-                          <div className="mt-3 space-y-1.5 text-[13px]">
-                            <p className="text-green-800">
-                              <span className="font-semibold">Correct answer:</span>{' '}
-                              {(detail.attempt.questionOptions?.[d.questionId] || [])[d.correctIndex]
-                                ?? `Option ${Number(d.correctIndex) + 1}`}
-                            </p>
-                            <p className={d.correct ? 'text-green-800' : 'text-red-700'}>
-                              <span className="font-semibold">They ticked:</span>{' '}
-                              {d.chosen === -1 || d.chosen === undefined || d.chosen === null
-                                ? <em className="text-gray-500">left unanswered</em>
-                                : ((detail.attempt.questionOptions?.[d.questionId] || [])[d.chosen]
-                                    ?? `Option ${Number(d.chosen) + 1}`)}
-                              {d.correct ? ' ✓' : ' ✕'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -576,6 +479,104 @@ export function EligibilityResults() {
           </div>
         )}
       </div>
+
+      {/* One attempt in full */}
+      {detail && (
+        <div onClick={() => setDetail(null)}
+          className="fixed inset-0 z-[300] bg-black/50 flex items-start justify-center p-4 overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl w-full max-w-3xl my-8 shadow-2xl">
+            {/* Header — who, and how they scored */}
+            <div className="p-5 border-b border-gray-200">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{detail.row.name}</h3>
+                  <p className="text-[13px] text-gray-500">{detail.row.email} · {detail.row.phone}</p>
+                  <p className="text-[12px] text-gray-400 mt-0.5">{detail.row.role} check</p>
+                </div>
+                <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Score</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {detail.row.status === 'submitted' ? `${detail.row.percent}%` : '—'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Correct</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {detail.row.status === 'submitted' ? `${detail.row.correct}/${detail.row.total}` : '—'}
+                  </p>
+                </div>
+                <div className={`rounded-xl border p-3 ${detail.row.passed ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                  <p className="text-[10px] uppercase tracking-wider opacity-70">Result</p>
+                  <p className={`text-sm font-bold mt-1.5 ${detail.row.passed ? 'text-green-700' : 'text-red-700'}`}>
+                    {detail.row.status !== 'submitted' ? 'Not submitted' : detail.row.passed ? 'Passed' : 'Failed'}
+                  </p>
+                </div>
+                <div className={`rounded-xl border p-3 ${detail.row.registered ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200'}`}>
+                  <p className="text-[10px] uppercase tracking-wider text-gray-400">Registered</p>
+                  <p className={`text-sm font-bold mt-1.5 ${detail.row.registered ? 'text-indigo-700' : 'text-gray-500'}`}>
+                    {!detail.row.passed ? '—' : detail.row.registered ? 'Registered' : 'Not registered'}
+                  </p>
+                </div>
+              </div>
+              {detail.row.timedOut && (
+                <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+                  Time ran out — whatever was selected at that point was submitted.
+                </p>
+              )}
+            </div>
+
+            {/* Every question, with what was ticked */}
+            <div className="p-5 max-h-[55vh] overflow-y-auto">
+              {detailLoading ? (
+                <p className="py-10 text-center text-gray-500 text-sm">Loading the answers…</p>
+              ) : detail.error ? (
+                <p className="py-10 text-center text-red-600 text-sm">{detail.error}</p>
+              ) : !detail.attempt?.detail?.length ? (
+                <p className="py-10 text-center text-gray-500 text-sm">
+                  {detail.row.status === 'submitted'
+                    ? 'No answer breakdown was recorded for this attempt.'
+                    : 'This attempt was never submitted, so there are no answers to show.'}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {detail.attempt.detail.map((d, i) => (
+                    <div key={d.questionId || i}
+                      className={`rounded-xl border p-4 ${d.correct ? 'border-green-200 bg-green-50/40' : 'border-red-200 bg-red-50/40'}`}>
+                      <div className="flex items-start gap-3">
+                        <span className={`flex-shrink-0 h-6 w-6 rounded-full text-white text-[11px] font-bold flex items-center justify-center ${
+                          d.correct ? 'bg-green-600' : 'bg-red-500'}`}>{i + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-gray-900 text-[14px] whitespace-pre-wrap">{d.question}</p>
+                          <div className="mt-3 space-y-1.5 text-[13px]">
+                            <p className="text-green-800">
+                              <span className="font-semibold">Correct answer:</span>{' '}
+                              {(detail.attempt.questionOptions?.[d.questionId] || [])[d.correctIndex]
+                                ?? `Option ${Number(d.correctIndex) + 1}`}
+                            </p>
+                            <p className={d.correct ? 'text-green-800' : 'text-red-700'}>
+                              <span className="font-semibold">They ticked:</span>{' '}
+                              {d.chosen === -1 || d.chosen === undefined || d.chosen === null
+                                ? <em className="text-gray-500">left unanswered</em>
+                                : ((detail.attempt.questionOptions?.[d.questionId] || [])[d.chosen]
+                                    ?? `Option ${Number(d.chosen) + 1}`)}
+                              {d.correct ? ' ✓' : ' ✕'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
