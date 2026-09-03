@@ -35,7 +35,7 @@ import {
   Landmark,
   Sparkles,
   MessageSquare,
-  BadgeCheck, Megaphone, ShieldCheck, CreditCard, FileSignature, Mic
+  BadgeCheck, Megaphone, ShieldCheck, CreditCard, FileSignature, Mic, ClipboardCheck, Clock
 } from 'lucide-react';
 import SuperAdminAIReports from '../pages/SuperAdminAIReports';
 import ChatPanel from './ChatPanel';
@@ -66,6 +66,7 @@ import AnnouncementsAdmin from '../pages/AnnouncementsAdmin';
 import PortalApprovals from '../pages/PortalApprovals';
 import PortalSubscriptions from '../pages/PortalSubscriptions';
 import AgreementTemplates from '../pages/AgreementTemplates';
+import { EligibilityQuestions, EligibilitySettings, EligibilityResults } from '../pages/EligibilityAdmin';
 import { BriefingPositions, BriefingRecruiters, BriefingCoaches, BriefingClientSpocs, BriefingCompanies } from '../pages/BriefingsAdmin';
 import { AllCandidatesPanel, DirectCandidatesPanel, ActiveCandidatesPanel } from '../pages/SuperAdminCandidates';
 import SuperAdminAssignedPositions from '../pages/SuperAdminAssignedPositions';
@@ -315,6 +316,14 @@ const SuperAdmin = () => {
       { id: 'category-create', icon: PlusCircle, label: 'Create Menu', component: <CategoryCreate /> },
       { id: 'category-list', icon: List, label: 'All Menu', component: <CategoryList /> },
       ]
+    },
+    {
+      id: 'menu-eligibility', icon: ClipboardCheck, label: 'Eligibility Checks',
+      children: [
+        { id: 'eligibility-questions', icon: List, label: 'Questions', component: <EligibilityQuestions /> },
+        { id: 'eligibility-settings', icon: Clock, label: 'Timer & Messages', component: <EligibilitySettings /> },
+        { id: 'eligibility-results', icon: ClipboardCheck, label: 'Results', component: <EligibilityResults /> },
+      ],
     },
     { id: 'admin-tools', icon: Wrench, label: 'Admin Tools', component: <AdminTools /> },
   ];

@@ -154,6 +154,7 @@ app.use("/api/agreement", agreement);
 app.use("/api/recruiter-email", recruiterEmail);
 app.use("/api/inbox-access", inboxAccess);
 app.use("/api/tts", require("./router/tts"));
+app.use("/api/eligibility", require("./router/eligibility"));
 app.use("/api/inbox-payment", inboxPayment);
 app.use("/api/company", companyPortal);
 app.use("/api/public-job", publicJob);
