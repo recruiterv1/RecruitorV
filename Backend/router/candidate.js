@@ -360,6 +360,54 @@ async function alreadySubmittedToPosition(pos_id, emails, mob, candidate, recEma
   });
 }
 
+
+// Is this candidate already with this company, on some other position?
+//
+// A company that already holds a candidate's details should not receive them
+// again through a different requirement — the second submission is a duplicate
+// from the client's point of view, whoever sends it.
+//
+// Matched on email or phone, and looked up by identity rather than by scanning
+// the company's whole candidate list, so it stays cheap on a big client.
+// Rejected and dropped records do not block: a candidate turned down for one
+// role can legitimately be put forward for another.
+async function alreadyWithCompany(client, pos_id, emails, mob) {
+  const { db } = require('../router/firebase_ad');
+  const company = (client || '').toString().trim().toLowerCase();
+  const email = (emails || '').trim().toLowerCase();
+  const phone = (mob || '').toString().replace(/\D/g, '');
+  if (!company || (!email && !phone)) return null;
+
+  const runs = [];
+  if (email) runs.push(db.collection('candidate_db').where('emails', '==', emails).get());
+  if (phone) runs.push(db.collection('candidate_db').where('mob', '==', mob).get());
+
+  const snaps = await Promise.all(runs);
+  const seen = new Set();
+  for (const snap of snaps) {
+    for (const d of snap.docs) {
+      if (seen.has(d.id)) continue;
+      seen.add(d.id);
+      const c = d.data();
+
+      if ((c.client || '').toString().trim().toLowerCase() !== company) continue;
+      if (String(c.pos_id || '') === String(pos_id || '')) continue;   // same position is the other check's job
+      if (!c.pos_id) continue;                                          // resume-bank / referral rows are not submissions
+      if (c.source === 'clientspoc_bulk') continue;
+      if (CANDIDATE_REJECTED_STATUSES.has((c.statusa || '').toLowerCase().trim())) continue;
+
+      return {
+        pos_id: c.pos_id,
+        pos_name: c.pos_name || '',
+        client: c.client || '',
+        statusa: c.statusa || '',
+        submittedBy: c.recName || c.recEmail || '',
+      };
+    }
+  }
+  return null;
+}
+
 router.post('/data/candi', isLoggedIn, async (req,res)=>{
   try {
     let news = (await recruiter.findRecruiterByEmail(req.user.email)) ||
@@ -450,6 +498,26 @@ let {
       return res.status(409).json({
         message: "This candidate has already been submitted to this position and cannot be submitted again.",
       });
+    }
+
+    // 🔒 …and the company already holding this candidate blocks a second
+    // submission against any of its other positions.
+    try {
+      const withCompany = await alreadyWithCompany(client, pos_id, emails, mob);
+      if (withCompany) {
+        return res.status(409).json({
+          duplicate: 'company',
+          message: 'Candidate data already with company.',
+          detail: `This candidate is already with ${withCompany.client}`
+            + (withCompany.pos_name ? ` on "${withCompany.pos_name}"` : '')
+            + (withCompany.pos_id ? ` (#${withCompany.pos_id})` : '')
+            + '. The same candidate cannot be submitted against another position for this company.',
+          existing: withCompany,
+        });
+      }
+    } catch (e) {
+      // A fault in this check must not block a legitimate submission.
+      console.error('company duplicate check skipped:', e.message);
     }
 
     // 🎁 Carry referral attribution forward. If this candidate was originally

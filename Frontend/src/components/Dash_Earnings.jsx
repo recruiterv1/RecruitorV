@@ -8,11 +8,6 @@ import { UserStateContext } from '../context/AuthPro';
 
 const Dash_Earnings = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { user } = useContext(UserStateContext);
-  // A vendor's or consulting firm's recruiters are paid by their own
-  // organisation, so this page does not apply to them — the sidebar entry is
-  // hidden, and the URL is refused here too.
-  const isVendorTeam = !!user?.vendorEmail || !!user?.consultingFirmId;
 
   return (
     <SidebarProvider>
@@ -73,6 +68,11 @@ const Dash_Earnings = () => {
 // Helper component to handle dynamic padding based on sidebar state
 const SidebarContentWrapper = ({ isSidebarOpen, setIsSidebarOpen }) => {
   const { isSidebarCollapsed } = useContext(SidebarContext);
+  const { user } = useContext(UserStateContext);
+  // A vendor's or consulting firm's recruiters are paid by their own
+  // organisation, so this page does not apply to them — the sidebar entry is
+  // hidden, and the URL is refused here too.
+  const isVendorTeam = !!user?.vendorEmail || !!user?.consultingFirmId;
   
   return (
     <div 
