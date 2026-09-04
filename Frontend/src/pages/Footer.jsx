@@ -50,11 +50,11 @@ const Footer = () => {
               </li>
               <li>
                 <Link 
-                  to="/reg" 
+                  to="/check-eligibility" 
                   className="group flex items-center gap-2 text-gray-300 hover:text-orange-400 transition-all duration-300"
                 >
                   <ArrowRight size={16} className="opacity-0 -ml-6 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300 text-orange-400" />
-                  <span className="group-hover:translate-x-1 transition-transform duration-300">Register as Recruiter</span>
+                  <span className="group-hover:translate-x-1 transition-transform duration-300">Join as a Recruiter</span>
                 </Link>
               </li>
               <li>
@@ -165,7 +165,7 @@ const Footer = () => {
             <div className="mt-8 p-4 bg-gradient-to-r from-blue-600/30 to-orange-600/30 rounded-xl border border-blue-500/30">
               <p className="text-sm text-gray-200 mb-3 font-medium">Ready to get started?</p>
               <Link 
-                to="/reg"
+                to="/check-eligibility"
                 className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-orange-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:from-blue-700 hover:to-orange-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 <span>Join Now</span>

@@ -57,6 +57,7 @@ const CoachCandidates = React.lazy(() => import('./pages/CoachCandidates'));
 const VendorPublicPage = React.lazy(() => import('./pages/VendorPublicPage'));
 const CheckEligibility = React.lazy(() => import('./pages/CheckEligibility'));
 const TrainingManual = React.lazy(() => import('./pages/TrainingManual'));
+const EligibilityGate = React.lazy(() => import('./components/EligibilityGate'));
 const MainFresher = React.lazy(() => import('./pages/MainFresher'));
 const MainCareerSwitch = React.lazy(() => import('./pages/MainCareerSwitch'));
 const MainCorporate = React.lazy(() => import('./pages/MainCorporate'));
@@ -276,7 +277,7 @@ class ErrorBoundary extends React.Component {
                 if (document.referrer) {
                   window.history.back();
                 } else {
-                  window.location.href = '/reg';
+                  window.location.href = '/check-eligibility';
                 }
               }}
               style={{
@@ -410,7 +411,8 @@ const App = () => {
             <Route  path='/' element={<HomeLanding/>}/>
             <Route path='/old-home' element={<Homepage/>}/>
             <Route path='/new-home' element={<HomepageV2/>}/>
-            <Route path='/reg' element={<Register/>} />
+            {/* Registration opens only to someone who has cleared the check. */}
+            <Route path='/reg' element={<EligibilityGate><Register/></EligibilityGate>} />
             <Route path='/otp' element={<Otp/>}/>
             <Route path='/dash_rec' element={<Dash_rec/>} />
             <Route path='/dash_position' element={<Dash_Position/>} />

@@ -382,10 +382,10 @@ const Login = () => {
             <div className="flex items-center justify-center gap-2 text-sm pt-2">
               <span className="text-gray-600">Don't have an account?</span>
               <Link
-                to="/reg"
+                to="/check-eligibility"
                 className="text-blue-600 hover:text-orange-500 font-semibold hover:underline transition-colors"
               >
-                Sign Up
+                Join Now
               </Link>
             </div>
 

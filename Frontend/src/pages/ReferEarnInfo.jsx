@@ -50,7 +50,7 @@ export default function ReferEarnInfo() {
               Know someone looking for a job? Refer them to Recruiterv and earn <b className="text-slate-900">5% of their CTC</b> when they get hired. No effort, no cost — just share and earn.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
-              <Link to="/reg" className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white px-7 py-3.5 font-bold shadow-xl shadow-violet-500/30 transition-all">
+              <Link to="/check-eligibility" className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white px-7 py-3.5 font-bold shadow-xl shadow-violet-500/30 transition-all">
                 Start Referring <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </Link>
               <Link to="/log_rec" className="inline-flex items-center gap-2 rounded-xl border border-slate-300 text-slate-800 px-7 py-3.5 font-bold hover:border-violet-400 hover:text-violet-600 transition-all">
@@ -168,7 +168,7 @@ export default function ReferEarnInfo() {
               <h2 className="text-4xl sm:text-5xl font-black leading-tight">Start Earning From Your Network Today</h2>
               <p className="mt-4 text-violet-100 text-lg">Sign up free, refer a candidate, and earn when they get hired. It's that simple.</p>
               <div className="mt-8 flex flex-wrap gap-4">
-                <Link to="/reg" className="inline-flex items-center gap-2 rounded-xl bg-white text-violet-700 px-7 py-3.5 font-bold shadow-lg hover:bg-violet-50 transition-all">
+                <Link to="/check-eligibility" className="inline-flex items-center gap-2 rounded-xl bg-white text-violet-700 px-7 py-3.5 font-bold shadow-lg hover:bg-violet-50 transition-all">
                   Get Started Free <ArrowRight size={18} />
                 </Link>
                 <Link to="/log_rec" className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/30 px-7 py-3.5 font-bold transition-all">

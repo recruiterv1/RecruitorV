@@ -121,7 +121,7 @@ const Finalcta = () => {
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
               <Link
-                to="/reg"
+                to="/check-eligibility"
                 className="group relative inline-flex items-center justify-center gap-3 bg-gradient-to-r from-white to-blue-50 text-blue-950 px-8 py-5 rounded-2xl font-bold text-lg hover:from-blue-50 hover:to-white transition-all duration-500 shadow-2xl hover:shadow-3xl transform hover:-translate-y-2 overflow-hidden"
               >
                 {/* Shine Effect */}

@@ -126,7 +126,7 @@ export default function HomepageV2() {
 
           <div className="hidden lg:flex items-center gap-3">
             <Link to="/log_rec" className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${scrolled ? "text-gray-700 hover:bg-gray-100" : "text-white hover:bg-white/10"}`}>Sign In</Link>
-            <Link to="/reg" className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 shadow-lg shadow-orange-500/30 transition-all transform hover:-translate-y-0.5">
+            <Link to="/check-eligibility" className="px-5 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 shadow-lg shadow-orange-500/30 transition-all transform hover:-translate-y-0.5">
               Get Started Free
             </Link>
           </div>
@@ -143,7 +143,7 @@ export default function HomepageV2() {
             ))}
             <div className="flex gap-3 pt-2">
               <Link to="/log_rec" className="flex-1 text-center py-3 border-2 border-gray-200 rounded-xl font-semibold text-sm">Sign In</Link>
-              <Link to="/reg" className="flex-1 text-center py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl font-bold text-sm">Get Started</Link>
+              <Link to="/check-eligibility" className="flex-1 text-center py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl font-bold text-sm">Get Started</Link>
             </div>
           </div>
         )}
@@ -177,7 +177,7 @@ export default function HomepageV2() {
             </p>
 
             <div className="flex flex-wrap gap-4 mb-10">
-              <Link to="/reg" className="group inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white px-7 py-4 rounded-2xl font-bold text-base shadow-2xl shadow-orange-500/30 transition-all transform hover:-translate-y-1">
+              <Link to="/check-eligibility" className="group inline-flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white px-7 py-4 rounded-2xl font-bold text-base shadow-2xl shadow-orange-500/30 transition-all transform hover:-translate-y-1">
                 Start Earning Free
                 <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </Link>
@@ -298,7 +298,7 @@ export default function HomepageV2() {
                   <p className="text-gray-500 text-sm leading-relaxed flex-1">{r.description}</p>
                   <div className="mt-6 flex gap-3">
                     <Link to={r.link} className="flex-1 text-center py-2.5 border-2 border-gray-200 hover:border-gray-300 rounded-xl text-sm font-semibold text-gray-700 transition-all">Learn More</Link>
-                    <Link to="/reg" className={`flex-1 text-center py-2.5 bg-gradient-to-r ${r.gradient} text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all`}>Join</Link>
+                    <Link to="/check-eligibility" className={`flex-1 text-center py-2.5 bg-gradient-to-r ${r.gradient} text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all`}>Join</Link>
                   </div>
                 </div>
               );
@@ -335,7 +335,7 @@ export default function HomepageV2() {
           </div>
 
           <div className="mt-14 text-center">
-            <Link to="/reg" className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-4 rounded-2xl font-bold text-base shadow-xl shadow-blue-500/30 hover:shadow-blue-500/50 transition-all transform hover:-translate-y-1">
+            <Link to="/check-eligibility" className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-4 rounded-2xl font-bold text-base shadow-xl shadow-blue-500/30 hover:shadow-blue-500/50 transition-all transform hover:-translate-y-1">
               Start Your Journey <ArrowRight size={18} />
             </Link>
           </div>
@@ -458,7 +458,7 @@ export default function HomepageV2() {
             Join 2,000+ recruiters, coaches, and experts already working on live mandates with India's most structured recruitment platform.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/reg" className="group inline-flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white px-8 py-5 rounded-2xl font-bold text-lg shadow-2xl shadow-orange-500/30 transition-all transform hover:-translate-y-1">
+            <Link to="/check-eligibility" className="group inline-flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 text-white px-8 py-5 rounded-2xl font-bold text-lg shadow-2xl shadow-orange-500/30 transition-all transform hover:-translate-y-1">
               Get Started for Free
               <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
             </Link>
@@ -491,7 +491,7 @@ export default function HomepageV2() {
             </div>
             <div>
               <div className="text-white font-bold mb-4 text-sm uppercase tracking-wider">Company</div>
-              {[["About Us","/about"],["Blog","/blog"],["Register","/reg"],["Sign In","/log_rec"]].map(([l,h]) => (
+              {[["About Us","/about"],["Blog","/blog"],["Join Now","/check-eligibility"],["Sign In","/log_rec"]].map(([l,h]) => (
                 <Link key={l} to={h} className="block text-sm hover:text-white transition-colors mb-2">{l}</Link>
               ))}
             </div>

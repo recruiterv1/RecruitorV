@@ -39,7 +39,7 @@ const Home = () => {
           Transforming India's recruitment landscape with AI-driven hiring, transparent dashboards, and recruiter-first opportunities.
         </p>
         <div className="space-x-4">
-          <Link to="/reg" className="bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-blue-100">
+          <Link to="/check-eligibility" className="bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-blue-100">
             Register Now
           </Link>
           <Link to="/log_rec" className="border border-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600">
@@ -57,7 +57,7 @@ const Home = () => {
               <h3 className="text-lg font-semibold text-blue-700">{job.title}</h3>
               <p className="text-gray-600">{job.location}</p>
               <p className="text-blue-600 font-bold">{job.ctc}</p>
-              <Link to="/reg" className="mt-4 inline-block text-sm text-white bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">
+              <Link to="/check-eligibility" className="mt-4 inline-block text-sm text-white bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">
                 Submit Resume
               </Link>
             </div>
@@ -114,7 +114,7 @@ const Home = () => {
         <p className="max-w-xl mx-auto text-gray-600 mb-6">
           Whether you're an independent recruiter or a boutique firm, Recruiter Adda gives you access to top mandates and transparent earnings.
         </p>
-        <Link to="/reg" className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700">
+        <Link to="/check-eligibility" className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700">
           Get Started
         </Link>
       </section>

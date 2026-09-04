@@ -282,7 +282,7 @@ const Faq = () => {
 
 export default function RecruiterLanding() {
   const navigate = useNavigate();
-  const register = () => navigate('/reg');
+  const register = () => navigate('/check-eligibility');
   const login = () => navigate('/log_rec');
 
   return (

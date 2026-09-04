@@ -334,7 +334,7 @@ const WhyChooseUs = () => {
             Join 1000+ recruiters who are already earning with live mandates, expert coaching, and transparent revenue sharing
           </p>
           <Link
-            to="/reg"
+            to="/check-eligibility"
             className="inline-flex items-center gap-2 bg-white text-blue-600 px-8 py-4 rounded-xl font-bold text-lg hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
           >
             <span>Start Recruiting Today</span>

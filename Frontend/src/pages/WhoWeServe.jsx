@@ -9,7 +9,7 @@ const WhoWeServe = () => {
       title: "Recruiter",
       description: "RecruiterV supports freelance recruiters with structure, coaching and clear mandates, handling clients and payouts, linking performance to outcomes, and turning rejections into learning to build accuracy, confidence and long-term capability.",
       knowMoreLink: "/recruiter",
-      registerLink: "/reg",
+      registerLink: "/check-eligibility",
       gradient: "from-blue-500 to-blue-600",
       iconBg: "from-blue-100 to-blue-200",
       iconColor: "text-blue-600",
@@ -20,7 +20,7 @@ const WhoWeServe = () => {
       title: "Hiring Guru",
       description: "RecruiterV makes coaching core, letting senior recruiters guide mandate clarity, screening and performance, measured by outcomes and closures, while scaling expertise independently across multiple mandates in a structured freelance ecosystem.",
       knowMoreLink: "/coach",
-      registerLink: "/reg",
+      registerLink: "/check-eligibility",
       gradient: "from-orange-500 to-orange-600",
       iconBg: "from-orange-100 to-orange-200",
       iconColor: "text-orange-600",
@@ -31,7 +31,7 @@ const WhoWeServe = () => {
       title: "Industry Expert",
       description: "RecruiterV embeds industry experts into hiring workflows to validate role fit and expectations, reducing mismatches, improving shortlist quality, and monetising expertise selectively without sourcing involvement, strengthening recruiter and corporate trust.",
       knowMoreLink: "/expert",
-      registerLink: "/reg",
+      registerLink: "/check-eligibility",
       gradient: "from-blue-600 to-purple-600",
       iconBg: "from-blue-100 to-purple-100",
       iconColor: "text-purple-600",
@@ -117,7 +117,7 @@ const WhoWeServe = () => {
                     to={role.registerLink}
                     className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-bold text-sm text-white bg-gradient-to-r ${role.gradient} hover:shadow-lg transition-all transform hover:scale-105`}
                   >
-                    <span>Register Now</span>
+                    <span>Join Now</span>
                     <CheckCircle size={16} />
                   </Link>
                 </div>

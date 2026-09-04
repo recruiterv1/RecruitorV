@@ -3,6 +3,7 @@ import axios from 'axios';
 import { ArrowRight, Clock, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import Header from './Header';
 import Footer from './Footer';
+import { rememberEligibilityPass } from '../utils/eligibilityPass';
 
 // Public eligibility check. Someone enters their details, picks a role, answers
 // the MCQs against a timer, and is told whether they cleared the mark.
@@ -65,6 +66,9 @@ export default function CheckEligibility() {
       const r = await axios.post('/api/eligibility/public/submit', {
         attemptId: attempt.attemptId, answers, timedOut,
       });
+      // Remember a pass so this browser can open /reg without the email having
+      // to be carried in the URL. The server still verifies it.
+      if (r.data?.passed) rememberEligibilityPass(form.email.trim().toLowerCase(), form.role);
       setResult(r.data);
       setStage('result');
     } catch (e) {
