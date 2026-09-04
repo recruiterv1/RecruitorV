@@ -366,6 +366,10 @@ async function alreadySubmittedToPosition(pos_id, emails, mob, candidate, recEma
 // unrelated candidates in the data, and matching on those would block the wrong
 // people. Anything that is not a well-formed, non-specimen PAN is ignored here —
 // email and phone still catch those candidates.
+// How long a company's claim on a candidate lasts. After this, the same
+// candidate may be submitted against another of that company's positions.
+const COMPANY_HOLD_DAYS = 90;
+
 const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const PAN_SPECIMENS = new Set(['ABCDE1234F', 'AAAAA0000A', 'AAAAA1111A', 'ABCDE0000A', 'XXXXX0000X']);
 const usablePan = (pan) => {
@@ -394,47 +398,90 @@ async function alreadyWithCompany(client, pos_id, emails, mob, pan) {
   const panNo = usablePan(pan);
   if (!company || (!email && !phone && !panNo)) return null;
 
+  const CANDIDATES = db.collection('candidate_db');
+  const byIdentity = [];      // rows found by email or phone — always trusted
+  const byPan = [];           // rows found by PAN — trusted only if the PAN is unique to one person
+
   const runs = [];
-  if (email) runs.push(db.collection('candidate_db').where('emails', '==', emails).get());
-  if (phone) runs.push(db.collection('candidate_db').where('mob', '==', mob).get());
-  // PAN is stored with inconsistent casing, so query both forms rather than
-  // relying on however it happened to be saved.
+  if (email) runs.push(CANDIDATES.where('emails', '==', emails).get().then(s => ({ kind: 'id', s })));
+  if (phone) runs.push(CANDIDATES.where('mob', '==', mob).get().then(s => ({ kind: 'id', s })));
   if (panNo) {
-    runs.push(db.collection('candidate_db').where('pan_number', '==', panNo).get());
+    runs.push(CANDIDATES.where('pan_number', '==', panNo).get().then(s => ({ kind: 'pan', s })));
     const asGiven = (pan || '').toString().trim();
     if (asGiven && asGiven !== panNo) {
-      runs.push(db.collection('candidate_db').where('pan_number', '==', asGiven).get());
+      runs.push(CANDIDATES.where('pan_number', '==', asGiven).get().then(s => ({ kind: 'pan', s })));
     }
   }
 
-  const snaps = await Promise.all(runs);
+  const results = await Promise.all(runs);
   const seen = new Set();
-  for (const snap of snaps) {
+  for (const { kind, s: snap } of results) {
     for (const d of snap.docs) {
       if (seen.has(d.id)) continue;
       seen.add(d.id);
-      const c = d.data();
+      (kind === 'pan' ? byPan : byIdentity).push(d.data());
+    }
+  }
 
-      // A row pulled in by a PAN query must itself carry a usable PAN — the
-      // query can only be as trustworthy as the value stored.
-      if (panNo && !email && !phone && usablePan(c.pan_number) !== panNo) continue;
-      if ((c.client || '').toString().trim().toLowerCase() !== company) continue;
-      if (String(c.pos_id || '') === String(pos_id || '')) continue;   // same position is the other check's job
-      if (!c.pos_id) continue;                                          // resume-bank / referral rows are not submissions
-      // Bulk resume-bank uploads by the ClientSPOC are not submissions, and are
-      // excluded here exactly as they are from the per-position check.
-      if (c.source === 'clientspoc_bulk') continue;
-      // Status is deliberately not considered: a rejected or dropped candidate
-      // is still a candidate this company already has.
+  // A PAN that sits against several different people in the data is a
+  // copy-paste, not an identifier — a handful of well-formed values are shared
+  // by up to ten unrelated candidates. Two spellings is normal for one person
+  // ("Shyam Nivrati Bamne" and "Shyam" share a PAN and an inbox), so the line is
+  // drawn above that. Email and phone still cover anyone this skips.
+  const panNames = new Set(byPan.map(c => (c.candidate || '').toString().toLowerCase().replace(/\s+/g, ' ').trim()).filter(Boolean));
+  const panIsTrustworthy = panNames.size <= 2;
 
+  const rows = panIsTrustworthy ? [...byIdentity, ...byPan] : byIdentity;
+
+  const submittedAt = (c) => {
+    const t = c.datePosted || c.createdAt || c.statusaDate;
+    if (!t) return null;
+    if (t._seconds) return new Date(t._seconds * 1000);
+    if (typeof t.toDate === 'function') return t.toDate();
+    const d = new Date(t);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  for (const c of rows) {
+    if ((c.client || '').toString().trim().toLowerCase() !== company) continue;
+    if (String(c.pos_id || '') === String(pos_id || '')) continue;   // same position is the other check's job
+    if (!c.pos_id) continue;                                          // resume-bank / referral rows are not submissions
+    // Bulk resume-bank uploads by the ClientSPOC are not submissions, and are
+    // excluded here exactly as they are from the per-position check.
+    if (c.source === 'clientspoc_bulk') continue;
+    // Status is deliberately not considered: a rejected or dropped candidate
+    // is still a candidate this company already has.
+
+    // The hold lasts COMPANY_HOLD_DAYS from the earlier submission. After that
+    // the company's claim lapses and the candidate can be put forward again.
+    const when = submittedAt(c);
+    if (when) {
+      const freeOn = new Date(when.getTime() + COMPANY_HOLD_DAYS * 86400000);
+      if (freeOn <= new Date()) continue;                            // the hold has lapsed
       return {
         pos_id: c.pos_id,
         pos_name: c.pos_name || '',
         client: c.client || '',
         statusa: c.statusa || '',
         submittedBy: c.recName || c.recEmail || '',
+        submittedOn: when.toISOString(),
+        freeOn: freeOn.toISOString(),
+        daysLeft: Math.ceil((freeOn - Date.now()) / 86400000),
       };
     }
+
+    // No usable date on the earlier record — hold it rather than let a
+    // duplicate through on a missing field.
+    return {
+      pos_id: c.pos_id,
+      pos_name: c.pos_name || '',
+      client: c.client || '',
+      statusa: c.statusa || '',
+      submittedBy: c.recName || c.recEmail || '',
+      submittedOn: null,
+      freeOn: null,
+      daysLeft: null,
+    };
   }
   return null;
 }
@@ -542,7 +589,12 @@ let {
           detail: `This candidate is already with ${withCompany.client}`
             + (withCompany.pos_name ? ` on "${withCompany.pos_name}"` : '')
             + (withCompany.pos_id ? ` (#${withCompany.pos_id})` : '')
-            + '. The same candidate cannot be submitted against another position for this company.',
+            + '.'
+            + (withCompany.freeOn
+                ? ` They can be submitted to another position for this company from `
+                  + `${new Date(withCompany.freeOn).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                  + ` — ${withCompany.daysLeft} day${withCompany.daysLeft === 1 ? '' : 's'} from now.`
+                : ' The same candidate cannot be submitted against another position for this company.'),
           existing: withCompany,
         });
       }
