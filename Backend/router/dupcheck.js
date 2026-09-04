@@ -120,6 +120,13 @@ const fresh = (r) => {
   return t > 0 && (Date.now() - t) < VERDICT_TTL_MINUTES * 60000;
 };
 
+// The job to search under in the client's portal. RippleHire's job id and our
+// JR number are the same value, so either source will do — the position's own
+// field when an admin has filled it in (only 9 of 341 LTIMindtree positions
+// have), otherwise the JR the recruiter typed on the form.
+const jobIdFor = (pos, body) =>
+  String(pos?.ripplehire_job_id || body?.jr_number || body?.jobId || '').trim();
+
 const identityOf = (b) => ({
   name: String(b?.candidate || b?.name || '').trim(),
   email: String(b?.emails || b?.email || '').trim().toLowerCase(),
@@ -144,7 +151,7 @@ router.get('/required', authed, async (req, res) => {
       required: !!company,
       client: company?.client || pos.client || '',
       portalName: company?.portalName || '',
-      jobId: pos.ripplehire_job_id || '',
+      jobId: jobIdFor(pos, {}),
     });
   } catch (e) {
     console.error('dupcheck/required error:', e.message);
@@ -200,7 +207,7 @@ router.post('/request', authed, async (req, res) => {
       pos_id: posId,
       pos_name: pos.position || '',
       client: company.client,
-      jobId: pos.ripplehire_job_id || '',
+      jobId: jobIdFor(pos, req.body),
       requestedBy: String(req.user.email || '').toLowerCase(),
       status: 'pending',
       requestedAt: new Date(),

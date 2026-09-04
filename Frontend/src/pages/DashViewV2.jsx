@@ -402,6 +402,13 @@ function DashViewV2Inner() {
   const [noticeProof, setNoticeProof] = useState('');
   const [dupChecked, setDupChecked] = useState(false);
   const [showDup, setShowDup] = useState(false);
+  // Verification against the client's own hiring system (e.g. LTIMindtree's
+  // RippleHire). Off unless the pilot is switched on for BOTH this recruiter
+  // and this position's client, so for everyone else clientCheck stays null and
+  // nothing below renders or gates.
+  const [clientCheck, setClientCheck] = useState(null);
+  const [dupReq, setDupReq] = useState(null);
+  const [dupBusy, setDupBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [draftId, setDraftId] = useState(null);       // draft currently being edited/resumed
   const [drafts, setDrafts] = useState([]);           // this recruiter's saved drafts for this position
@@ -1155,6 +1162,71 @@ function DashViewV2Inner() {
     return null;
   };
 
+  useEffect(() => {
+    if (!pos_id) return;
+    let live = true;
+    axios.get(`/api/dupcheck/required?pos_id=${pos_id}`, { withCredentials: true })
+      .then(r => { if (live && r.data?.required) setClientCheck(r.data); })
+      .catch(() => {});   // never let this stop the form loading
+    return () => { live = false; };
+  }, [pos_id]);
+
+  // Ask whoever holds a logged-in session on the client's portal, then poll for
+  // their verdict. The recruiter carries on filling the form while they wait.
+  const runClientCheck = async () => {
+    if (dupBusy) return;
+    const { candidate, emails, mob, pan_number } = form;
+    if (!emails.trim() && !mob.trim() && !pan_number.trim()) {
+      flagInvalid('Enter the email, phone or PAN first.'); return;
+    }
+    setDupBusy(true);
+    setDupReq({ status: 'pending' });
+    try {
+      const r = await axios.post('/api/dupcheck/request',
+        { pos_id, candidate, emails, mob, pan_number, dob: form.dob, jr_number: form.jr_number }, { withCredentials: true });
+      if (!r.data?.requestId && !r.data?.reused) { setDupReq(null); setDupBusy(false); return; }
+      if (r.data.status === 'answered' || r.data.reused) { settle(r.data); return; }
+      poll(r.data.requestId);
+    } catch (e) {
+      setDupReq({ status: 'error', note: e?.response?.data?.message || 'Could not reach the checker.' });
+      setDupBusy(false);
+    }
+  };
+
+  const settle = (d) => {
+    setDupReq({ status: d.status || 'answered', verdict: d.verdict, note: d.note || '' });
+    setDupBusy(false);
+    // A clear verdict IS the duplicate check, so satisfy the manual attestation.
+    if (d.verdict === 'clear') setDupChecked(true);
+  };
+
+  const poll = (id) => {
+    const started = Date.now();
+    const tick = async () => {
+      try {
+        const r = await axios.get(`/api/dupcheck/status/${id}`, { withCredentials: true });
+        const d = r.data || {};
+        if (d.status === 'answered' || d.status === 'unanswered') { settle(d); return; }
+      } catch { /* keep waiting */ }
+      // Stop badgering the server after 10 minutes; the recruiter is let through.
+      if (Date.now() - started > 10 * 60000) { settle({ status: 'unanswered' }); return; }
+      setTimeout(tick, 5000);
+    };
+    setTimeout(tick, 3000);
+  };
+
+  // Blocks leaving Identity while a check is outstanding or came back duplicate.
+  // Returns null when there is nothing to stop — including when the pilot is off.
+  const clientCheckBlocker = () => {
+    if (!clientCheck?.required) return null;
+    if (!dupReq) return `Run the ${clientCheck.client} duplicate check before continuing.`;
+    if (dupReq.status === 'pending') return `Waiting for the ${clientCheck.client} duplicate check…`;
+    if (dupReq.verdict === 'duplicate') {
+      return `This candidate is already with ${clientCheck.client}${dupReq.note ? ` — ${dupReq.note}` : ''}. They cannot be submitted.`;
+    }
+    return null;   // clear, unanswered or errored → let them through
+  };
+
   const flagInvalid = (msg) => { setToast('⚠ ' + msg); setTimeout(() => setToast(''), 3500); };
 
   // Next only advances when the current step's mandatory fields are filled;
@@ -1164,6 +1236,10 @@ function DashViewV2Inner() {
       for (let k = step; k < i; k++) {
         const err = validateStep(k);
         if (err) { setStep(k); flagInvalid(err); return; }
+      }
+      if (step === 0) {
+        const blocked = clientCheckBlocker();
+        if (blocked) { flagInvalid(blocked); return; }
       }
     }
     setStep(i);
@@ -1176,6 +1252,8 @@ function DashViewV2Inner() {
       const err = validateStep(k);
       if (err) { setStep(k); flagInvalid(err); return; }
     }
+    const clientBlocked = clientCheckBlocker();
+    if (clientBlocked) { setStep(0); flagInvalid(clientBlocked); return; }
     if (!dupChecked) { setShowDup(true); return; }
     if (submitting) return;
     setSubmitting(true);
@@ -1905,6 +1983,27 @@ function DashViewV2Inner() {
                       <div className="field"><label>JR Number <span className="req">*</span></label><input type="text" placeholder="Requisition / JR number" value={form.jr_number} onChange={e => upd('jr_number', e.target.value)} /></div>
                     )}
                     <div className="field"><label>Current Employer</label><input type="text" placeholder="Company name" value={form.curr_emp} onChange={e => upd('curr_emp', e.target.value)} /></div>
+                    {clientCheck?.required && (
+                      <div className="field full" style={{ gridColumn: '1 / -1' }}>
+                        <div style={{ border: '1px solid #e4e7ee', borderRadius: 10, padding: '14px 16px', background: '#f8f9fc' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                            <button type="button" className="btn btn-ghost" disabled={dupBusy}
+                              onClick={runClientCheck}
+                              style={{ whiteSpace: 'nowrap' }}>
+                              {dupBusy ? 'Checking…' : `🔍 Check duplicate with ${clientCheck.client}`}
+                            </button>
+                            <span style={{ fontSize: 13, color: '#5b6478' }}>
+                              {!dupReq && `Verifies against ${clientCheck.portalName || 'the client portal'} before you continue.`}
+                              {dupReq?.status === 'pending' && 'Waiting for a response — you can keep filling the form.'}
+                              {dupReq?.verdict === 'clear' && <strong style={{ color: '#1a7f4b' }}>✓ Not with {clientCheck.client} — you can continue.</strong>}
+                              {dupReq?.verdict === 'duplicate' && <strong style={{ color: '#c0392b' }}>✕ Already with {clientCheck.client}{dupReq.note ? ` — ${dupReq.note}` : ''}. This candidate cannot be submitted.</strong>}
+                              {dupReq?.status === 'unanswered' && <span style={{ color: '#8a6d1f' }}>No response in time — continuing without it. This submission will be flagged for verification.</span>}
+                              {dupReq?.status === 'error' && <span style={{ color: '#8a6d1f' }}>{dupReq.note} You can continue.</span>}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="field"><label>Highest Education <span className="req">*</span></label>
                       <MultiSelect value={form.highest_education} onChange={v => upd('highest_education', v)}
                         options={[...EDUCATION_OPTIONS, ...customEducation]}

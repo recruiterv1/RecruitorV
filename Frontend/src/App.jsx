@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import TeamRecruiterProfile from './pages/TeamRecruiterProfile';
 import MyBriefings from './pages/MyBriefings';
+import DuplicateCheckQueue from './pages/DuplicateCheckQueue';
 import BriefingEntry from './pages/BriefingEntry';
 import axios from 'axios';
 import { installAuthInterceptor } from './lib/authToken';
@@ -409,6 +410,7 @@ const App = () => {
       <Routes>
             <Route path='/team-profile' element={<TeamRecruiterProfile/>}/>
             <Route path='/my-briefings' element={<MyBriefings/>}/>
+            <Route path='/duplicate-check-queue' element={<DuplicateCheckQueue/>}/>
             <Route path='/briefing/:pos_id' element={<BriefingEntry/>}/>
             <Route  path='/' element={<HomeLanding/>}/>
             <Route path='/old-home' element={<Homepage/>}/>
