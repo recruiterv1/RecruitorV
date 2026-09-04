@@ -126,7 +126,7 @@ const Howitworks = () => {
               Access live hiring needs without chasing clients
             </p>
             <Link
-              to="/check-eligibility"
+              to="/join"
               className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white px-8 py-4 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300"
             >
               <span>Register Now</span>

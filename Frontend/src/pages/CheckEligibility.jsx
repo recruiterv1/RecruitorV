@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { ArrowRight, Clock, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowRight, Clock, Loader2, AlertCircle, Award, RefreshCw } from 'lucide-react';
 import Header from './Header';
 import Footer from './Footer';
 import { rememberEligibilityPass } from '../utils/eligibilityPass';
@@ -28,7 +28,8 @@ const fmtClock = (secs) => {
 export default function CheckEligibility() {
   const [stage, setStage] = useState('form');      // form | test | result
   const [cfg, setCfg] = useState(null);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', role: '' });
+  const [categories, setCategories] = useState([]);
+  const [form, setForm] = useState({ name: '', email: '', phone: '', role: '', skillCategory: '' });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -39,6 +40,10 @@ export default function CheckEligibility() {
   const submittedRef = useRef(false);
 
   useEffect(() => {
+    axios.get('/api/eligibility/public/skill-categories')
+      .then(r => setCategories(r.data?.categories || []))
+      .catch(() => setCategories([]));
+
     axios.get('/api/eligibility/public/config')
       .then(r => setCfg(r.data))
       .catch(() => setCfg({ roles: ['Coach', 'Expert', 'Recruiter'], config: {} }));
@@ -147,6 +152,20 @@ export default function CheckEligibility() {
                         onChange={(e) => setForm(f => ({ ...f, [k]: e.target.value }))} />
                     </div>
                   ))}
+                </div>
+
+                <div className="mt-6">
+                  <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                    Which field do you recruit in?
+                  </label>
+                  <select className={field} value={form.skillCategory}
+                    onChange={(e) => setForm(f => ({ ...f, skillCategory: e.target.value }))}>
+                    <option value="">Select your field</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    This appears on your certificate if you are Certified.
+                  </p>
                 </div>
 
                 <h2 className="text-xl font-bold text-slate-900 mt-9">Which role are you applying for?</h2>
@@ -260,25 +279,58 @@ export default function CheckEligibility() {
         {stage === 'result' && result && (
           <section className="px-4 py-16 sm:py-24">
             <div className="max-w-xl mx-auto text-center">
-              <div className={`mx-auto h-16 w-16 rounded-full flex items-center justify-center ${
-                result.passed ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>
-                {result.passed ? <CheckCircle2 size={32} /> : <XCircle size={32} />}
-              </div>
-              <h1 className="text-[26px] sm:text-[32px] font-bold text-slate-900 mt-6">
-                {result.passed ? 'You’re eligible' : 'Not this time'}
-              </h1>
+              {(() => {
+                const tone = {
+                  certified: { bg: 'bg-green-100', fg: 'text-green-600', Icon: Award, head: 'You’re Certified' },
+                  conditional: { bg: 'bg-amber-100', fg: 'text-amber-600', Icon: Clock, head: 'You’re through — conditionally' },
+                  not_qualified: { bg: 'bg-slate-100', fg: 'text-slate-500', Icon: RefreshCw, head: 'Not yet qualified' },
+                }[result.tier] || { bg: 'bg-slate-100', fg: 'text-slate-500', Icon: RefreshCw, head: 'Your result' };
+                return (
+                  <>
+                    <div className={`mx-auto h-16 w-16 rounded-full flex items-center justify-center ${tone.bg} ${tone.fg}`}>
+                      <tone.Icon size={32} />
+                    </div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400 mt-6">
+                      {result.tierLabel}
+                    </p>
+                    <h1 className="text-[26px] sm:text-[32px] font-bold text-slate-900 mt-1">{tone.head}</h1>
+                  </>
+                );
+              })()}
+
               <p className="mt-4 text-[15px] text-slate-600 leading-relaxed">{result.message}</p>
 
-              <div className="grid grid-cols-3 gap-3 mt-8">
-                {[[`${result.percent}%`, 'Your score'], [`${result.correct}/${result.total}`, 'Correct'],
-                  [`${result.passPercent}%`, 'Pass mark']].map(([v, l]) => (
-                  <div key={l} className="rounded-2xl border border-slate-200 p-4">
-                    <p className="text-2xl font-bold text-slate-900">{v}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{l}</p>
-                  </div>
-                ))}
+              <div className="grid grid-cols-2 gap-3 mt-8">
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-2xl font-bold text-slate-900">{result.percent}%</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Your score</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-2xl font-bold text-slate-900">{result.correct}/{result.total}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Correct</p>
+                </div>
               </div>
 
+              {result.tier === 'certified' && result.certificateEmailed && (
+                <p className="text-[13px] text-green-800 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mt-5">
+                  Your certificate has been emailed to <span className="font-semibold">{form.email.trim()}</span>
+                  {result.certificateId ? <> · ID {result.certificateId}</> : null}
+                </p>
+              )}
+              {result.tier === 'conditional' && result.positionCap && (
+                <p className="text-[13px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-5">
+                  You can work up to <span className="font-semibold">{result.positionCap} active positions</span> while
+                  on the probationary pipeline.
+                </p>
+              )}
+              {result.retakeAfter && (
+                <p className="text-[12px] text-slate-500 mt-3">
+                  Your retake window opens on{' '}
+                  <span className="font-semibold text-slate-700">
+                    {new Date(result.retakeAfter).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>.
+                </p>
+              )}
               {result.timedOut && (
                 <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mt-5">
                   Your time ran out, so the answers you had selected were submitted automatically.
@@ -293,7 +345,7 @@ export default function CheckEligibility() {
                     Continue to Registration <ArrowRight size={16} />
                   </a>
                   <p className="text-[12px] text-slate-500 mt-3">
-                    Register with <span className="font-semibold">{form.email.trim()}</span> — your pass is
+                    Register with <span className="font-semibold">{form.email.trim()}</span> — your result is
                     recorded against this address.
                   </p>
                 </>

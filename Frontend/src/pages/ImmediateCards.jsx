@@ -230,7 +230,7 @@ const ImmediateCards = () => {
               </Link>
 
               <Link
-                to="/check-eligibility"
+                to="/join"
                 className="w-full border-2 border-blue-600 text-blue-600 hover:bg-blue-50 py-3 rounded-xl font-semibold transition-all duration-300"
               >
                 No, Register Me

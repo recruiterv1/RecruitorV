@@ -447,7 +447,7 @@ export default function VendorPublicPage() {
               <div className="mt-3 space-y-2">
                 <button onClick={() => navigate('/vendor')} className="block text-[13px] text-slate-300 hover:text-white">Vendor Login</button>
                 <button onClick={() => navigate('/log_rec')} className="block text-[13px] text-slate-300 hover:text-white">Recruiter Login</button>
-                <button onClick={() => navigate('/check-eligibility')} className="block text-[13px] text-slate-300 hover:text-white">Join as a Recruiter</button>
+                <button onClick={() => navigate('/join')} className="block text-[13px] text-slate-300 hover:text-white">Join as a Recruiter</button>
               </div>
               {(v.publicEmail || v.publicPhone) && (
                 <div className="mt-5 space-y-1.5">

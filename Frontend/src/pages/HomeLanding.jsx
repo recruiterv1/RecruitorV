@@ -150,7 +150,7 @@ function Hero() {
             ))}
           </div>
           <div className="mt-8 flex flex-wrap gap-4">
-            <Link to="/check-eligibility" className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white px-7 py-3.5 font-bold shadow-xl shadow-violet-500/30 transition-all">
+            <Link to="/join" className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white px-7 py-3.5 font-bold shadow-xl shadow-violet-500/30 transition-all">
               Post a Position <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link to="/smart-apply" className="inline-flex items-center gap-2 rounded-xl border border-slate-300 text-slate-800 px-7 py-3.5 font-bold hover:border-violet-400 hover:text-violet-600 transition-all">
@@ -193,10 +193,10 @@ function SharedRewards() {
               When a position is closed, every contributor earns a fair, pre-agreed reward — recruiters, experts, coaches and referrers all win together. Your exact share is shown transparently inside your dashboard.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link to="/check-eligibility" className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 font-bold shadow-lg shadow-violet-500/25 transition-all">
+              <Link to="/join" className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 font-bold shadow-lg shadow-violet-500/25 transition-all">
                 Start Earning Together <ArrowRight size={16} />
               </Link>
-              <Link to="/check-eligibility" className="inline-flex items-center gap-2 rounded-xl border-2 border-violet-200 text-violet-700 hover:bg-violet-50 px-6 py-3 font-bold transition-all">
+              <Link to="/join" className="inline-flex items-center gap-2 rounded-xl border-2 border-violet-200 text-violet-700 hover:bg-violet-50 px-6 py-3 font-bold transition-all">
                 <ClipboardCheck size={16} /> Check Eligibility
               </Link>
             </div>
@@ -526,13 +526,13 @@ function FinalCTA() {
               Join thousands of recruiters, coaches and candidates who are already growing with Recruiterv.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
-              <Link to="/check-eligibility" className="inline-flex items-center gap-2 rounded-xl bg-white text-violet-700 px-7 py-3.5 font-bold shadow-lg hover:bg-violet-50 transition-all">
+              <Link to="/join" className="inline-flex items-center gap-2 rounded-xl bg-white text-violet-700 px-7 py-3.5 font-bold shadow-lg hover:bg-violet-50 transition-all">
                 Start Recruiting <ArrowRight size={18} />
               </Link>
               <Link to="/smart-apply" className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/30 px-7 py-3.5 font-bold transition-all">
                 Apply as Candidate
               </Link>
-              <Link to="/check-eligibility" className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/30 px-7 py-3.5 font-bold transition-all">
+              <Link to="/join" className="inline-flex items-center gap-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/30 px-7 py-3.5 font-bold transition-all">
                 <ClipboardCheck size={18} /> Check Eligibility
               </Link>
             </div>
@@ -568,7 +568,7 @@ Start with the<br />eligibility check.
                 result immediately, and go straight on to registration once you pass.
               </p>
               <div className="mt-8 flex flex-wrap gap-4">
-                <Link to="/check-eligibility"
+                <Link to="/join"
                   className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-7 py-3.5 font-bold shadow-lg shadow-violet-500/25 transition-all">
                   Start Your Eligibility Check <ArrowRight size={18} />
                 </Link>

@@ -266,7 +266,7 @@ const MainFresher = () => {
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
-                to="/check-eligibility"
+                to="/join"
                 className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-8 py-4 rounded-full font-semibold hover:shadow-xl transition-all transform hover:-translate-y-1"
               >
                 <span>Start Your Journey</span>
@@ -605,7 +605,7 @@ const MainFresher = () => {
               </ul>
               
               <Link
-                to="/check-eligibility"
+                to="/join"
                 className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 rounded-full font-bold hover:shadow-xl transition-all transform hover:-translate-y-1"
               >
                 <span>Get Started Now</span>
@@ -635,7 +635,7 @@ const MainFresher = () => {
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link
-                  to="/check-eligibility"
+                  to="/join"
                   className="inline-flex items-center justify-center gap-2 bg-white text-gray-900 px-8 py-4 rounded-full font-bold hover:shadow-xl transition-all transform hover:-translate-y-1"
                 >
                   <span>Register Now</span>

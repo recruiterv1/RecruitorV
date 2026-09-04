@@ -268,7 +268,7 @@ const Faq = () => {
 
 export default function MainCoach() {
   const navigate = useNavigate();
-  const register = () => navigate('/check-eligibility');
+  const register = () => navigate('/join');
   const login = () => navigate('/log_rec');
 
   return (

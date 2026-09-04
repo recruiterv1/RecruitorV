@@ -142,7 +142,7 @@ const ForgotPassword = () => {
             <div className="flex items-center justify-center gap-2 text-sm">
               <span className="text-gray-600">Don't have an account?</span>
               <Link
-                to="/check-eligibility"
+                to="/join"
                 className="text-blue-600 hover:text-orange-500 font-semibold hover:underline transition-colors"
               >
                 Join Now

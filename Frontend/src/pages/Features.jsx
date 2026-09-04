@@ -130,7 +130,7 @@ const Features = () => {
               Join thousands of recruiters who are already succeeding with RecruiterV
             </p>
             <Link
-              to="/check-eligibility"
+              to="/join"
               className="inline-flex items-center gap-2 bg-white text-blue-600 px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-all duration-300 shadow-lg hover:shadow-xl"
             >
               <span>Get Started </span>

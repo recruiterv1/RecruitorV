@@ -281,7 +281,7 @@ const Header = () => {
               </Link>
 
               <Link
-                to="/check-eligibility"
+                to="/join"
                 className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white px-5 py-2.5 rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all duration-300 shadow-md hover:shadow-lg font-semibold transform hover:-translate-y-0.5"
               >
                 <span>Join Now</span>
@@ -451,7 +451,7 @@ const Header = () => {
               </Link>
 
               <Link
-                to="/check-eligibility"
+                to="/join"
                 onClick={() => setIsMenuOpen(false)}
                 className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 py-3 rounded-lg hover:from-orange-600 hover:to-orange-700 transition-all duration-300 shadow-md font-semibold"
               >

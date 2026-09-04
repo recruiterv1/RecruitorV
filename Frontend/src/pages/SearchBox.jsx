@@ -59,7 +59,7 @@
 //             {/* CTA Buttons */}
 //             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
 //               <Link
-//                 to="/check-eligibility"
+//                 to="/join"
 //                 className="group inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white px-8 py-4 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300"
 //               >
 //                 <span>Start Your Career</span>
@@ -214,7 +214,7 @@ const SearchBox = () => {
             {/* CTA Buttons - Commented out as per original */}
             {/* <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start pt-2">
               <Link
-                to="/check-eligibility"
+                to="/join"
                 className="group inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-xl font-semibold text-base sm:text-lg shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300"
               >
                 <span>Start Your Career</span>

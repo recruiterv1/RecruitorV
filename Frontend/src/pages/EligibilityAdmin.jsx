@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import {
   Plus, Trash2, Pencil, Save, X, Loader2, CheckCircle2, XCircle,
-  Clock, Search, Download, AlertCircle,
+  Clock, Search, Download, AlertCircle, Award,
 } from 'lucide-react';
 
 // SuperAdmin side of the eligibility check: the question bank, the per-role
@@ -274,13 +274,8 @@ export function EligibilitySettings() {
               <div className="grid sm:grid-cols-3 gap-4 mt-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Time limit (minutes)</label>
-                  <input type="number" min={1} max={240} className={field} value={c.timeLimitMinutes ?? 15}
+                  <input type="number" min={1} max={240} className={field} value={c.timeLimitMinutes ?? 10}
                     onChange={(e) => set(role, 'timeLimitMinutes', e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Pass mark (%)</label>
-                  <input type="number" min={1} max={100} className={field} value={c.passPercent ?? 70}
-                    onChange={(e) => set(role, 'passPercent', e.target.value)} />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Questions to ask</label>
@@ -288,19 +283,65 @@ export function EligibilitySettings() {
                     onChange={(e) => set(role, 'questionCount', e.target.value)} />
                   <p className="text-[11px] text-gray-400 mt-1">0 asks every active question.</p>
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Conditional position cap</label>
+                  <input type="number" min={1} className={field} value={c.conditionalPositionCap ?? 4}
+                    onChange={(e) => set(role, 'conditionalPositionCap', e.target.value)} />
+                </div>
               </div>
 
-              <label className="block text-xs font-semibold text-gray-600 mb-1 mt-4">
-                Success message — shown at {c.passPercent ?? 70}% and above
+              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mt-6 mb-2">Score bands</p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Certified from (%) — full access
+                  </label>
+                  <input type="number" min={1} max={100} className={field} value={c.certifiedFrom ?? 80}
+                    onChange={(e) => set(role, 'certifiedFrom', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">
+                    Conditional from (%) — probationary
+                  </label>
+                  <input type="number" min={1} max={100} className={field} value={c.conditionalFrom ?? 50}
+                    onChange={(e) => set(role, 'conditionalFrom', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Conditional retake after (days)</label>
+                  <input type="number" min={0} className={field} value={c.conditionalRetakeDays ?? 30}
+                    onChange={(e) => set(role, 'conditionalRetakeDays', e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Not-qualified retake after (days)</label>
+                  <input type="number" min={0} className={field} value={c.notQualifiedRetakeDays ?? 90}
+                    onChange={(e) => set(role, 'notQualifiedRetakeDays', e.target.value)} />
+                </div>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-2">
+                Anything below the conditional mark is Not Yet Qualified. Certified candidates are
+                issued a certificate by email automatically.
+              </p>
+
+              <label className="block text-xs font-semibold text-gray-600 mb-1 mt-6">
+                Certified message — {c.certifiedFrom ?? 80}% and above
               </label>
-              <textarea rows={2} className={field} value={c.successMessage ?? ''}
-                onChange={(e) => set(role, 'successMessage', e.target.value)} />
+              <textarea rows={2} className={field} value={c.certifiedMessage ?? ''}
+                onChange={(e) => set(role, 'certifiedMessage', e.target.value)} />
 
               <label className="block text-xs font-semibold text-gray-600 mb-1 mt-4">
-                Sorry message — shown below the pass mark
+                Conditional message — {c.conditionalFrom ?? 50}% to {(c.certifiedFrom ?? 80) - 1}%
               </label>
-              <textarea rows={2} className={field} value={c.sorryMessage ?? ''}
-                onChange={(e) => set(role, 'sorryMessage', e.target.value)} />
+              <textarea rows={2} className={field} value={c.conditionalMessage ?? ''}
+                onChange={(e) => set(role, 'conditionalMessage', e.target.value)} />
+              <p className="text-[11px] text-gray-400 mt-1">
+                {'{cap}'} becomes the position cap and {'{retake}'} the retake days.
+              </p>
+
+              <label className="block text-xs font-semibold text-gray-600 mb-1 mt-4">
+                Not-yet-qualified message — below {c.conditionalFrom ?? 50}%
+              </label>
+              <textarea rows={2} className={field} value={c.notQualifiedMessage ?? ''}
+                onChange={(e) => set(role, 'notQualifiedMessage', e.target.value)} />
 
               <button onClick={() => save(role)} disabled={saving === role}
                 className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold disabled:opacity-60">
@@ -363,10 +404,11 @@ export function EligibilityResults() {
   }, [rows, role, q]);
 
   const exportCsv = () => {
-    const head = ['Name', 'Email', 'Phone', 'Role', 'Score %', 'Correct', 'Total', 'Result', 'Registered', 'Timed out', 'Started', 'Submitted'];
+    const head = ['Name', 'Email', 'Phone', 'Role', 'Score %', 'Correct', 'Total', 'Result', 'Certificate ID', 'Registered', 'Timed out', 'Started', 'Submitted'];
     const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const body = filtered.map(r => [r.name, r.email, r.phone, r.role, r.percent ?? '', r.correct ?? '', r.total ?? '',
-      r.status !== 'submitted' ? 'Not submitted' : (r.passed ? 'Passed' : 'Failed'),
+      r.status !== 'submitted' ? 'Not submitted' : r.tierLabel,
+      r.certificateId || '',
       r.passed ? (r.registered ? 'Yes' : 'No') : '',
       r.timedOut ? 'Yes' : 'No', r.startedAt || '', r.submittedAt || ''].map(esc).join(','));
     const blob = new Blob([[head.map(esc).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -429,6 +471,7 @@ export function EligibilityResults() {
                   <th className="px-4 py-3 font-semibold">Role</th>
                   <th className="px-4 py-3 font-semibold">Score</th>
                   <th className="px-4 py-3 font-semibold">Result</th>
+                  <th className="px-4 py-3 font-semibold">Certificate</th>
                   <th className="px-4 py-3 font-semibold">Registered</th>
                   <th className="px-4 py-3 font-semibold whitespace-nowrap">Started</th>
                   <th className="px-4 py-3 font-semibold whitespace-nowrap">Submitted</th>
@@ -453,10 +496,25 @@ export function EligibilityResults() {
                     <td className="px-4 py-3">
                       {r.status !== 'submitted'
                         ? <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200"><Clock size={11} /> Not submitted</span>
-                        : r.passed
-                          ? <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-200"><CheckCircle2 size={11} /> Passed</span>
-                          : <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200"><XCircle size={11} /> Failed</span>}
+                        : r.tier === 'certified'
+                          ? <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-200"><Award size={11} /> Certified</span>
+                          : r.tier === 'conditional'
+                            ? <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200"><Clock size={11} /> Conditional</span>
+                            : <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200"><XCircle size={11} /> Not yet qualified</span>}
                       {r.timedOut && <span className="block text-[10px] text-amber-600 mt-1">timed out</span>}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      {r.certificateId ? (
+                        <div className="flex items-center gap-2">
+                          {r.certificateUrl
+                            ? <a href={r.certificateUrl} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
+                                <Download size={11} /> PDF
+                              </a>
+                            : <span className="text-[11px] text-gray-400">not stored</span>}
+                          <span className="text-[10px] font-mono text-gray-500" title="Certificate ID">{r.certificateId}</span>
+                        </div>
+                      ) : <span className="text-gray-300 text-[11px]">—</span>}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       {!r.passed
@@ -510,10 +568,15 @@ export function EligibilityResults() {
                     {detail.row.status === 'submitted' ? `${detail.row.correct}/${detail.row.total}` : '—'}
                   </p>
                 </div>
-                <div className={`rounded-xl border p-3 ${detail.row.passed ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                <div className={`rounded-xl border p-3 ${
+                  detail.row.tier === 'certified' ? 'border-green-200 bg-green-50'
+                  : detail.row.tier === 'conditional' ? 'border-amber-200 bg-amber-50'
+                  : 'border-slate-200 bg-slate-50'}`}>
                   <p className="text-[10px] uppercase tracking-wider opacity-70">Result</p>
-                  <p className={`text-sm font-bold mt-1.5 ${detail.row.passed ? 'text-green-700' : 'text-red-700'}`}>
-                    {detail.row.status !== 'submitted' ? 'Not submitted' : detail.row.passed ? 'Passed' : 'Failed'}
+                  <p className={`text-sm font-bold mt-1.5 ${
+                    detail.row.tier === 'certified' ? 'text-green-700'
+                    : detail.row.tier === 'conditional' ? 'text-amber-700' : 'text-slate-600'}`}>
+                    {detail.row.status !== 'submitted' ? 'Not submitted' : detail.row.tierLabel}
                   </p>
                 </div>
                 <div className={`rounded-xl border p-3 ${detail.row.registered ? 'border-indigo-200 bg-indigo-50' : 'border-gray-200'}`}>
@@ -523,6 +586,36 @@ export function EligibilityResults() {
                   </p>
                 </div>
               </div>
+              {(detail.row.skillCategory || detail.row.certificateId || detail.row.positionCap) && (
+                <div className="flex flex-wrap items-center gap-2 mt-3">
+                  {detail.row.skillCategory && (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+                      Field: {detail.row.skillCategory}
+                    </span>
+                  )}
+                  {detail.row.positionCap && (
+                    <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                      Capped at {detail.row.positionCap} active positions
+                    </span>
+                  )}
+                  {detail.row.certificateId && (
+                    <>
+                      <span className="text-[11px] font-mono px-2.5 py-1 rounded-full bg-green-50 text-green-800 border border-green-200">
+                        {detail.row.certificateId}
+                      </span>
+                      {detail.row.certificateUrl && (
+                        <a href={detail.row.certificateUrl} target="_blank" rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg text-white bg-orange-500 hover:bg-orange-600">
+                          <Download size={11} /> Download certificate
+                        </a>
+                      )}
+                      <span className="text-[11px] text-gray-500">
+                        {detail.row.certificateEmailed ? 'emailed to the candidate' : 'not emailed'}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
               {detail.row.timedOut && (
                 <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
                   Time ran out — whatever was selected at that point was submitted.

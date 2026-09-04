@@ -23,12 +23,55 @@ const QUESTIONS = () => db.collection('eligibility_questions');
 const CONFIG = () => db.collection('eligibility_config');
 const ATTEMPTS = () => db.collection('eligibility_attempts');
 
+// Three outcome tiers rather than a pass/fail line. Everyone gets a path:
+//   80–100  Certified          — full access, requisitions immediately
+//   50–79   Conditional        — probationary pipeline, capped positions, retake in 1 month
+//   0–49    Not Yet Qualified  — not a rejection; retake window opens after 90 days
 const DEFAULT_CONFIG = {
-  timeLimitMinutes: 15,
-  passPercent: 70,
+  timeLimitMinutes: 10,
+  certifiedFrom: 80,
+  conditionalFrom: 50,
+  conditionalPositionCap: 4,
+  conditionalRetakeDays: 30,
+  notQualifiedRetakeDays: 90,
   questionCount: 0,          // 0 = ask every active question
-  successMessage: 'Congratulations! You have cleared the RecruiterV eligibility check. Our team will be in touch with your next steps.',
-  sorryMessage: 'Thank you for taking the eligibility check. You have not met the required score this time. You are welcome to try again later.',
+  certifiedMessage: 'Congratulations — you are Certified. You have full access: requisitions are assigned immediately and the standard revenue share applies from day one. Your certificate is on its way to your inbox.',
+  conditionalMessage: 'You are through on a conditional basis. You are live on a probationary pipeline, capped at {cap} active positions. A retake window opens after {retake} days to move up to Certified.',
+  notQualifiedMessage: 'This is not a rejection. A retake window opens after {retake} days, and your scorecard is on its way by email with exactly what to work on first.',
+};
+
+const TIERS = {
+  certified: { key: 'certified', label: 'Certified' },
+  conditional: { key: 'conditional', label: 'Conditional' },
+  not_qualified: { key: 'not_qualified', label: 'Not Yet Qualified' },
+};
+
+// Which band a score falls into, and what that means.
+const tierFor = (percent, cfg) => {
+  const p = Number(percent) || 0;
+  if (p >= Number(cfg.certifiedFrom)) return 'certified';
+  if (p >= Number(cfg.conditionalFrom)) return 'conditional';
+  return 'not_qualified';
+};
+
+// Certified and Conditional are both "through" — only Not Yet Qualified is not.
+const tierAllowsRegistration = (tier) => tier === 'certified' || tier === 'conditional';
+
+// Fill {cap} / {retake} in the configured messages.
+const renderTierMessage = (tier, cfg) => {
+  const raw = tier === 'certified' ? cfg.certifiedMessage
+    : tier === 'conditional' ? cfg.conditionalMessage
+    : cfg.notQualifiedMessage;
+  return String(raw || '')
+    .replace(/\{cap\}/g, cfg.conditionalPositionCap)
+    .replace(/\{retake\}/g, tier === 'conditional' ? cfg.conditionalRetakeDays : cfg.notQualifiedRetakeDays);
+};
+
+// When may this person sit the assessment again?
+const retakeAfter = (tier, cfg, from = new Date()) => {
+  if (tier === 'certified') return null;               // no need
+  const days = tier === 'conditional' ? cfg.conditionalRetakeDays : cfg.notQualifiedRetakeDays;
+  return new Date(from.getTime() + Number(days) * 86400000);
 };
 
 // ── SuperAdmin auth ──────────────────────────────────────────────────────────
@@ -87,7 +130,9 @@ router.get('/public/config', async (req, res) => {
       const asked = c.questionCount > 0 ? Math.min(c.questionCount, available) : available;
       out[role] = {
         timeLimitMinutes: c.timeLimitMinutes,
-        passPercent: c.passPercent,
+        certifiedFrom: c.certifiedFrom,
+        conditionalFrom: c.conditionalFrom,
+        conditionalPositionCap: c.conditionalPositionCap,
         questionCount: asked,
         ready: asked > 0,
       };
@@ -96,6 +141,20 @@ router.get('/public/config', async (req, res) => {
   } catch (e) {
     console.error('eligibility/public/config error:', e.message);
     res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /eligibility/public/skill-categories — the parent categories the
+// SuperAdmin maintains, so the assessment offers the same list the rest of the
+// platform uses rather than a hard-coded one.
+router.get('/public/skill-categories', async (req, res) => {
+  try {
+    const snap = await db.collection('skill_categories').get();
+    const names = [...new Set(snap.docs.map(d => String(d.data().parent || '').trim()).filter(Boolean))].sort();
+    res.json({ success: true, categories: names });
+  } catch (e) {
+    console.error('eligibility/skill-categories error:', e.message);
+    res.json({ success: true, categories: [] });   // the field is optional
   }
 });
 
@@ -119,6 +178,34 @@ router.post('/public/start', async (req, res) => {
     }
 
     const cfg = await configFor(role);
+
+    // A retake window has to have opened before they can sit it again. Somebody
+    // already Certified has no reason to retake.
+    try {
+      const prior = await ATTEMPTS()
+        .where('email', '==', email).where('role', '==', role).where('status', '==', 'submitted').get();
+      if (!prior.empty) {
+        const latest = prior.docs
+          .map(d => d.data())
+          .sort((a, b) => (b.submittedAt?._seconds || 0) - (a.submittedAt?._seconds || 0))[0];
+        if (latest.tier === 'certified') {
+          return res.status(409).json({
+            success: false, alreadyCertified: true,
+            message: 'You are already Certified for this track — there is no need to sit it again.',
+          });
+        }
+        const opensAt = latest.retakeAfter?._seconds ? new Date(latest.retakeAfter._seconds * 1000) : null;
+        if (opensAt && opensAt > new Date()) {
+          const days = Math.ceil((opensAt - Date.now()) / 86400000);
+          return res.status(429).json({
+            success: false, retakeLocked: true, retakeAfter: opensAt.toISOString(),
+            message: `Your retake window opens on ${opensAt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} — ${days} day${days === 1 ? '' : 's'} from now.`,
+          });
+        }
+      }
+    } catch (e) {
+      console.error('eligibility retake-window check skipped:', e.message);
+    }
     const snap = await QUESTIONS().where('role', '==', role).where('active', '==', true).get();
     if (snap.empty) {
       return res.status(409).json({
@@ -133,6 +220,8 @@ router.post('/public/start', async (req, res) => {
 
     const attempt = await ATTEMPTS().add({
       name, email, phone, role,
+      // Carried onto the certificate for anyone who reaches Certified.
+      skillCategory: String(req.body?.skillCategory || '').trim().slice(0, 120),
       questionIds: pool.map(q => q.id),
       timeLimitMinutes: cfg.timeLimitMinutes,
       passPercent: cfg.passPercent,
@@ -190,23 +279,64 @@ router.post('/public/submit', async (req, res) => {
 
     const total = detail.length;
     const percent = total ? Math.round((correct / total) * 100) : 0;
-    const passPercent = Number(a.passPercent ?? DEFAULT_CONFIG.passPercent);
-    const passed = percent >= passPercent;
 
     const cfg = await configFor(a.role);
+    const tier = tierFor(percent, cfg);
+    // `passed` now means "cleared to register" — Certified or Conditional.
+    const passed = tierAllowsRegistration(tier);
+    const submittedAt = new Date();
+    const opensAt = retakeAfter(tier, cfg, submittedAt);
 
     await ref.update({
       status: 'submitted',
       timedOut,
-      correct, total, percent, passed,
+      correct, total, percent,
+      tier,
+      passed,
+      positionCap: tier === 'conditional' ? Number(cfg.conditionalPositionCap) : null,
+      retakeAfter: opensAt,
       detail,
-      submittedAt: new Date(),
+      submittedAt,
     });
+
+    // A Certified result earns a certificate, emailed straight away.
+    let certificate = null;
+    if (tier === 'certified') {
+      try {
+        const { issueCertificate } = require('../utils/eligibilityCertificate');
+        certificate = await issueCertificate({
+          attemptId: ref.id,
+          name: a.name, email: a.email, role: a.role,
+          skillCategory: a.skillCategory || '',
+          percent, issuedAt: submittedAt,
+        });
+        if (certificate?.certificateId) {
+          await ref.update({
+            certificateId: certificate.certificateId,
+            certificateUrl: certificate.url || '',
+            certificateEmailed: certificate.emailed === true,
+          });
+        }
+      } catch (certErr) {
+        // The result must stand even if the certificate or its email fails.
+        console.error('certificate issue failed:', certErr.message);
+      }
+    }
 
     res.json({
       success: true,
-      passed, percent, correct, total, passPercent, timedOut,
-      message: passed ? cfg.successMessage : cfg.sorryMessage,
+      tier,
+      tierLabel: TIERS[tier].label,
+      passed, percent, correct, total, timedOut,
+      certifiedFrom: cfg.certifiedFrom,
+      conditionalFrom: cfg.conditionalFrom,
+      positionCap: tier === 'conditional' ? Number(cfg.conditionalPositionCap) : null,
+      retakeAfter: opensAt ? opensAt.toISOString() : null,
+      retakeDays: tier === 'certified' ? null
+        : (tier === 'conditional' ? cfg.conditionalRetakeDays : cfg.notQualifiedRetakeDays),
+      certificateId: certificate?.certificateId || null,
+      certificateEmailed: certificate?.emailed === true,
+      message: renderTierMessage(tier, cfg),
     });
   } catch (e) {
     console.error('eligibility/public/submit error:', e.message);
@@ -419,6 +549,16 @@ router.get('/admin/results', adminAuth, async (req, res) => {
         correct: a.correct ?? null, total: a.total ?? (a.questionIds || []).length,
         percent: a.percent ?? null,
         passed: a.passed === true,
+        tier: a.tier || (a.passed === true ? 'certified' : 'not_qualified'),
+        tierLabel: TIERS[a.tier]?.label || (a.passed === true ? 'Certified' : 'Not Yet Qualified'),
+        positionCap: a.positionCap ?? null,
+        retakeAfter: toIso(a.retakeAfter),
+        // The certificate issued for a Certified result — downloadable and
+        // verifiable straight from the results table.
+        certificateId: a.certificateId || null,
+        certificateUrl: a.certificateUrl || '',
+        certificateEmailed: a.certificateEmailed === true,
+        skillCategory: a.skillCategory || '',
         timedOut: a.timedOut === true,
         // Whether the candidate went on to create the account they were cleared for.
         registered: !!acc,
@@ -441,6 +581,8 @@ router.get('/admin/results', adminAuth, async (req, res) => {
         // Of those cleared to register, how many actually did.
         registered: done.filter(r => r.passed && r.registered).length,
         notRegistered: done.filter(r => r.passed && !r.registered).length,
+        certified: done.filter(r => r.tier === 'certified').length,
+        conditional: done.filter(r => r.tier === 'conditional').length,
       },
     });
   } catch (e) {
@@ -476,6 +618,28 @@ router.get('/admin/results/:id', adminAuth, async (req, res) => {
         questionOptions,
         startedAt: toIso(a.startedAt), submittedAt: toIso(a.submittedAt),
       },
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /eligibility/verify/:certificateId — public, so a certificate can be
+// checked by anyone holding one. Returns only what a verifier needs.
+router.get('/verify/:certificateId', async (req, res) => {
+  try {
+    const id = String(req.params.certificateId || '').trim().toUpperCase();
+    const snap = await ATTEMPTS().where('certificateId', '==', id).limit(1).get();
+    if (snap.empty) return res.status(404).json({ success: false, valid: false, message: 'No certificate found with that ID.' });
+    const a = snap.docs[0].data();
+    res.json({
+      success: true, valid: true,
+      certificateId: id,
+      name: a.name || '',
+      role: a.role || '',
+      skillCategory: a.skillCategory || '',
+      tier: a.tier || 'certified',
+      issuedAt: toIso(a.submittedAt),
     });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
