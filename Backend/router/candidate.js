@@ -361,26 +361,51 @@ async function alreadySubmittedToPosition(pos_id, emails, mob, candidate, recEma
 }
 
 
+// A PAN is only safe to match on when it is actually a PAN. Placeholders like
+// "NA", "0000000000" and the specimen "ABCDE1234F" are shared by dozens of
+// unrelated candidates in the data, and matching on those would block the wrong
+// people. Anything that is not a well-formed, non-specimen PAN is ignored here —
+// email and phone still catch those candidates.
+const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const PAN_SPECIMENS = new Set(['ABCDE1234F', 'AAAAA0000A', 'AAAAA1111A', 'ABCDE0000A', 'XXXXX0000X']);
+const usablePan = (pan) => {
+  const v = (pan || '').toString().replace(/\s+/g, '').toUpperCase();
+  return PAN_FORMAT.test(v) && !PAN_SPECIMENS.has(v) ? v : '';
+};
+
 // Is this candidate already with this company, on some other position?
 //
-// A company that already holds a candidate's details should not receive them
-// again through a different requirement — the second submission is a duplicate
-// from the client's point of view, whoever sends it.
+// Once a candidate has been submitted against any position of a company, they
+// cannot be submitted against another of that company's positions. The company
+// already holds their details, so the second submission is a duplicate from the
+// client's point of view whoever sends it — and that holds regardless of what
+// happened on the first one. A rejection does not release the candidate.
 //
-// Matched on email or phone, and looked up by identity rather than by scanning
-// the company's whole candidate list, so it stays cheap on a big client.
-// Rejected and dropped records do not block: a candidate turned down for one
-// role can legitimately be put forward for another.
-async function alreadyWithCompany(client, pos_id, emails, mob) {
+// Matched on PAN, email or phone, and looked up by identity rather than by
+// scanning the company's whole candidate list, so it stays cheap on a big
+// client. PAN is the strongest of the three — a candidate can reapply with a
+// different email or number, but not a different PAN — so it is matched
+// whenever both records carry one.
+async function alreadyWithCompany(client, pos_id, emails, mob, pan) {
   const { db } = require('../router/firebase_ad');
   const company = (client || '').toString().trim().toLowerCase();
   const email = (emails || '').trim().toLowerCase();
   const phone = (mob || '').toString().replace(/\D/g, '');
-  if (!company || (!email && !phone)) return null;
+  const panNo = usablePan(pan);
+  if (!company || (!email && !phone && !panNo)) return null;
 
   const runs = [];
   if (email) runs.push(db.collection('candidate_db').where('emails', '==', emails).get());
   if (phone) runs.push(db.collection('candidate_db').where('mob', '==', mob).get());
+  // PAN is stored with inconsistent casing, so query both forms rather than
+  // relying on however it happened to be saved.
+  if (panNo) {
+    runs.push(db.collection('candidate_db').where('pan_number', '==', panNo).get());
+    const asGiven = (pan || '').toString().trim();
+    if (asGiven && asGiven !== panNo) {
+      runs.push(db.collection('candidate_db').where('pan_number', '==', asGiven).get());
+    }
+  }
 
   const snaps = await Promise.all(runs);
   const seen = new Set();
@@ -390,11 +415,17 @@ async function alreadyWithCompany(client, pos_id, emails, mob) {
       seen.add(d.id);
       const c = d.data();
 
+      // A row pulled in by a PAN query must itself carry a usable PAN — the
+      // query can only be as trustworthy as the value stored.
+      if (panNo && !email && !phone && usablePan(c.pan_number) !== panNo) continue;
       if ((c.client || '').toString().trim().toLowerCase() !== company) continue;
       if (String(c.pos_id || '') === String(pos_id || '')) continue;   // same position is the other check's job
       if (!c.pos_id) continue;                                          // resume-bank / referral rows are not submissions
+      // Bulk resume-bank uploads by the ClientSPOC are not submissions, and are
+      // excluded here exactly as they are from the per-position check.
       if (c.source === 'clientspoc_bulk') continue;
-      if (CANDIDATE_REJECTED_STATUSES.has((c.statusa || '').toLowerCase().trim())) continue;
+      // Status is deliberately not considered: a rejected or dropped candidate
+      // is still a candidate this company already has.
 
       return {
         pos_id: c.pos_id,
@@ -503,7 +534,7 @@ let {
     // 🔒 …and the company already holding this candidate blocks a second
     // submission against any of its other positions.
     try {
-      const withCompany = await alreadyWithCompany(client, pos_id, emails, mob);
+      const withCompany = await alreadyWithCompany(client, pos_id, emails, mob, pan_number);
       if (withCompany) {
         return res.status(409).json({
           duplicate: 'company',
