@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
+import CertifiedBadge from '../components/CertifiedBadge';
 import axios from 'axios';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { SidebarProvider, SidebarContext } from '../context/Sidebarcontext';
@@ -1629,8 +1630,15 @@ function DashViewV2Inner() {
                       const status = teamReqStatus[key];
                       const busy = !!teamSending[key];
                       return (
-                        <div key={c.id || key} style={{ flex: 1, minWidth: 0, border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <div key={c.id || key} style={{ flex: 1, minWidth: 0, border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff', position: 'relative' }}>
+                          {/* Certified sits in the card corner, so the standing is
+                              visible before anyone opens the profile. */}
+                          {c.eligibilityTier === 'certified' && (
+                            <span style={{ position: 'absolute', top: 10, right: 10 }}>
+                              <CertifiedBadge tier={c.eligibilityTier} size="xs" />
+                            </span>
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, paddingRight: 68 }}>
                             <div style={{ width: 34, height: 34, borderRadius: '50%', background: c.role === 'Expert' ? '#ede9fe' : '#ffedd5', color: c.role === 'Expert' ? '#6d28d9' : '#c2410c', display: 'grid', placeItems: 'center', fontWeight: 700, flexShrink: 0 }}>
                               {(c.name || '?')[0].toUpperCase()}
                             </div>

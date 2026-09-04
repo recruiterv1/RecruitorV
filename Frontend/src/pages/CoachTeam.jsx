@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
+import CertifiedBadge from '../components/CertifiedBadge';
 import axios from 'axios';
 import {
   Users, UserPlus, Search, X, CheckCircle, AlertCircle,
@@ -505,10 +506,13 @@ const CoachTeamContent = () => {
                         : <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center text-orange-700 font-bold text-lg flex-shrink-0">{(r.name || '?')[0].toUpperCase()}</div>
                       }
                       <div className="min-w-0">
-                        <button onClick={() => setProfileModal(r)}
-                          className="font-semibold text-gray-800 hover:text-orange-600 transition-colors text-left leading-tight truncate block w-full">
-                          {r.name || '—'}
-                        </button>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <button onClick={() => setProfileModal(r)}
+                            className="font-semibold text-gray-800 hover:text-orange-600 transition-colors text-left leading-tight truncate">
+                            {r.name || '—'}
+                          </button>
+                          <CertifiedBadge tier={r.eligibilityTier} size="xs" withLabel={false} />
+                        </div>
                         <p className="text-xs text-gray-500 truncate">{r.email}</p>
                         {r.location && <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5"><MapPin size={11} />{r.location}</p>}
                         {fmtLastActive(r.lastActiveDate) && (

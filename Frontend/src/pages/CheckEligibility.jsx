@@ -4,6 +4,7 @@ import { ArrowRight, Clock, Loader2, AlertCircle, Award, RefreshCw } from 'lucid
 import Header from './Header';
 import Footer from './Footer';
 import { rememberEligibilityPass } from '../utils/eligibilityPass';
+import CertifiedCelebration from '../components/CertifiedCelebration';
 
 // Public eligibility check. Someone enters their details, picks a role, answers
 // the MCQs against a timer, and is told whether they cleared the mark.
@@ -276,7 +277,21 @@ export default function CheckEligibility() {
         )}
 
         {/* ── Result ─────────────────────────────────────────────────── */}
-        {stage === 'result' && result && (
+        {stage === 'result' && result && result.tier === 'certified' && (
+          <section className="px-4 py-16 sm:py-24">
+            <CertifiedCelebration
+              name={form.name}
+              role={form.role}
+              skillCategory={form.skillCategory}
+              percent={result.percent}
+              certificateId={result.certificateId}
+              certificateUrl={result.certificateUrl}
+              registerHref={`/reg?email=${encodeURIComponent(form.email.trim())}&role=${encodeURIComponent(form.role)}`}
+            />
+          </section>
+        )}
+
+        {stage === 'result' && result && result.tier !== 'certified' && (
           <section className="px-4 py-16 sm:py-24">
             <div className="max-w-xl mx-auto text-center">
               {(() => {

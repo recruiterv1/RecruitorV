@@ -1,4 +1,5 @@
 import React, { useState, useContext, useEffect } from 'react';
+import MyCertificate from './MyCertificate';
 import { SidebarProvider, SidebarContext } from '../context/Sidebarcontext';
 import { UserStateContext } from '../context/AuthPro';
 import Sidebar from '../pages/Sidebar';
@@ -165,6 +166,9 @@ const SidebarContentWrapper = ({ isSidebarOpen, setIsSidebarOpen }) => {
       {/* ========== MAIN CONTENT ========== */}
       <main className="min-h-screen">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-full transition-all duration-300">
+
+          {/* Certification standing — renders nothing unless there is one. */}
+          <div className="mb-6"><MyCertificate /></div>
           
           {/* Credits Exhausted Banner - Only for Free Plan Users */}
           {isCreditsExhausted && showBanner && (

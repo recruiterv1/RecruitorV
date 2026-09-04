@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
+import CertifiedBadge from '../components/CertifiedBadge';
 import ChangeRoleControl from '../components/ChangeRoleControl';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
@@ -287,6 +288,7 @@ const AllCoaches = ({ embedded = false }) => {
           <div>
             <p className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
               {cell.getValue()}
+              <CertifiedBadge tier={row.original.eligibilityTier} size="xs" withLabel={false} />
               <DeviceBadges status={deviceMap[(row.original.email || '').toLowerCase()]} size={14} />
             </p>
             <p className="text-xs text-gray-500 hidden">{row.original.id}</p>

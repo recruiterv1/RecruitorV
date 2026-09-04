@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
+import CertifiedBadge from '../components/CertifiedBadge';
 import AnnouncementBar from '../components/AnnouncementBar';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -38,6 +39,7 @@ const RegisterRecruiterTab = ({ vendorInfo, vendorInfoLoaded, vendorInfoError, o
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState(null);
   const [errors, setErrors] = useState({});
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
     axios.get('/vendor/skill-categories', { withCredentials: true })
@@ -140,6 +142,7 @@ const RegisterRecruiterTab = ({ vendorInfo, vendorInfoLoaded, vendorInfoError, o
         experienceCategory: selectedCategories.join(', '),
       }, { withCredentials: true });
       setMsg({ type: 'success', text: `Recruiter "${form.name}" registered! Credentials emailed.` });
+      setTermsAccepted(false);
       setForm({ name: '', email: '', password: '', mobile: '' });
       setSelectedCategories([]);
       onRegistered();
@@ -257,10 +260,60 @@ const RegisterRecruiterTab = ({ vendorInfo, vendorInfoLoaded, vendorInfoError, o
           {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
           <p className="text-xs text-gray-400 mt-1">Credentials will be emailed to the recruiter. Minimum 6 characters.</p>
         </div>
+        {/* Terms this recruiter is being taken on under, including the
+            commission agreed between RecruiterV and this vendor. Shown here so
+            the vendor is registering someone on stated terms, not assumed ones. */}
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p className="text-sm font-bold text-gray-900">Terms &amp; Conditions</p>
+
+          <div className="mt-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Commission</p>
+            {Array.isArray(vendorInfo?.paymentTerms) && vendorInfo.paymentTerms.length ? (
+              <>
+                <div className="mt-2 space-y-1.5">
+                  {vendorInfo.paymentTerms.map((t, i) => (
+                    <div key={i} className="flex items-center justify-between text-[13px] bg-white border border-gray-200 rounded-lg px-3 py-2">
+                      <span className="font-semibold text-gray-900">{t.percent}% of the recruitment fee</span>
+                      <span className="text-gray-500">
+                        payable {Number(t.afterDays) === 0 ? 'on joining' : `${t.afterDays} days after joining`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[11px] text-gray-500 mt-2">
+                  Total {vendorInfo.paymentTerms.reduce((n, t) => n + Number(t.percent || 0), 0)}% — the terms agreed
+                  between RecruiterV and {vendorInfo?.name || 'your account'}. Your recruiter is paid by you under these terms.
+                </p>
+              </>
+            ) : (
+              <p className="text-[13px] text-gray-600 mt-2">
+                No commission terms have been set on your vendor account yet. Ask a RecruiterV administrator
+                to set them — your recruiter can still be registered in the meantime.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-4 space-y-1.5 text-[12.5px] text-gray-600 leading-relaxed">
+            <p>• The recruiter works under your vendor account and is managed by you.</p>
+            <p>• Earnings for this recruiter are settled by you, not by the platform.</p>
+            <p>• You are responsible for the conduct and data handling of the recruiters you register.</p>
+            <p>• Registering a recruiter consumes one of your allotted recruiter slots.</p>
+          </div>
+
+          <label className="flex items-start gap-2.5 mt-4 cursor-pointer">
+            <input type="checkbox" className="mt-0.5 accent-orange-500" checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)} />
+            <span className="text-[13px] text-gray-700">
+              I have read and accept these terms, including the commission above, on behalf of my organisation.
+            </span>
+          </label>
+        </div>
+
         <button
           type="submit"
-          disabled={loading}
-          className="w-full bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 disabled:opacity-50 text-white py-3 rounded-xl font-bold text-sm transition-all"
+          disabled={loading || !termsAccepted}
+          title={!termsAccepted ? 'Accept the terms and conditions to continue' : ''}
+          className="w-full bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-xl font-bold text-sm transition-all"
         >
           {loading ? 'Adding…' : 'Add Recruiter (Paid Plan)'}
         </button>
@@ -667,7 +720,10 @@ const MyRecruitersTab = ({ recruiters, loading, onRefresh }) => {
                   {(r.name || '?').charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-gray-800 truncate">{r.name}</p>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <p className="font-semibold text-gray-800 truncate">{r.name}</p>
+                    <CertifiedBadge tier={r.eligibilityTier} size="xs" withLabel={false} />
+                  </div>
                   <p className="text-xs text-gray-500 truncate">{r.email}</p>
                 </div>
                 <button

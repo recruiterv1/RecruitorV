@@ -1803,6 +1803,10 @@ router.get('/recruiters/all', authMiddleware, async (req, res) => {
           isEmployee: !!data.isEmployee,
           accountStatus: data.accountStatus || '',
           name: data.name || '',
+          // Assessment standing, so the Certified badge travels with the person
+          // wherever they are listed — team building, join requests, admin lists.
+          eligibilityTier: data.eligibilityTier || null,
+          certificateId: data.certificateId || '',
           email: data.email || '',
           phone: data.phone || data.mobile || data.mob || '',
           skillCategory: data.skillCategory || '',
@@ -2398,6 +2402,10 @@ router.get('/team/eligible-recruiters', authMiddleware, async (req, res) => {
           _lastActiveMs: toMs(data.lastActive),
           teamsConnected: teamCount[d.id] || 0,
           name: data.name || '',
+          // Assessment standing, so the Certified badge travels with the person
+          // wherever they are listed — team building, join requests, admin lists.
+          eligibilityTier: data.eligibilityTier || null,
+          certificateId: data.certificateId || '',
           email: data.email || '',
           phone: data.phone || data.mobile || '',
           skillCategory: data.skillCategory || '',
@@ -2730,6 +2738,9 @@ router.get('/team/my-team-members', authMiddleware, async (req, res) => {
           id: rd.id,
           name: rd.name || '',
           email: rd.email || e.recruiterEmail || '',
+          // Assessment standing, so a Certified recruiter is badged wherever listed.
+          eligibilityTier: rd.eligibilityTier || null,
+          certificateId: rd.certificateId || '',
           phone: rd.phone || rd.mobile || rd.mob || '',
           skillCategory: rd.skillCategory || '',
           specialization: rd.specialization || '',

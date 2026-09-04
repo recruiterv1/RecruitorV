@@ -4,9 +4,15 @@ import Sidebar from '../pages/Sidebar';
 import Dash_Header from '../pages/Dash_Header';
 import Footer from '../pages/Footer';
 import MyEarnings from '../pages/MyEarnings';
+import { UserStateContext } from '../context/AuthPro';
 
 const Dash_Earnings = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const { user } = useContext(UserStateContext);
+  // A vendor's or consulting firm's recruiters are paid by their own
+  // organisation, so this page does not apply to them — the sidebar entry is
+  // hidden, and the URL is refused here too.
+  const isVendorTeam = !!user?.vendorEmail || !!user?.consultingFirmId;
 
   return (
     <SidebarProvider>
@@ -81,7 +87,17 @@ const SidebarContentWrapper = ({ isSidebarOpen, setIsSidebarOpen }) => {
 
       {/* ========== MAIN CONTENT ========== */}
       <main className="min-h-screen">
-        <MyEarnings />
+        {isVendorTeam ? (
+          <div className="max-w-xl mx-auto text-center py-20 px-6">
+            <h2 className="text-lg font-bold text-gray-800">Earnings are handled by your organisation</h2>
+            <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+              You work under a vendor account, so your earnings are settled directly by them
+              rather than through the platform. Speak to your team lead for anything to do with payouts.
+            </p>
+          </div>
+        ) : (
+          <MyEarnings />
+        )}
       </main>
 
       {/* ========== FOOTER ========== */}

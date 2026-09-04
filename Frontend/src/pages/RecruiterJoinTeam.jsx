@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
+import CertifiedBadge from '../components/CertifiedBadge';
 import axios from 'axios';
 import {
   Users, CheckCircle, XCircle, Clock, RefreshCw, X,
@@ -442,9 +443,12 @@ const RecruiterJoinTeamPage = () => {
                       : <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-lg flex-shrink-0">{(c.name || '?')[0].toUpperCase()}</div>
                     }
                     <div className="min-w-0 flex-1">
-                      <button onClick={() => setProfileModal(c)} className="font-semibold text-gray-800 hover:text-blue-600 transition-colors text-left block truncate w-full">
-                        {c.name || '—'}
-                      </button>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <button onClick={() => setProfileModal(c)} className="font-semibold text-gray-800 hover:text-blue-600 transition-colors text-left truncate">
+                          {c.name || '—'}
+                        </button>
+                        <CertifiedBadge tier={c.eligibilityTier} size="xs" withLabel={false} />
+                      </div>
                       <p className="text-xs text-gray-500 truncate">{c.email}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${c.role === 'Expert' ? 'bg-purple-100 text-purple-700' : 'bg-orange-100 text-orange-700'}`}>{c.role}</span>

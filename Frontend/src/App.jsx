@@ -58,6 +58,7 @@ const VendorPublicPage = React.lazy(() => import('./pages/VendorPublicPage'));
 const CheckEligibility = React.lazy(() => import('./pages/CheckEligibility'));
 const JoinAssessment = React.lazy(() => import('./pages/JoinAssessment'));
 const TrainingManual = React.lazy(() => import('./pages/TrainingManual'));
+const MemberEligibilityTest = React.lazy(() => import('./pages/MemberEligibilityTest'));
 const EligibilityGate = React.lazy(() => import('./components/EligibilityGate'));
 const MainFresher = React.lazy(() => import('./pages/MainFresher'));
 const MainCareerSwitch = React.lazy(() => import('./pages/MainCareerSwitch'));
@@ -473,6 +474,7 @@ const App = () => {
             <Route path='/join' element={<JoinAssessment/>} />
             <Route path='/check-eligibility' element={<CheckEligibility/>} />
             <Route path='/training-manual' element={<TrainingManual/>} />
+            <Route path='/earn-certification' element={<MemberEligibilityTest/>} />
             <Route path='/coachexpert' element={<CoachExpert/>} />
             <Route path='/superadmin' element={<SuperAdmin/>} />
             <Route path='/admin-dashboard' element={<AdminDashboard/>} />

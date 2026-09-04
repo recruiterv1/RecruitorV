@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useChatNotify } from '../context/ChatNotify';
 import {
   LayoutDashboard,
+  Award,
   Building2,
   Briefcase,
   Users,
@@ -39,7 +40,7 @@ import axios from 'axios';
 
 // ── Recruiter menu definition ─────────────────────────────────────────────────
 // Items with `children` render as accordion groups.
-const buildRecruiterMenu = () => [
+const buildRecruiterMenu = ({ isVendorTeam } = {}) => [
   { icon: LayoutDashboard, label: 'Dashboard',       path: '/dash_rec' },
   { icon: Briefcase,       label: 'Open Positions',  path: '/dash_position' },
   {
@@ -72,7 +73,9 @@ const buildRecruiterMenu = () => [
       { icon: Wallet,         label: 'Earnings',      path: '/refer-and-earn/earnings' },
     ],
   },
-  { icon: DollarSign, label: 'My Earnings', path: '/my-earnings' },
+  // A vendor's (or consulting firm's) recruiters are paid by their own
+  // organisation, so the platform earnings page does not apply to them.
+  ...(isVendorTeam ? [] : [{ icon: DollarSign, label: 'My Earnings', path: '/my-earnings' }]),
 ];
 
 // ── Coach menu ────────────────────────────────────────────────────────────────
@@ -170,6 +173,22 @@ const Sidebar = () => {
   const isVendor       = user?.roleCategory?.toLowerCase() === 'vendor';
   const isAdmin        = user?.type === 'admin';
   const isManager      = !!user?.isEmployee && (user?.designation || '').toLowerCase() === 'manager';
+
+  // Is the certification assessment on offer for this account? Asked once, and
+  // only for the roles it covers, so other user types make no request at all.
+  const [canOfferAssessment, setCanOfferAssessment] = useState(false);
+  const assessmentRole = user?.roleCategory?.toLowerCase();
+  const mayHaveAssessment = !!user
+    && !['clientspoc', 'vendor'].includes(assessmentRole)
+    && user?.type !== 'admin';
+  useEffect(() => {
+    if (!mayHaveAssessment) { setCanOfferAssessment(false); return; }
+    let live = true;
+    axios.get('/api/eligibility/my-certification', { withCredentials: true })
+      .then(r => { if (live) setCanOfferAssessment(r.data?.assessment?.canTake === true); })
+      .catch(() => { if (live) setCanOfferAssessment(false); });
+    return () => { live = false; };
+  }, [mayHaveAssessment]);
 
   // ── Agreement / profile gates ────────────────────────────────────────────────
   // Agreement gate ENABLED — but only ever true for accounts created BEFORE the
@@ -345,12 +364,20 @@ const Sidebar = () => {
     ];
   } else {
     // Recruiter
-    menuItems = buildRecruiterMenu();
+    menuItems = buildRecruiterMenu({ isVendorTeam });
   }
 
   // Managers (employees with the "Manager" designation) get a Manager Panel.
   if (isManager && Array.isArray(menuItems)) {
     menuItems = [{ icon: UserCheck, label: 'Manager Panel', path: '/manager' }, ...menuItems];
+  }
+
+  // Earn Certification only appears while it is actually available: an existing
+  // member who has not yet been certified and still has attempts left. The
+  // server decides — once someone is Certified, or has used their three
+  // attempts, the entry disappears.
+  if (Array.isArray(menuItems) && canOfferAssessment) {
+    menuItems = [...menuItems, { icon: Award, label: 'Earn Certification', path: '/earn-certification' }];
   }
 
   // Every user type gets their own training manual, always as the last entry.

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
+import CertifiedBadge from '../components/CertifiedBadge';
 import axios from 'axios';
 import {
   UserPlus, Briefcase, Users, Search, X, CheckCircle,
@@ -248,7 +249,10 @@ const CoachAssignRecruiterContent = () => {
                           className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-0 text-sm transition-colors ${
                             selectedRec === r.id ? 'bg-orange-50 border-l-4 border-l-orange-500' : 'hover:bg-gray-50'
                           }`}>
-                          <p className="font-semibold text-gray-800">{r.name}</p>
+                          <p className="font-semibold text-gray-800 flex items-center gap-1.5">
+                            {r.name}
+                            <CertifiedBadge tier={r.eligibilityTier} size="xs" withLabel={false} />
+                          </p>
                           <p className="text-xs text-gray-500">{r.email}</p>
                         </button>
                       ))

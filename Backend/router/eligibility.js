@@ -40,6 +40,16 @@ const DEFAULT_CONFIG = {
   notQualifiedMessage: 'This is not a rejection. A retake window opens after {retake} days, and your scorecard is on its way by email with exactly what to work on first.',
 };
 
+// Rules for members who were already on the platform before the assessment
+// existed. They are offered it so they can earn the badge; anyone who joined
+// from the cutoff onwards has already taken it as part of registering.
+const MEMBER_RULES = {
+  // Accounts created before this date are the ones being offered the catch-up.
+  grandfatheredBefore: new Date('2026-09-04T00:00:00Z'),
+  maxAttempts: 3,
+  retakeGapDays: 10,
+};
+
 const TIERS = {
   certified: { key: 'certified', label: 'Certified' },
   conditional: { key: 'conditional', label: 'Conditional' },
@@ -247,6 +257,161 @@ router.post('/public/start', async (req, res) => {
   }
 });
 
+// Whether an existing member may sit the assessment, and why not if they may
+// not. Used by /my/start to decide, and by /my-certification so the dashboard
+// only offers it when it is actually available.
+const memberAssessmentState = async (email, role, acct) => {
+  const created = acct?.createdAt?._seconds ? new Date(acct.createdAt._seconds * 1000)
+    : acct?.registrationDate?._seconds ? new Date(acct.registrationDate._seconds * 1000)
+    : acct?.datePosted?._seconds ? new Date(acct.datePosted._seconds * 1000)
+    : acct?.createdAt ? new Date(acct.createdAt) : null;
+
+  // Anyone who joined from the cutoff onwards took the assessment to register,
+  // so there is nothing to catch up on.
+  if (created && created >= MEMBER_RULES.grandfatheredBefore) {
+    return {
+      canTake: false, status: 409, reason: 'not_grandfathered',
+      message: 'Your account already went through the eligibility assessment when you registered.',
+    };
+  }
+
+  // The account itself is the authority on standing — someone can be Certified
+  // without an attempt record (issued directly), and they must not be offered
+  // the assessment again.
+  if (acct?.eligibilityTier === 'certified') {
+    return {
+      canTake: false, status: 409, reason: 'already_certified', alreadyCertified: true,
+      certificateId: acct.certificateId || '',
+      certificateUrl: acct.certificateUrl || '',
+      message: 'You are already Certified — your certificate is on your dashboard.',
+    };
+  }
+
+  const prior = await ATTEMPTS()
+    .where('email', '==', email).where('role', '==', role).where('status', '==', 'submitted').get();
+  const attempts = prior.docs.map(d => d.data())
+    .sort((a, b) => (b.submittedAt?._seconds || 0) - (a.submittedAt?._seconds || 0));
+
+  const latest = attempts[0];
+  if (latest?.tier === 'certified') {
+    return {
+      canTake: false, status: 409, reason: 'already_certified', alreadyCertified: true,
+      certificateId: latest.certificateId || '',
+      certificateUrl: latest.certificateUrl || '',
+      message: 'You are already Certified — your certificate is on your dashboard.',
+    };
+  }
+
+  const used = attempts.length;
+  if (used >= MEMBER_RULES.maxAttempts) {
+    return {
+      canTake: false, status: 409, reason: 'attempts_exhausted',
+      attemptsUsed: used, maxAttempts: MEMBER_RULES.maxAttempts,
+      message: `You have used all ${MEMBER_RULES.maxAttempts} attempts. Please contact RecruiterV if you would like this reviewed.`,
+    };
+  }
+
+  if (latest?.submittedAt?._seconds) {
+    const last = new Date(latest.submittedAt._seconds * 1000);
+    const opensAt = new Date(last.getTime() + MEMBER_RULES.retakeGapDays * 86400000);
+    if (opensAt > new Date()) {
+      const days = Math.ceil((opensAt - Date.now()) / 86400000);
+      return {
+        canTake: false, status: 429, reason: 'gap_not_elapsed', retakeLocked: true,
+        retakeAfter: opensAt.toISOString(),
+        attemptsUsed: used, maxAttempts: MEMBER_RULES.maxAttempts,
+        message: `You can try again on ${opensAt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} — ${days} day${days === 1 ? '' : 's'} from now.`,
+      };
+    }
+  }
+
+  return {
+    canTake: true,
+    attemptsUsed: used,
+    maxAttempts: MEMBER_RULES.maxAttempts,
+    attemptsLeft: MEMBER_RULES.maxAttempts - used,
+  };
+};
+
+// POST /eligibility/my/start
+// For someone already on the platform: they are signed in, so their details and
+// role come from the session and they go straight to the questions. Taking it
+// earns them the badge and certificate; it never affects their existing access.
+router.post('/my/start', async (req, res) => {
+  try {
+    const jwtLib = require('jsonwebtoken');
+    const token = req.cookies?.__session;
+    if (!token) return res.status(401).json({ success: false, message: 'Please sign in.' });
+    let decoded;
+    try { decoded = jwtLib.verify(token, process.env.SECKEY); }
+    catch (e) { return res.status(403).json({ success: false, message: 'Session expired.' }); }
+
+    const email = String(decoded.email || '').toLowerCase().trim();
+    if (!email) return res.status(400).json({ success: false, message: 'No account email on this session.' });
+
+    // Find them, and work out which track their assessment should be.
+    let acct = null, role = null;
+    for (const [col, r] of [['recruiter_db', 'Recruiter'], ['coach_db', 'Coach'], ['expert_db', 'Expert']]) {
+      const snap = await db.collection(col).where('email', '==', email).limit(1).get();
+      if (!snap.empty) { acct = { id: snap.docs[0].id, col, ...snap.docs[0].data() }; role = r; break; }
+    }
+    if (!acct) return res.status(403).json({ success: false, message: 'This assessment is for recruiters, coaches and experts.' });
+
+    // A coach or expert record can carry its own roleCategory; prefer it.
+    const rc = String(acct.roleCategory || '').toLowerCase();
+    if (rc.includes('coach')) role = 'Coach';
+    else if (rc.includes('expert')) role = 'Expert';
+
+    const cfg = await configFor(role);
+    const qSnap = await QUESTIONS().where('role', '==', role).where('active', '==', true).get();
+    if (qSnap.empty) {
+      return res.status(409).json({
+        success: false,
+        message: `The ${role} assessment is not available yet. Please check back shortly.`,
+      });
+    }
+
+    const gate = await memberAssessmentState(email, role, acct);
+    if (!gate.canTake) return res.status(gate.status).json({ success: false, ...gate });
+
+    let pool = shuffle(qSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    if (cfg.questionCount > 0) pool = pool.slice(0, cfg.questionCount);
+
+    const rawSkill = acct.skillCategory ?? acct.specialization ?? '';
+    const skillCategory = (Array.isArray(rawSkill) ? rawSkill[0] : String(rawSkill)).split(',')[0].trim();
+
+    const attempt = await ATTEMPTS().add({
+      name: acct.name || email.split('@')[0],
+      email,
+      phone: acct.mobile || acct.phone || acct.mob || '',
+      role,
+      skillCategory,
+      questionIds: pool.map(q => q.id),
+      timeLimitMinutes: cfg.timeLimitMinutes,
+      status: 'in_progress',
+      // Marks this as an existing member earning the badge rather than a new
+      // applicant being screened — both appear in the SuperAdmin results.
+      takenBy: 'existing_member',
+      startedAt: new Date(),
+    });
+
+    res.json({
+      success: true,
+      attemptId: attempt.id,
+      role,
+      name: acct.name || '',
+      skillCategory,
+      timeLimitMinutes: cfg.timeLimitMinutes,
+      certifiedFrom: cfg.certifiedFrom,
+      conditionalFrom: cfg.conditionalFrom,
+      questions: pool.map(q => ({ id: q.id, question: q.question, options: Array.isArray(q.options) ? q.options : [] })),
+    });
+  } catch (e) {
+    console.error('eligibility/my/start error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // POST /eligibility/public/submit { attemptId, answers: { questionId: optionIndex }, timedOut }
 router.post('/public/submit', async (req, res) => {
   try {
@@ -323,6 +488,30 @@ router.post('/public/submit', async (req, res) => {
       }
     }
 
+    // If this email already has an account, carry the outcome onto it so the
+    // badge appears and the certificate is downloadable from their dashboard.
+    // Someone who has not registered yet gets stamped at registration instead.
+    try {
+      const email = String(a.email || '').toLowerCase().trim();
+      const COL = { Recruiter: 'recruiter_db', Coach: 'coach_db', Expert: 'expert_db' }[a.role];
+      if (email && COL) {
+        const snap = await db.collection(COL).where('email', '==', email).limit(1).get();
+        if (!snap.empty) {
+          await snap.docs[0].ref.update({
+            eligibilityTier: tier,
+            eligibilityPercent: percent,
+            eligibilityAttemptId: ref.id,
+            eligibilityPassedAt: submittedAt,
+            ...(certificate?.certificateId ? { certificateId: certificate.certificateId } : {}),
+            ...(certificate?.url ? { certificateUrl: certificate.url } : {}),
+            ...(tier === 'conditional' ? { positionCap: Number(cfg.conditionalPositionCap) } : {}),
+          });
+        }
+      }
+    } catch (stampErr) {
+      console.error('could not stamp the account with the outcome:', stampErr.message);
+    }
+
     res.json({
       success: true,
       tier,
@@ -335,6 +524,7 @@ router.post('/public/submit', async (req, res) => {
       retakeDays: tier === 'certified' ? null
         : (tier === 'conditional' ? cfg.conditionalRetakeDays : cfg.notQualifiedRetakeDays),
       certificateId: certificate?.certificateId || null,
+      certificateUrl: certificate?.url || '',
       certificateEmailed: certificate?.emailed === true,
       message: renderTierMessage(tier, cfg),
     });
@@ -361,7 +551,15 @@ const hasPassed = async (email, role) => {
         const ta = a.submittedAt?._seconds || 0, tb = b.submittedAt?._seconds || 0;
         return tb - ta;
       })[0];
-    return { attemptId: best.id, percent: best.percent, passedAt: toIso(best.submittedAt) };
+    return {
+      attemptId: best.id,
+      percent: best.percent,
+      tier: best.tier || 'certified',
+      certificateId: best.certificateId || '',
+      certificateUrl: best.certificateUrl || '',
+      positionCap: best.positionCap ?? null,
+      passedAt: toIso(best.submittedAt),
+    };
   } catch (e2) {
     console.error('eligibility hasPassed error:', e2.message);
     return null;
@@ -386,6 +584,98 @@ router.get('/public/status', async (req, res) => {
     res.json({ success: true, required: true, passed: !!pass, pass: pass || null });
   } catch (e) {
     console.error('eligibility/public/status error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /eligibility/my-certification — the signed-in user's own standing and
+// certificate, for the badge and the download on their dashboard.
+router.get('/my-certification', async (req, res) => {
+  try {
+    const jwtLib = require('jsonwebtoken');
+    const token = req.cookies?.__session;
+    if (!token) return res.status(401).json({ success: false, message: 'Please sign in.' });
+
+    let decoded;
+    try { decoded = jwtLib.verify(token, process.env.SECKEY); }
+    catch (e) { return res.status(403).json({ success: false, message: 'Session expired.' }); }
+
+    const email = String(decoded.email || '').toLowerCase().trim();
+    if (!email) return res.json({ success: true, certified: false });
+
+    // The account itself carries the stamp for anyone who registered after the
+    // tiers went in; fall back to the attempt for everyone else.
+    let stamp = null;
+    for (const col of ['recruiter_db', 'coach_db', 'expert_db']) {
+      const snap = await db.collection(col).where('email', '==', email).limit(1).get();
+      if (!snap.empty) {
+        const d = snap.docs[0].data();
+        if (d.eligibilityTier) {
+          stamp = {
+            tier: d.eligibilityTier,
+            certificateId: d.certificateId || '',
+            certificateUrl: d.certificateUrl || '',
+            positionCap: d.positionCap ?? null,
+            skillCategory: d.skillCategory || d.specialization || '',
+            role: d.roleCategory || d.role || '',
+          };
+        }
+        break;
+      }
+    }
+
+    if (!stamp) {
+      const snap = await ATTEMPTS()
+        .where('email', '==', email).where('status', '==', 'submitted').get();
+      if (!snap.empty) {
+        const best = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (b.submittedAt?._seconds || 0) - (a.submittedAt?._seconds || 0))[0];
+        stamp = {
+          tier: best.tier || (best.passed ? 'certified' : 'not_qualified'),
+          certificateId: best.certificateId || '',
+          certificateUrl: best.certificateUrl || '',
+          positionCap: best.positionCap ?? null,
+          skillCategory: best.skillCategory || '',
+          role: best.role || '',
+        };
+      }
+    }
+
+    // Whether the dashboard should offer the assessment at all. Resolved here so
+    // the menu entry and the endpoint can never disagree.
+    let assessment = { canTake: false, reason: 'not_eligible' };
+    let acct = null, acctRole = null;
+    for (const [col, r] of [['recruiter_db', 'Recruiter'], ['coach_db', 'Coach'], ['expert_db', 'Expert']]) {
+      const snap = await db.collection(col).where('email', '==', email).limit(1).get();
+      if (!snap.empty) { acct = snap.docs[0].data(); acctRole = r; break; }
+    }
+    if (acct) {
+      const rc = String(acct.roleCategory || '').toLowerCase();
+      if (rc.includes('coach')) acctRole = 'Coach';
+      else if (rc.includes('expert')) acctRole = 'Expert';
+      try {
+        const q = await QUESTIONS().where('role', '==', acctRole).where('active', '==', true).limit(1).get();
+        assessment = q.empty
+          ? { canTake: false, reason: 'no_questions' }
+          : await memberAssessmentState(email, acctRole, acct);
+      } catch (e) {
+        console.error('member assessment state failed:', e.message);
+      }
+    }
+
+    if (!stamp) {
+      return res.json({ success: true, certified: false, tier: null, assessment });
+    }
+    res.json({
+      success: true,
+      certified: stamp.tier === 'certified',
+      tier: stamp.tier,
+      tierLabel: TIERS[stamp.tier]?.label || '',
+      assessment,
+      ...stamp,
+    });
+  } catch (e) {
+    console.error('eligibility/my-certification error:', e.message);
     res.status(500).json({ success: false, message: e.message });
   }
 });
@@ -559,6 +849,9 @@ router.get('/admin/results', adminAuth, async (req, res) => {
         certificateUrl: a.certificateUrl || '',
         certificateEmailed: a.certificateEmailed === true,
         skillCategory: a.skillCategory || '',
+        // 'existing_member' when taken from a dashboard by someone already on
+        // the platform, rather than by an applicant being screened.
+        takenBy: a.takenBy || 'applicant',
         timedOut: a.timedOut === true,
         // Whether the candidate went on to create the account they were cleared for.
         registered: !!acc,

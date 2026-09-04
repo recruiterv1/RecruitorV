@@ -61,6 +61,10 @@ router.get('/me', vendorAuth, async (req, res) => {
         recruiterQuantity: vendor.recruiterQuantity || 0,
         recruitersUsed: used,
         recruitersRemaining: Math.max(0, (vendor.recruiterQuantity || 0) - used),
+        // The payment terms the SuperAdmin agreed with this vendor at approval.
+        // Shown in the terms a recruiter accepts when the vendor registers them,
+        // so the commission is stated rather than assumed.
+        paymentTerms: Array.isArray(vendor.paymentTerms) ? vendor.paymentTerms : [],
       }
     });
   } catch (err) {
@@ -88,6 +92,9 @@ router.get('/recruiters', vendorAuth, async (req, res) => {
         accountStatus: d.accountStatus || 'approved',
         createdAt: d.createdAt || d.registrationDate || null,
         lastActive: d.lastActive || null,
+        // Assessment standing, so a Certified recruiter is badged in the team list.
+        eligibilityTier: d.eligibilityTier || null,
+        certificateId: d.certificateId || '',
       };
     });
     return res.json({ success: true, data: recruiters });

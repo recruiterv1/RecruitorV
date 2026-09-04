@@ -135,6 +135,9 @@ router.post('/register',async (req,res)=>{
         }
       : {};
 
+    // Set when the eligibility gate finds a pass, and merged onto the new account.
+    let eligibilityStamp = {};
+
     try{
         // ── Eligibility gate ────────────────────────────────────────────────
         // A Coach, Expert or Recruiter signing themselves up must have cleared
@@ -153,6 +156,20 @@ router.post('/register',async (req,res)=>{
 
                 if (!qSnap.empty) {                       // a check exists for this role
                     const pass = await eligibility.hasPassed(email, roleCategory);
+                    if (pass) {
+                        // Carry the assessment outcome onto the account being created,
+                        // so a Certified recruiter can be badged and can download their
+                        // certificate without the attempt having to be looked up again.
+                        eligibilityStamp = {
+                            eligibilityTier: pass.tier || 'certified',
+                            eligibilityPercent: pass.percent ?? null,
+                            eligibilityAttemptId: pass.attemptId || '',
+                            eligibilityPassedAt: pass.passedAt ? new Date(pass.passedAt) : new Date(),
+                            ...(pass.certificateId ? { certificateId: pass.certificateId } : {}),
+                            ...(pass.certificateUrl ? { certificateUrl: pass.certificateUrl } : {}),
+                            ...(pass.positionCap ? { positionCap: pass.positionCap } : {}),
+                        };
+                    }
                     if (!pass) {
                         return res.status(403).json({
                             message: `Please clear the ${roleCategory} eligibility check before registering.`,
@@ -231,6 +248,7 @@ router.post('/register',async (req,res)=>{
                 // needed. Admins can revoke access later (accountStatus: 'blocked').
                 accountStatus: 'approved',
                 ...agreementFields,
+                ...eligibilityStamp,
                 ...(resumeUrl ? { resumeUrl } : {}),
             };
             
@@ -271,6 +289,7 @@ router.post('/register',async (req,res)=>{
                 // needed. Admins can revoke access later (accountStatus: 'blocked').
                 accountStatus: 'approved',
                 ...agreementFields,
+                ...eligibilityStamp,
                 ...(resumeUrl ? { resumeUrl } : {}),
             };
             
@@ -311,6 +330,7 @@ router.post('/register',async (req,res)=>{
                 // needed. Admins can revoke access later (accountStatus: 'blocked').
                 accountStatus: 'approved',
                 ...agreementFields,
+                ...eligibilityStamp,
                 ...(resumeUrl ? { resumeUrl } : {}),
             };
 
