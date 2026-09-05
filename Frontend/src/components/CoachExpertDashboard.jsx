@@ -5,6 +5,7 @@ import Sidebar from '../pages/Sidebar';
 import Dash_Header from '../pages/Dash_Header';
 import Footer from '../pages/Footer';
 import axios from 'axios';
+import MyCertificate from './MyCertificate';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, ClipboardList, Users, DollarSign, TrendingUp, Briefcase, BarChart2, UserPlus, Inbox, AlertTriangle, X, Star, Zap, ArrowRight, Gift } from 'lucide-react';
 
@@ -143,6 +144,12 @@ const CoachExpertContentWrapper = ({ isSidebarOpen, setIsSidebarOpen }) => {
       {/* ========== MAIN CONTENT ========== */}
       <main className="min-h-screen">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-full">
+
+          {/* Certification standing — renders nothing unless there is one.
+              Serves coaches and experts alike; this component previously sat
+              only on the recruiter dashboard, so a certified coach had a
+              certificate issued and no way to reach it. */}
+          <div className="mb-6"><MyCertificate /></div>
 
           {/* Welcome Banner */}
           <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl shadow-xl overflow-hidden mb-6">
