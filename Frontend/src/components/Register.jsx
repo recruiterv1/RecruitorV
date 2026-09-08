@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Eye, EyeOff, Phone, Mail, User, Lock, Briefcase, Shield, Users, UserCheck, BookOpen, Award, TrendingUp, Tag, FileText, Upload, Clock, X as XIcon } from "lucide-react";
 import TermsModal from "./TermsModal";
+import { readEligibilityPass } from "../utils/eligibilityPass";
 import { buildRegistrationAgreementPDF, getRoleTerms } from "../lib/agreementTerms";
 
 // How many roles of a kind someone has closed, and when they can be reached.
@@ -186,15 +187,8 @@ export default function Register() {
     const email = form.email.trim().toLowerCase();
     if (!['Recruiter', 'Coach', 'Expert'].includes(role)) { setEligibility(null); return; }
 
-    // Say straight away that this role needs the check, before an email is even
-    // typed — otherwise the requirement only appears once the form is half done.
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      let live2 = true;
-      axios.get('/api/eligibility/public/status', { params: { role, email: 'unknown@placeholder.invalid' } })
-        .then(r => { if (live2) setEligibility(r.data?.required ? { required: true, passed: false, needEmail: true } : null); })
-        .catch(() => { if (live2) setEligibility(null); });
-      return () => { live2 = false; };
-    }
+    // Nothing to look up until there is a full address to look up.
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setEligibility(null); return; }
 
     let live = true;
     setCheckingEligibility(true);
@@ -209,16 +203,37 @@ export default function Register() {
 
   // Arriving from the eligibility check: carry the email and role across so the
   // pass matches the address being registered.
+  const [passInfo, setPassInfo] = useState(null);
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
-    const email = p.get('email') || '';
-    const role = p.get('role') || '';
+    const remembered = readEligibilityPass();
+    const email = p.get('email') || remembered?.email || '';
+    const role = p.get('role') || remembered?.role || '';
     if (!email && !role) return;
+
     setForm(f => ({
       ...f,
       email: email || f.email,
       roleCategory: ['Recruiter', 'Coach', 'Expert'].includes(role) ? role : f.roleCategory,
     }));
+
+    // Fill in what they already told us when they sat the check, so someone
+    // coming back days later does not retype it.
+    if (!email) return;
+    axios.get('/api/eligibility/public/my-pass', { params: { email } })
+      .then(r => {
+        if (!r.data?.passed) return;
+        setPassInfo(r.data);
+        setForm(f => ({
+          ...f,
+          name: f.name || r.data.name || '',
+          roleCategory: f.roleCategory || r.data.role || '',
+          specialization: f.specialization.length
+            ? f.specialization
+            : (r.data.skillCategory ? [r.data.skillCategory] : []),
+        }));
+      })
+      .catch(() => {});
   }, []);
 
   const handleSubmit = async (e) => {
@@ -861,27 +876,14 @@ export default function Register() {
             </div>
 
             {/* Submit Button */}
-            {/* Coach, Expert and Recruiter sign-ups must clear the eligibility
-                check first. The server enforces this; this makes it actionable. */}
-            {eligibility?.required && !eligibility?.passed && (
-              <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4 mb-4">
-                <p className="font-bold text-amber-900 text-sm">
-                  Clear the {form.roleCategory} eligibility check first
-                </p>
-                <p className="text-[13px] text-amber-800 mt-1 leading-relaxed">
-                  {eligibility.needEmail
-                    ? 'Registration for this role opens once you have passed the short multiple-choice check. Enter your email above and we will look up whether you have already cleared it.'
-                    : 'Registration for this role opens once you have passed the short multiple-choice check. Use the same email address you entered above.'}
-                </p>
-                <a href={`/check-eligibility?role=${encodeURIComponent(form.roleCategory)}&email=${encodeURIComponent(form.email.trim())}`}
-                  className="inline-flex items-center gap-2 mt-3 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold">
-                  Take the Eligibility Check →
-                </a>
-              </div>
-            )}
-            {eligibility?.required && eligibility?.passed && (
+            {/* No "you must pass first" warning here: EligibilityGate only lets
+                someone reach this page once the server has confirmed their pass,
+                so the warning could only ever fire on a false negative — which it
+                did, before an email had even been typed. */}
+            {(passInfo?.passed || (eligibility?.required && eligibility?.passed)) && (
               <p className="rounded-xl border border-green-200 bg-green-50 text-green-800 text-[13px] font-semibold px-4 py-3 mb-4">
-                ✓ Eligibility check cleared{eligibility.pass?.percent !== undefined ? ` — ${eligibility.pass.percent}%` : ''}. You can complete your registration.
+                ✓ You have passed the eligibility check
+                {passInfo?.tierLabel ? ` — ${passInfo.tierLabel}` : ''}. Complete your registration below.
               </p>
             )}
             {checkingEligibility && (
@@ -889,7 +891,7 @@ export default function Register() {
             )}
             <button
               type="submit"
-              disabled={loading || resumeUploading || (eligibility?.required && !eligibility?.passed)}
+              disabled={loading || resumeUploading}
               className="w-full bg-gradient-to-r from-blue-600 to-orange-500 hover:from-blue-700 hover:to-orange-600 text-white py-3.5 rounded-xl font-semibold text-base transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
             >
               {resumeUploading ? (

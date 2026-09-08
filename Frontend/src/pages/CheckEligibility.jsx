@@ -41,6 +41,39 @@ export default function CheckEligibility() {
   // way back to a question already passed, so an answer is committed by moving on.
   const [cur, setCur] = useState(0);
   const [result, setResult] = useState(null);
+
+  // "Already taken the check?" — look the pass up by email and hand them on.
+  const [returnEmail, setReturnEmail] = useState('');
+  const [returnBusy, setReturnBusy] = useState(false);
+  const [returnMsg, setReturnMsg] = useState(null);
+
+  const lookUpPass = async () => {
+    const email = returnEmail.trim().toLowerCase();
+    if (!email) return;
+    setReturnBusy(true);
+    setReturnMsg(null);
+    try {
+      const r = await axios.get('/api/eligibility/public/my-pass', { params: { email } });
+      if (!r.data?.passed) {
+        setReturnMsg({ ok: false, text: 'No passed check found for that email — take the check above to get started.' });
+        return;
+      }
+      if (r.data.registered) {
+        setReturnMsg({ ok: true, text: 'You have passed, and your account already exists. Taking you to sign in…' });
+        setTimeout(() => { window.location.href = '/login'; }, 1500);
+        return;
+      }
+      setReturnMsg({ ok: true, text: `You have passed the eligibility check${r.data.tierLabel ? ` — ${r.data.tierLabel}` : ''}. Taking you to registration…` });
+      rememberEligibilityPass(email, r.data.role);
+      setTimeout(() => {
+        window.location.href = `/reg?email=${encodeURIComponent(email)}&role=${encodeURIComponent(r.data.role)}`;
+      }, 1200);
+    } catch (e) {
+      setReturnMsg({ ok: false, text: 'Could not check that just now — please try again.' });
+    } finally {
+      setReturnBusy(false);
+    }
+  };
   const submittedRef = useRef(false);
 
   useEffect(() => {
@@ -211,6 +244,31 @@ export default function CheckEligibility() {
                 <p className="text-[12px] text-slate-500 mt-3">
                   The timer starts as soon as you begin, and the check submits itself when time runs out.
                 </p>
+
+                {/* Passing and registering are separate moments — someone can
+                    clear the check and only come back to register days later.
+                    This finds their pass from the address they used. */}
+                <div className="mt-8 pt-6 border-t border-slate-200">
+                  <p className="text-[13px] font-semibold text-slate-700">Already taken the check?</p>
+                  <p className="text-[12.5px] text-slate-500 mt-0.5 mb-3">
+                    Enter the email you used and carry on where you left off.
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <input type="email" value={returnEmail} placeholder="you@email.com"
+                      onChange={e => { setReturnEmail(e.target.value); setReturnMsg(null); }}
+                      className="flex-1 min-w-[220px] rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-orange-400" />
+                    <button onClick={lookUpPass} disabled={returnBusy || !returnEmail.trim()}
+                      className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm hover:bg-slate-50 disabled:opacity-50">
+                      {returnBusy ? 'Checking…' : 'Continue'}
+                    </button>
+                  </div>
+                  {returnMsg && (
+                    <p className={`mt-3 text-[13px] font-semibold ${
+                      returnMsg.ok ? 'text-emerald-700' : 'text-slate-600'}`}>
+                      {returnMsg.text}
+                    </p>
+                  )}
+                </div>
               </div>
             </section>
           </>

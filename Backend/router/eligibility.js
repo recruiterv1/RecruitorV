@@ -568,6 +568,54 @@ const hasPassed = async (email, role) => {
 
 // GET /eligibility/public/status?email=&role=
 // Lets the registration form tell someone what to do before they fill it in.
+// GET /public/my-pass?email=
+// "I took the check already" — finds the most recent pass for an address so
+// someone who did not register straight afterwards can pick up where they left
+// off, without having to remember which role they sat.
+//
+// Deliberately does NOT return the phone number. Anyone can call this with any
+// address, so it would hand out a phone number for every person who has taken
+// the check. Name, role and skill category are what the registration form
+// needs to prefill; the phone is retyped.
+router.get('/public/my-pass', async (req, res) => {
+  try {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email) return res.json({ success: true, passed: false });
+
+    const snap = await ATTEMPTS()
+      .where('email', '==', email).where('passed', '==', true).get();
+    if (snap.empty) return res.json({ success: true, passed: false });
+
+    const best = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.submittedAt?._seconds || 0) - (a.submittedAt?._seconds || 0))[0];
+
+    // Someone who already finished registering should sign in, not register again.
+    let registered = false;
+    for (const col of ['recruiter_db', 'coach_db', 'expert_db']) {
+      const u = await db.collection(col).where('email', '==', email).limit(1).get();
+      if (!u.empty) { registered = true; break; }
+    }
+
+    res.json({
+      success: true,
+      passed: true,
+      registered,
+      role: best.role || '',
+      name: best.name || '',
+      skillCategory: best.skillCategory || '',
+      percent: best.percent ?? null,
+      tier: best.tier || 'certified',
+      tierLabel: TIERS[best.tier]?.label || '',
+      certificateId: best.certificateId || '',
+      certificateUrl: best.certificateUrl || '',
+      passedAt: toIso(best.submittedAt),
+    });
+  } catch (e) {
+    console.error('eligibility/public/my-pass error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 router.get('/public/status', async (req, res) => {
   try {
     const role = String(req.query.role || '').trim();
