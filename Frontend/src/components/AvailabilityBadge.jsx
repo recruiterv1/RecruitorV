@@ -38,23 +38,43 @@ export const isOnlineNow = (lastActiveDate, withinMinutes = 15) => {
   return Number.isFinite(t) && (Date.now() - t) < withinMinutes * 60000;
 };
 
-export default function AvailabilityBadge({ availability, compact = false }) {
+// The windows the two of them share — the hours they could actually talk.
+export const overlappingSlots = (theirs, mine) => {
+  if (!Array.isArray(theirs) || !Array.isArray(mine)) return [];
+  const set = new Set(mine);
+  return theirs.filter(s => set.has(s));
+};
+
+export default function AvailabilityBadge({ availability, mine = [], compact = false }) {
   const slots = Array.isArray(availability) ? availability : [];
   if (!slots.length) return null;
   const now = isAvailableNow(slots);
+  const shared = new Set(overlappingSlots(slots, mine));
 
   return (
     <div className={compact ? 'mt-1.5' : 'mt-2'}>
       <div className="flex items-center gap-1.5 flex-wrap">
         <Clock size={12} className={now ? 'text-emerald-600' : 'text-gray-400'} />
-        {slots.map(s => (
-          <span key={s}
-            className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${
-              now ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
-            {s}
-          </span>
-        ))}
+        {slots.map(s => {
+          // A window they share with the viewer is the useful one, so it is
+          // marked whether or not either of them is around at this moment.
+          const match = shared.has(s);
+          return (
+            <span key={s} title={match ? 'You are both free at this time' : undefined}
+              className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${
+                match ? 'bg-blue-100 text-blue-800 ring-1 ring-blue-300 font-bold'
+                      : now ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-gray-100 text-gray-600'}`}>
+              {match ? '★ ' : ''}{s}
+            </span>
+          );
+        })}
       </div>
+      {shared.size > 0 && (
+        <p className="text-[10.5px] font-semibold text-blue-700 mt-1">
+          Matches your hours ({shared.size} window{shared.size === 1 ? '' : 's'})
+        </p>
+      )}
     </div>
   );
 }

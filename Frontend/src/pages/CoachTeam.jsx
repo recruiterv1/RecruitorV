@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import CertifiedBadge from '../components/CertifiedBadge';
-import AvailabilityBadge, { AvailableNowPill, isAvailableNow, isOnlineNow } from '../components/AvailabilityBadge';
+import AvailabilityBadge, { AvailableNowPill, isAvailableNow, isOnlineNow, overlappingSlots } from '../components/AvailabilityBadge';
 import axios from 'axios';
 import {
   Users, UserPlus, Search, X, CheckCircle, AlertCircle,
@@ -271,6 +271,15 @@ const CoachTeamContent = () => {
   const [toast, setToast] = useState(null);
   const [sending, setSending] = useState({});
   const [profileModal, setProfileModal] = useState(null);
+
+  // The viewer's own hours, so a window they share with someone on a card can
+  // be marked — those are the hours the two could actually speak.
+  const [myAvailability, setMyAvailability] = useState([]);
+  useEffect(() => {
+    axios.get('/api/coach-expert/my-availability', { withCredentials: true })
+      .then(r => setMyAvailability(r.data?.availability || []))
+      .catch(() => setMyAvailability([]));
+  }, []);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [tab, setTab] = useState('find'); // 'find' | 'team' | 'requests'
   const [findTab, setFindTab] = useState('fit'); // 'fit' (Skill Fit) | 'all'
@@ -492,9 +501,11 @@ const CoachTeamContent = () => {
                   <div key={r.id} className={`relative rounded-xl border shadow-sm p-4 space-y-3 transition-colors ${
                     isOnlineNow(r.lastActiveDate)
                       ? 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-200'
-                      : isAvailableNow(r.availability)
-                        ? 'bg-emerald-50/40 border-emerald-200'
-                        : 'bg-white border-gray-200'}`}>
+                      : overlappingSlots(r.availability, myAvailability).length
+                        ? 'bg-blue-50/50 border-blue-300 ring-1 ring-blue-200'
+                        : isAvailableNow(r.availability)
+                          ? 'bg-emerald-50/40 border-emerald-200'
+                          : 'bg-white border-gray-200'}`}>
                     {/* Teams connected count (top-right) */}
                     <span
                       title={`Connected to ${r.teamsConnected || 0} team${(r.teamsConnected || 0) === 1 ? '' : 's'}`}
@@ -527,7 +538,7 @@ const CoachTeamContent = () => {
                             <Activity size={10} /> Last active: {fmtLastActive(r.lastActiveDate)}
                           </span>
                         )}
-                        <AvailabilityBadge availability={r.availability} compact />
+                        <AvailabilityBadge availability={r.availability} mine={myAvailability} compact />
                       </div>
                     </div>
 

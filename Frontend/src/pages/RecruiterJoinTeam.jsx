@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import CertifiedBadge from '../components/CertifiedBadge';
-import AvailabilityBadge, { AvailableNowPill, isAvailableNow, isOnlineNow } from '../components/AvailabilityBadge';
+import AvailabilityBadge, { AvailableNowPill, isAvailableNow, isOnlineNow, overlappingSlots } from '../components/AvailabilityBadge';
 import axios from 'axios';
 import {
   Users, CheckCircle, XCircle, Clock, RefreshCw, X,
@@ -250,6 +250,15 @@ const RecruiterJoinTeamPage = () => {
   const [leaving, setLeaving] = useState({});
 
   const [profileModal, setProfileModal] = useState(null);
+
+  // The viewer's own hours, so a window they share with someone on a card can
+  // be marked — those are the hours the two could actually speak.
+  const [myAvailability, setMyAvailability] = useState([]);
+  useEffect(() => {
+    axios.get('/api/coach-expert/my-availability', { withCredentials: true })
+      .then(r => setMyAvailability(r.data?.availability || []))
+      .catch(() => setMyAvailability([]));
+  }, []);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
@@ -439,9 +448,11 @@ const RecruiterJoinTeamPage = () => {
                 <div key={c.email} className={`rounded-2xl border shadow-sm p-4 space-y-3 flex flex-col transition-colors ${
                   isOnlineNow(c.lastActiveDate)
                     ? 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-200'
-                    : isAvailableNow(c.availability)
-                      ? 'bg-emerald-50/40 border-emerald-200'
-                      : 'bg-white border-gray-200'}`}>
+                    : overlappingSlots(c.availability, myAvailability).length
+                      ? 'bg-blue-50/50 border-blue-300 ring-1 ring-blue-200'
+                      : isAvailableNow(c.availability)
+                        ? 'bg-emerald-50/40 border-emerald-200'
+                        : 'bg-white border-gray-200'}`}>
                   {/* Avatar + name */}
                   <div className="flex items-start gap-3">
                     {c.profilePhoto
@@ -466,7 +477,7 @@ const RecruiterJoinTeamPage = () => {
                           <Activity size={10} /> Last active: {fmtLastActive(c.lastActiveDate)}
                         </span>
                       )}
-                      <AvailabilityBadge availability={c.availability} compact />
+                      <AvailabilityBadge availability={c.availability} mine={myAvailability} compact />
                     </div>
                   </div>
 
