@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import CertifiedBadge from '../components/CertifiedBadge';
+import AvailabilityBadge, { AvailableNowPill, isAvailableNow, isOnlineNow } from '../components/AvailabilityBadge';
 import axios from 'axios';
 import {
   Users, CheckCircle, XCircle, Clock, RefreshCw, X,
@@ -435,7 +436,12 @@ const RecruiterJoinTeamPage = () => {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map(c => (
-                <div key={c.email} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3 flex flex-col">
+                <div key={c.email} className={`rounded-2xl border shadow-sm p-4 space-y-3 flex flex-col transition-colors ${
+                  isOnlineNow(c.lastActiveDate)
+                    ? 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-200'
+                    : isAvailableNow(c.availability)
+                      ? 'bg-emerald-50/40 border-emerald-200'
+                      : 'bg-white border-gray-200'}`}>
                   {/* Avatar + name */}
                   <div className="flex items-start gap-3">
                     {c.profilePhoto
@@ -448,6 +454,7 @@ const RecruiterJoinTeamPage = () => {
                           {c.name || '—'}
                         </button>
                         <CertifiedBadge tier={c.eligibilityTier} size="xs" withLabel={false} />
+                        <AvailableNowPill availability={c.availability} lastActiveDate={c.lastActiveDate} />
                       </div>
                       <p className="text-xs text-gray-500 truncate">{c.email}</p>
                       <div className="flex items-center gap-2 mt-0.5">
@@ -459,6 +466,7 @@ const RecruiterJoinTeamPage = () => {
                           <Activity size={10} /> Last active: {fmtLastActive(c.lastActiveDate)}
                         </span>
                       )}
+                      <AvailabilityBadge availability={c.availability} compact />
                     </div>
                   </div>
 

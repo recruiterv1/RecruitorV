@@ -33,6 +33,7 @@ import {
   ClipboardCheck,
   Wallet,
   Bell,
+  Clock,
 } from 'lucide-react';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import { SidebarContext } from '../context/Sidebarcontext';
@@ -378,6 +379,15 @@ const Sidebar = () => {
   // attempts, the entry disappears.
   if (Array.isArray(menuItems) && canOfferAssessment) {
     menuItems = [...menuItems, { icon: Award, label: 'Earn Certification', path: '/earn-certification' }];
+  }
+
+  // Coaches, experts and recruiters set the hours they can be reached in. It
+  // shows on their card when a team is being built, so it belongs with their own
+  // profile rather than buried in settings. Reuses mayHaveAssessment — the same
+  // "is a coach, expert or recruiter" test — because roleCategory is empty on
+  // some coach records and testing it would hide this from those very people.
+  if (Array.isArray(menuItems) && mayHaveAssessment) {
+    menuItems = [...menuItems, { icon: Clock, label: 'Your Availability', path: '/my-availability' }];
   }
 
   // Every user type gets their own training manual, always as the last entry.

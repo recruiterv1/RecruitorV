@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import CertifiedBadge from '../components/CertifiedBadge';
+import AvailabilityBadge, { AvailableNowPill, isAvailableNow, isOnlineNow } from '../components/AvailabilityBadge';
 import axios from 'axios';
 import {
   Users, UserPlus, Search, X, CheckCircle, AlertCircle,
@@ -488,7 +489,12 @@ const CoachTeamContent = () => {
                 const isApproved = req?.status === 'approved';
                 const isRejected = req?.status === 'rejected';
                 return (
-                  <div key={r.id} className="relative bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
+                  <div key={r.id} className={`relative rounded-xl border shadow-sm p-4 space-y-3 transition-colors ${
+                    isOnlineNow(r.lastActiveDate)
+                      ? 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-200'
+                      : isAvailableNow(r.availability)
+                        ? 'bg-emerald-50/40 border-emerald-200'
+                        : 'bg-white border-gray-200'}`}>
                     {/* Teams connected count (top-right) */}
                     <span
                       title={`Connected to ${r.teamsConnected || 0} team${(r.teamsConnected || 0) === 1 ? '' : 's'}`}
@@ -512,6 +518,7 @@ const CoachTeamContent = () => {
                             {r.name || '—'}
                           </button>
                           <CertifiedBadge tier={r.eligibilityTier} size="xs" withLabel={false} />
+                          <AvailableNowPill availability={r.availability} lastActiveDate={r.lastActiveDate} />
                         </div>
                         <p className="text-xs text-gray-500 truncate">{r.email}</p>
                         {r.location && <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5"><MapPin size={11} />{r.location}</p>}
@@ -520,6 +527,7 @@ const CoachTeamContent = () => {
                             <Activity size={10} /> Last active: {fmtLastActive(r.lastActiveDate)}
                           </span>
                         )}
+                        <AvailabilityBadge availability={r.availability} compact />
                       </div>
                     </div>
 

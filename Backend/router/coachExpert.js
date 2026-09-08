@@ -2424,6 +2424,9 @@ router.get('/team/eligible-recruiters', authMiddleware, async (req, res) => {
           resumeFileName: data.resumeFileName || '',
           vendorEmail: data.vendorEmail || null,
           lastActiveDate: toMs(data.lastActive) ? new Date(toMs(data.lastActive)).toISOString() : null,
+          // The two-hour windows this person said they can be reached in, so
+          // whoever is picking a team can see when they are actually around.
+          availability: Array.isArray(data.availability) ? data.availability : [],
         };
       })
       .filter(r => {
@@ -2767,6 +2770,75 @@ router.get('/team/my-team-members', authMiddleware, async (req, res) => {
 //   • share a skill category with the recruiter
 //   • logged in within the last 72 hours
 //   • have profile completion > 50%
+// Availability — the two-hour windows a member can be reached in.
+//
+// Collected at registration since 2026-09-08, so everyone who joined before
+// that has none. These let an existing member fill it in, and anyone change it
+// later, from their own dashboard.
+const TIME_SLOTS = [
+  '6 AM - 8 AM', '8 AM - 10 AM', '10 AM - 12 PM', '12 PM - 2 PM',
+  '2 PM - 4 PM', '4 PM - 6 PM', '6 PM - 8 PM', '8 PM - 10 PM', '10 PM - 12 AM',
+];
+const MAX_SLOTS = 3;
+
+// Resolves the signed-in member to the collection holding them.
+const findMemberDoc = async (email) => {
+  const e = String(email || '').toLowerCase().trim();
+  if (!e) return null;
+  for (const [col, role] of [['recruiter_db', 'Recruiter'], ['coach_db', 'Coach'], ['expert_db', 'Expert']]) {
+    const snap = await db.collection(col).where('email', '==', e).limit(1).get();
+    if (!snap.empty) return { ref: snap.docs[0].ref, data: snap.docs[0].data(), col, role };
+  }
+  return null;
+};
+
+router.get('/my-availability', async (req, res) => {
+  try {
+    const token = req.cookies?.__session;
+    if (!token) return res.status(401).json({ success: false, message: 'Please sign in.' });
+    let decoded;
+    try { decoded = jwt.verify(token, process.env.SECKEY); }
+    catch (e) { return res.status(403).json({ success: false, message: 'Session expired.' }); }
+
+    const me = await findMemberDoc(decoded.email);
+    if (!me) return res.status(404).json({ success: false, message: 'Account not found.' });
+
+    res.json({
+      success: true,
+      role: me.role,
+      slots: TIME_SLOTS,
+      maxSlots: MAX_SLOTS,
+      availability: Array.isArray(me.data.availability) ? me.data.availability : [],
+    });
+  } catch (e) {
+    console.error('my-availability error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+router.put('/my-availability', async (req, res) => {
+  try {
+    const token = req.cookies?.__session;
+    if (!token) return res.status(401).json({ success: false, message: 'Please sign in.' });
+    let decoded;
+    try { decoded = jwt.verify(token, process.env.SECKEY); }
+    catch (e) { return res.status(403).json({ success: false, message: 'Session expired.' }); }
+
+    const me = await findMemberDoc(decoded.email);
+    if (!me) return res.status(404).json({ success: false, message: 'Account not found.' });
+
+    // Only real slots, no duplicates, never more than the cap.
+    const incoming = Array.isArray(req.body?.availability) ? req.body.availability : [];
+    const availability = [...new Set(incoming.filter(v => TIME_SLOTS.includes(v)))].slice(0, MAX_SLOTS);
+
+    await me.ref.update({ availability, availabilityUpdatedAt: new Date() });
+    res.json({ success: true, availability, message: 'Availability saved.' });
+  } catch (e) {
+    console.error('my-availability save error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 router.get('/team/available-coaches', authMiddleware, async (req, res) => {
   try {
     const recruiterEmail = req.user.email;
@@ -2832,6 +2904,9 @@ router.get('/team/available-coaches', authMiddleware, async (req, res) => {
         resumeFileName: data.resumeFileName || '',
         lastActiveMs: toMs(data.lastActive),
         lastActiveDate: toMs(data.lastActive) ? new Date(toMs(data.lastActive)).toISOString() : null,
+        // The two-hour windows this person said they can be reached in, so
+        // whoever is picking a team can see when they are actually around.
+        availability: Array.isArray(data.availability) ? data.availability : [],
       };
     };
 
