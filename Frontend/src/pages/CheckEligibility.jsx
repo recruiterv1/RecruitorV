@@ -37,6 +37,9 @@ export default function CheckEligibility() {
   const [attempt, setAttempt] = useState(null);    // { attemptId, questions, timeLimitMinutes }
   const [answers, setAnswers] = useState({});
   const [left, setLeft] = useState(0);             // seconds remaining
+  // Questions are shown one at a time and only ever move forward — there is no
+  // way back to a question already passed, so an answer is committed by moving on.
+  const [cur, setCur] = useState(0);
   const [result, setResult] = useState(null);
   const submittedRef = useRef(false);
 
@@ -104,6 +107,7 @@ export default function CheckEligibility() {
     setBusy(true);
     try {
       const r = await axios.post('/api/eligibility/public/start', form);
+      setCur(0);
       setAttempt(r.data);
       setAnswers({});
       setLeft(r.data.timeLimitMinutes * 60);
@@ -117,7 +121,6 @@ export default function CheckEligibility() {
 
   const field = 'w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:border-orange-400 outline-none';
   const roles = cfg?.roles || ['Coach', 'Expert', 'Recruiter'];
-  const answered = Object.keys(answers).length;
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -219,58 +222,85 @@ export default function CheckEligibility() {
             <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
               <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
                 <span className="text-[13px] font-semibold text-slate-700">
-                  {form.role} check · {answered}/{attempt.questions.length} answered
+                  {form.role} check · Question {cur + 1} of {attempt.questions.length}
                 </span>
                 <span className={`inline-flex items-center gap-1.5 text-[13px] font-bold px-3 py-1.5 rounded-lg ${
                   left <= 60 ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-700'}`}>
                   <Clock size={14} /> {fmtClock(left)}
                 </span>
               </div>
+              {/* How far through they are. The only navigation there is. */}
+              <div className="h-1 bg-slate-100">
+                <div className="h-full transition-all duration-300"
+                  style={{ width: `${((cur + 1) / attempt.questions.length) * 100}%`, background: ORANGE }} />
+              </div>
             </div>
 
+            <style>{`
+              @keyframes rvQSlide { from { opacity: 0; transform: translateX(18px); }
+                                    to   { opacity: 1; transform: none; } }
+              .rv-q-slide { animation: rvQSlide .28s cubic-bezier(.22,.61,.36,1) both; }
+              @media (prefers-reduced-motion: reduce) { .rv-q-slide { animation: none; } }
+            `}</style>
             <section className="px-4 py-10">
-              <div className="max-w-3xl mx-auto space-y-4">
-                {attempt.questions.map((q, i) => (
-                  <div key={q.id} className="rounded-2xl border border-slate-200 p-5">
-                    <p className="font-semibold text-slate-900 text-[15px]">
-                      <span className="text-slate-400 mr-2">{i + 1}.</span>{q.question}
-                    </p>
-                    <div className="mt-4 space-y-2">
-                      {q.options.map((opt, oi) => {
-                        const on = answers[q.id] === oi;
-                        return (
-                          <label key={oi}
-                            className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition ${
-                              on ? 'border-orange-400 bg-orange-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-                            <input type="radio" name={q.id} checked={on} className="mt-0.5 accent-orange-500"
-                              onChange={() => setAnswers(a => ({ ...a, [q.id]: oi }))} />
-                            <span className="text-[14px] text-slate-700">{opt}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+              <div className="max-w-3xl mx-auto">
+                {(() => {
+                  const q = attempt.questions[cur];
+                  const isLast = cur === attempt.questions.length - 1;
+                  const picked = answers[q.id] !== undefined;
+                  return (
+                    <>
+                      {/* key on the question id so each slide animates in as its own element */}
+                      <div key={q.id} className="rounded-2xl border border-slate-200 p-6 rv-q-slide">
+                        <p className="font-semibold text-slate-900 text-[16px] leading-relaxed">
+                          <span className="text-slate-400 mr-2">{cur + 1}.</span>{q.question}
+                        </p>
+                        <div className="mt-5 space-y-2.5">
+                          {q.options.map((opt, oi) => {
+                            const on = answers[q.id] === oi;
+                            return (
+                              <label key={oi}
+                                className={`flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition ${
+                                  on ? 'border-orange-400 bg-orange-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                                <input type="radio" name={q.id} checked={on} className="mt-0.5 accent-orange-500"
+                                  onChange={() => setAnswers(a => ({ ...a, [q.id]: oi }))} />
+                                <span className="text-[14px] text-slate-700">{opt}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
 
-                {err && (
-                  <p className="flex items-center gap-2 text-sm text-red-600">
-                    <AlertCircle size={15} /> {err}
-                  </p>
-                )}
+                      {err && (
+                        <p className="flex items-center gap-2 text-sm text-red-600 mt-4">
+                          <AlertCircle size={15} /> {err}
+                        </p>
+                      )}
 
-                <div className="flex items-center gap-4 flex-wrap pt-2">
-                  <button onClick={() => submit(false)} disabled={busy}
-                    className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl text-white font-bold text-sm shadow-lg disabled:opacity-60"
-                    style={{ background: ORANGE }}>
-                    {busy ? <Loader2 size={16} className="animate-spin" /> : null}
-                    {busy ? 'Submitting…' : 'Submit Answers'}
-                  </button>
-                  {answered < attempt.questions.length && (
-                    <span className="text-[13px] text-slate-500">
-                      {attempt.questions.length - answered} unanswered — these count as wrong.
-                    </span>
-                  )}
-                </div>
+                      <div className="flex items-center justify-between gap-4 flex-wrap pt-6">
+                        <p className="text-[12.5px] text-slate-500">
+                          {picked
+                            ? 'You cannot return to a question once you move on.'
+                            : 'Not answering counts as wrong.'}
+                        </p>
+                        {isLast ? (
+                          <button onClick={() => submit(false)} disabled={busy}
+                            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl text-white font-bold text-sm shadow-lg disabled:opacity-60"
+                            style={{ background: ORANGE }}>
+                            {busy ? <Loader2 size={16} className="animate-spin" /> : null}
+                            {busy ? 'Submitting…' : 'Submit Answers'}
+                          </button>
+                        ) : (
+                          <button onClick={() => { setErr(''); setCur(c => c + 1); }}
+                            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl text-white font-bold text-sm shadow-lg"
+                            style={{ background: ORANGE }}>
+                            Next <ArrowRight size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </section>
           </>
