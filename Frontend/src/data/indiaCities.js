@@ -1,3 +1,5 @@
+import { worldCities, WORLD_CITY_COUNTRY, WORLD_CITY_ALIASES } from './worldCities';
+
 // India-wide city list, grouped by state / union territory.
 //
 // Covers every district headquarters plus the larger towns of each state, so a
@@ -270,10 +272,16 @@ export function searchCities(query, extraCities = [], limit = 12) {
   const q = (query || '').trim().toLowerCase();
   if (!q) return [];
 
+  // Indian cities are offered ahead of international ones on an equal match,
+  // since most positions are India-based — but a role in Kuwait or Manchester
+  // is now suggested rather than having to be typed out and added by hand.
   const pool = [...new Set([...extraCities, ...indiaCities])];
   const aliasHits = Object.entries(CITY_ALIASES)
     .filter(([alias]) => alias.toLowerCase().startsWith(q))
     .map(([alias, city]) => ({ city, state: CITY_STATE[city] || '', via: alias, rank: 1 }));
+  const worldAliasHits = Object.entries(WORLD_CITY_ALIASES)
+    .filter(([alias]) => alias.toLowerCase().startsWith(q))
+    .map(([alias, city]) => ({ city, state: WORLD_CITY_COUNTRY[city] || '', via: alias, rank: 1.5 }));
 
   const scored = [];
   for (const city of pool) {
@@ -288,8 +296,21 @@ export function searchCities(query, extraCities = [], limit = 12) {
     scored.push({ city, state, rank });
   }
 
+  // Same ranking, nudged half a step behind the Indian match of equal quality.
+  for (const city of worldCities) {
+    const lc = city.toLowerCase();
+    const country = WORLD_CITY_COUNTRY[city] || '';
+    let rank;
+    if (lc.startsWith(q)) rank = 0.5;
+    else if (lc.split(/[\s-]+/).some(w => w.startsWith(q))) rank = 2.5;
+    else if (lc.includes(q)) rank = 3.5;
+    else if (country.toLowerCase().startsWith(q)) rank = 4.5;
+    else continue;
+    scored.push({ city, state: country, rank });
+  }
+
   const seen = new Set();
-  return [...aliasHits, ...scored]
+  return [...aliasHits, ...worldAliasHits, ...scored]
     .sort((a, b) => a.rank - b.rank || a.city.localeCompare(b.city))
     .filter(r => (seen.has(r.city) ? false : (seen.add(r.city), true)))
     .slice(0, limit);

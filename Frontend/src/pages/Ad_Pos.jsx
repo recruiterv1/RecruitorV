@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, useRef } from 'react';
 import axios from "axios";
 import { PlusCircle, Briefcase, Building, Users, IndianRupee, MapPin, FileText, CheckCircle, X, Search, UserPlus, Award, Plus } from 'lucide-react';
 import { UserStateContext } from '../context/AuthPro';
+import ExperienceRange from '../components/ExperienceRange';
 import { useLocation } from 'react-router-dom';
 import { Autocomplete, Chip, TextField } from '@mui/material';
 import RichTextEditor, { isHtmlEmpty } from '../components/RichTextEditor';
@@ -1355,19 +1356,11 @@ const Ad_Pos = ({ companyMode = null, publicMode = null, firmMode = null, vendor
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5 sm:mb-2">
                     Experience <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    name="experience"
+                  <ExperienceRange
                     value={form.experience}
-                    onChange={handleChange}
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm bg-white"
+                    onChange={v => handleChange({ target: { name: 'experience', value: v } })}
                     required
-                  >
-                    <option value="">Select experience range</option>
-                    {EXPERIENCE_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
-                    {form.experience && !EXPERIENCE_RANGES.includes(form.experience) && (
-                      <option value={form.experience}>{form.experience}</option>
-                    )}
-                  </select>
+                  />
                 </div>
 
                 {/* Add Expert - Optional Field (internal only; hidden on the public employer page) */}

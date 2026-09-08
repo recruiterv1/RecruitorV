@@ -4,6 +4,7 @@ import { Edit, X, Trash2, Copy } from 'lucide-react';
 import { indiaStatesAndCities } from "./Ad_Pos";
 import CityMultiSelect from "../components/CityMultiSelect";
 import { EXPERIENCE_RANGES } from "./Ad_Pos";
+import ExperienceRange from "../components/ExperienceRange";
 import { UserStateContext } from '../context/AuthPro';
 
 const Input = ({ label, ...props }) => (
@@ -250,8 +251,11 @@ const EditJobModal = ({ job, onClose, onUpdate }) => {
             <Input label="Must Have" name="m_have" value={form.m_have} onChange={handleChange} />
             <Input label="Good To Have" name="g_have" value={form.g_have} onChange={handleChange} />
             <Input label="Competencies" name="compet" value={form.compet} onChange={handleChange} />
-            <Select label="Experience" name="experience" value={form.experience} onChange={handleChange}
-              options={[...EXPERIENCE_RANGES, ...(form.experience && !EXPERIENCE_RANGES.includes(form.experience) ? [form.experience] : [])]} />
+            <div className="flex flex-col">
+              <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-1.5">Experience</label>
+              <ExperienceRange value={form.experience}
+                onChange={v => setForm(f => ({ ...f, experience: v }))} />
+            </div>
             <Input label="Commission (%)" name="commison" value={form.commison} onChange={handleChange} />
 
             <MultiSelect

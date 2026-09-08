@@ -4,9 +4,13 @@ import { searchCities } from '../data/indiaCities';
 
 /**
  * Job-location picker: type a city, pick from the ranked suggestions, select as
- * many as needed. Any Indian city in any state is searchable, former names
- * resolve to the current one (Bangalore → Bengaluru), and anything genuinely
- * missing can be added as a custom city.
+ * many as needed. Any Indian city in any state is searchable, plus the major
+ * cities abroad that these roles actually go to — the Gulf, UK, US, Europe and
+ * APAC. Former names resolve to the current one (Bangalore → Bengaluru), and
+ * anything genuinely missing can still be added as a custom city.
+ *
+ * Indian cities rank ahead of international ones on an equally good match,
+ * since most positions are India-based.
  *
  * The value is the same plain array of city-name strings the forms already
  * save, so nothing downstream changes.
@@ -15,7 +19,7 @@ import { searchCities } from '../data/indiaCities';
  * @param {(next: string[]) => void} onChange
  * @param {string} placeholder
  */
-export default function CityMultiSelect({ value = [], onChange, placeholder = 'Type a city — e.g. Pune, Coimbatore, Siliguri…' }) {
+export default function CityMultiSelect({ value = [], onChange, placeholder = 'Type a city — e.g. Pune, Coimbatore, Dubai, London…' }) {
   const [search, setSearch] = useState('');
   const [hi, setHi] = useState(-1);          // keyboard-highlighted suggestion
   const [focused, setFocused] = useState(false);

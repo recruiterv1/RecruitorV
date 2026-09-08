@@ -7,6 +7,7 @@ import {
 import { Autocomplete, Chip, TextField } from '@mui/material';
 import CityMultiSelect from '../components/CityMultiSelect';
 import { EXPERIENCE_RANGES, EXPERIENCE_YEARS, CTC_OPTIONS } from './Ad_Pos';
+import ExperienceRange from '../components/ExperienceRange';
 import RichTextEditor, { isHtmlEmpty } from '../components/RichTextEditor';
 import { TagInput, ListInput, LimitedTextarea, EducationSelect, SearchSelect } from '../components/PositionFieldInputs';
 import QuestionsEditor, { QuestionsList, validateQuestions } from '../components/QuestionsEditor';
@@ -783,14 +784,10 @@ const EditPositionModal = ({ position, onClose, onSuccess }) => {
                   <label className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">
                     Experience <span className="text-red-500">*</span>
                   </label>
-                  <select name="experience" value={form.experience} onChange={handleChange} required
-                    className="h-9 sm:h-11 border-2 border-gray-200 rounded-lg sm:rounded-xl px-3 sm:px-4 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-sm bg-white">
-                    <option value="">Select experience range</option>
-                    {EXPERIENCE_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
-                    {form.experience && !EXPERIENCE_RANGES.includes(form.experience) && (
-                      <option value={form.experience}>{form.experience}</option>
-                    )}
-                  </select>
+                  <ExperienceRange
+                    value={form.experience}
+                    onChange={v => setForm(f => ({ ...f, experience: v }))}
+                  />
                 </div>
 
                 {/* Add Expert — MUI Autocomplete */}
