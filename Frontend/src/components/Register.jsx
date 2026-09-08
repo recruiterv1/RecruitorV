@@ -7,6 +7,8 @@ import TermsModal from "./TermsModal";
 import { buildRegistrationAgreementPDF, getRoleTerms } from "../lib/agreementTerms";
 
 // How many roles of a kind someone has closed, and when they can be reached.
+const MAX_SPECIALIZATIONS = 3;
+const MAX_AVAILABILITY_SLOTS = 3;
 const CLOSED_BANDS = ['0-2', '3-5', '6-10', '10+'];
 // Two-hour windows across the working day and evening.
 const TIME_SLOTS = [
@@ -25,7 +27,7 @@ export default function Register() {
     roleCategory: "",
     experienceCategory: "N/A", // Default value to prevent empty Firestore entries
     planType: "1", // Default to paid plan
-    specialization: "", // For Coach/Expert
+    specialization: [], // up to MAX_SPECIALIZATIONS categories
     userType: "free" // For Coach/Expert (paid/free)
   });
 
@@ -55,19 +57,36 @@ export default function Register() {
   // The roles asked about follow the chosen specialization, so they are fetched
   // when it changes — and previous answers dropped, since they were about
   // different roles.
+  const specKey = form.specialization.join('|');   // stable dep for the array
   useEffect(() => {
-    if (!form.specialization) { setCatRoles([]); setClosedCounts({}); return; }
+    const cats = form.specialization;
+    if (!cats.length) { setCatRoles([]); setClosedCounts({}); return; }
     let live = true;
     setLoadingRoles(true);
     setClosedCounts({});
-    axios.get('/api/direct-apply/latest-by-category', {
-      params: { skill_category: form.specialization, limit: 3 },
-    })
-      .then(r => { if (live) setCatRoles(r.data?.positions || []); })
-      .catch(() => { if (live) setCatRoles([]); })
+    // One request per chosen category, then merged — so a recruiter covering
+    // three fields is asked about a role from each rather than three from one.
+    Promise.all(cats.map(c =>
+      axios.get('/api/direct-apply/latest-by-category', {
+        params: { skill_category: c, limit: 2 },
+      })
+        .then(r => (r.data?.positions || []).map(p => ({ ...p, category: c })))
+        .catch(() => [])
+    ))
+      .then(groups => {
+        if (!live) return;
+        // Round-robin across categories so no single field crowds the others out.
+        const merged = [];
+        for (let i = 0; merged.length < 3; i++) {
+          const before = merged.length;
+          groups.forEach(g => { if (g[i] && merged.length < 3) merged.push(g[i]); });
+          if (merged.length === before) break;      // every group exhausted
+        }
+        setCatRoles(merged);
+      })
       .finally(() => { if (live) setLoadingRoles(false); });
     return () => { live = false; };
-  }, [form.specialization]);
+  }, [specKey]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -138,8 +157,8 @@ export default function Register() {
     }
 
     // Validate specialization for all roles
-    if (form.roleCategory && !form.specialization) {
-      newErrors.specialization = "Please select a specialization";
+    if (form.roleCategory && !form.specialization.length) {
+      newErrors.specialization = "Please select at least one specialization";
     }
 
     // Resume is mandatory for all roles
@@ -246,7 +265,7 @@ export default function Register() {
       roleCategory: form.roleCategory,
       experienceCategory: form.experienceCategory || "N/A",
       planType: form.roleCategory === "Recruiter" ? parseInt(form.planType) : 1,
-      skillCategory: form.specialization,
+      skillCategory: form.specialization,   // array of up to 3
       agreementAccepted: true,   // ticked the mandatory Terms & Conditions checkbox
       // Only the roles they actually answered for.
       positionExperience: catRoles
@@ -304,7 +323,7 @@ export default function Register() {
       localStorage.setItem("planType", form.planType);
       // Store role and userType for redirect logic
       localStorage.setItem("roleCategory", form.roleCategory);
-      localStorage.setItem("skillCategory", form.specialization);
+      localStorage.setItem("skillCategory", form.specialization.join(", "));
       if (form.roleCategory === "Coach" || form.roleCategory === "Expert") {
         localStorage.setItem("userType", form.userType);
       }
@@ -634,21 +653,39 @@ export default function Register() {
                   <Tag size={16} className="text-blue-600" />
                   Select Your Specialization
                   <span className="text-red-500">*</span>
+                  <span className="text-xs font-normal text-gray-400">(up to {MAX_SPECIALIZATIONS})</span>
                 </label>
-                <select
-                  name="specialization"
-                  value={form.specialization}
-                  onChange={handleChange}
-                  required
-                  className={`w-full px-4 py-2.5 border-2 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 bg-white transition-all ${
-                    errors.specialization ? 'border-red-300' : 'border-gray-200 focus:border-blue-500'
-                  }`}
-                >
-                  <option value="">Select specialization...</option>
-                  {skillCategories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
+                <div className={`rounded-xl border-2 p-3 ${
+                  errors.specialization ? 'border-red-300' : 'border-gray-200'}`}>
+                  <div className="flex flex-wrap gap-2">
+                    {skillCategories.map(cat => {
+                      const on = form.specialization.includes(cat);
+                      const full = form.specialization.length >= MAX_SPECIALIZATIONS;
+                      return (
+                        <button type="button" key={cat}
+                          disabled={!on && full}
+                          onClick={() => setForm(f => ({
+                            ...f,
+                            specialization: on
+                              ? f.specialization.filter(c => c !== cat)
+                              : (f.specialization.length >= MAX_SPECIALIZATIONS
+                                  ? f.specialization
+                                  : [...f.specialization, cat]),
+                          }))}
+                          className={`px-3.5 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                            on ? 'border-blue-500 bg-blue-50 text-blue-700'
+                               : full ? 'border-gray-100 text-gray-300 cursor-not-allowed'
+                                      : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-gray-50'}`}>
+                          {cat}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-3">
+                    {form.specialization.length}/{MAX_SPECIALIZATIONS} selected
+                    {form.specialization.length >= MAX_SPECIALIZATIONS && ' — deselect one to change'}
+                  </p>
+                </div>
                 {errors.specialization && (
                   <p className="text-red-500 text-xs mt-1">{errors.specialization}</p>
                 )}
@@ -657,12 +694,12 @@ export default function Register() {
 
             {/* Track record + availability. Both depend on the chosen
                 specialization, so they sit directly after it. */}
-            {form.specialization && (
+            {form.specialization.length > 0 && (
               <div className="relative animate-fadeIn space-y-6">
                 <div>
                   <label className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
                     <TrendingUp size={16} className="text-blue-600" />
-                    Your track record in {form.specialization}
+                    Your track record in {form.specialization.join(', ')}
                   </label>
                   <p className="text-xs text-gray-500 mb-3">
                     How many roles like these have you closed? Live openings in your specialization.
@@ -672,7 +709,7 @@ export default function Register() {
                     <div className="text-sm text-gray-400 py-4">Loading roles…</div>
                   ) : catRoles.length === 0 ? (
                     <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-4">
-                      No live openings in {form.specialization} right now — you can skip this.
+                      No live openings in {form.specialization.join(', ')} right now — you can skip this.
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -704,10 +741,10 @@ export default function Register() {
                 <div>
                   <label className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
                     <Clock size={16} className="text-blue-600" />
-                    Your availability
+                    Your available hours
                   </label>
                   <p className="text-xs text-gray-500 mb-3">
-                    Pick the two-hour windows you can usually be reached in. Choose as many as apply.
+                    Which two-hour windows can you usually be reached in? Choose as many as apply.
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {TIME_SLOTS.map(slot => {
@@ -715,7 +752,9 @@ export default function Register() {
                       return (
                         <button type="button" key={slot}
                           onClick={() => setAvailability(a =>
-                            on ? a.filter(x => x !== slot) : [...a, slot])}
+                            on ? a.filter(x => x !== slot)
+                               : (a.length >= MAX_AVAILABILITY_SLOTS ? a : [...a, slot]))}
+                          disabled={!on && availability.length >= MAX_AVAILABILITY_SLOTS}
                           className={`px-3 py-2.5 rounded-lg text-sm font-medium border-2 transition-all ${
                             on ? 'border-orange-500 bg-orange-50 text-orange-700'
                                : 'border-gray-200 text-gray-600 hover:border-orange-300 hover:bg-gray-50'}`}>

@@ -135,12 +135,10 @@ router.post('/register',async (req,res)=>{
         }
       : {};
 
-    // Registration no longer requires the eligibility check to have been passed
-    // (turned off 2026-09-08 at the client's request). The assessment itself is
-    // untouched: anyone who has passed still gets their tier, badge and
-    // certificate carried onto the new account by the block below. Flip this
-    // back to true to require a pass again.
-    const REQUIRE_ELIGIBILITY_TO_REGISTER = false;
+    // A Coach, Expert or Recruiter must have cleared the eligibility check for
+    // their role before they can register. Enforced here as well as in the form,
+    // so it cannot be skipped by posting straight to this endpoint.
+    const REQUIRE_ELIGIBILITY_TO_REGISTER = true;
 
     // Set when the eligibility gate finds a pass, and merged onto the new account.
     let eligibilityStamp = {};
