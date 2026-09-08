@@ -373,6 +373,55 @@ router.get('/position/:pos_id', async (req, res) => {
 //   status.toLowerCase().includes('active') → Active  ✓
 //   anything else (closed, hold, filled…) → excluded  ✗
 
+// GET /latest-by-category?skill_category=Technology&limit=3
+// The few most recent live roles in one skill category, titles only.
+//
+// Used on the registration form to ask a newcomer how many roles of each kind
+// they have closed. The full /positions payload would be 592 positions and
+// every client question with it; this is the handful of titles that page needs.
+router.get('/latest-by-category', async (req, res) => {
+  try {
+    const { db } = require('./firebase_ad');
+    const wanted = String(req.query.skill_category || '').trim().toLowerCase();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 3, 1), 10);
+    if (!wanted) return res.json({ success: true, positions: [] });
+
+    const snap = await db.collection('admin_AddPos')
+      .select('pos_id', 'position', 'client', 'skill_category', 'status', 'datePosted',
+              'consultingFirmId', 'openToAll')
+      .get();
+
+    const rows = snap.docs.map(d => d.data())
+      .filter(p => String(p.skill_category || '').trim().toLowerCase() === wanted)
+      // Same visibility rule as /positions: blank status counts as active.
+      .filter(p => {
+        const st = String(p.status || '').toLowerCase().trim();
+        if (!(st === '' || st.includes('active'))) return false;
+        if (p.consultingFirmId && p.openToAll !== true) return false;
+        return true;
+      })
+      .sort((a, b) => (b.datePosted?._seconds || 0) - (a.datePosted?._seconds || 0));
+
+    // One card per distinct job title — the question is about a kind of role,
+    // so the same title posted for three clients should not be asked three times.
+    const seen = new Set();
+    const positions = [];
+    for (const p of rows) {
+      const title = String(p.position || '').trim();
+      const key = title.toLowerCase();
+      if (!title || seen.has(key)) continue;
+      seen.add(key);
+      positions.push({ pos_id: p.pos_id, position: title, client: p.client || '' });
+      if (positions.length >= limit) break;
+    }
+
+    res.json({ success: true, positions });
+  } catch (e) {
+    console.error('latest-by-category error:', e.message);
+    res.json({ success: true, positions: [] });   // never block registration
+  }
+});
+
 router.get('/positions', async (req, res) => {
   try {
     const { db } = require('./firebase_ad');

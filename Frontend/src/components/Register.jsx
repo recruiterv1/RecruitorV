@@ -2,9 +2,17 @@ import { useState, useEffect } from "react";
 import { isSuccessMessage } from '../utils/messageTone';
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Eye, EyeOff, Phone, Mail, User, Lock, Briefcase, Shield, Users, UserCheck, BookOpen, Award, TrendingUp, Tag, FileText, Upload, X as XIcon } from "lucide-react";
+import { Eye, EyeOff, Phone, Mail, User, Lock, Briefcase, Shield, Users, UserCheck, BookOpen, Award, TrendingUp, Tag, FileText, Upload, Clock, X as XIcon } from "lucide-react";
 import TermsModal from "./TermsModal";
 import { buildRegistrationAgreementPDF, getRoleTerms } from "../lib/agreementTerms";
+
+// How many roles of a kind someone has closed, and when they can be reached.
+const CLOSED_BANDS = ['0-2', '3-5', '6-10', '10+'];
+// Two-hour windows across the working day and evening.
+const TIME_SLOTS = [
+  '6 AM - 8 AM', '8 AM - 10 AM', '10 AM - 12 PM', '12 PM - 2 PM',
+  '2 PM - 4 PM', '4 PM - 6 PM', '6 PM - 8 PM', '8 PM - 10 PM', '10 PM - 12 AM',
+];
 export default function Register() {
   const navigate = useNavigate();
   
@@ -20,6 +28,12 @@ export default function Register() {
     specialization: "", // For Coach/Expert
     userType: "free" // For Coach/Expert (paid/free)
   });
+
+  // Live roles in the chosen specialization, and what the applicant says about them.
+  const [catRoles, setCatRoles] = useState([]);
+  const [loadingRoles, setLoadingRoles] = useState(false);
+  const [closedCounts, setClosedCounts] = useState({});   // position title -> band
+  const [availability, setAvailability] = useState([]);   // two-hour windows
 
   const [skillCategories, setSkillCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -37,6 +51,23 @@ export default function Register() {
       .then(res => { if (res.data.success) setSkillCategories(res.data.categories); })
       .catch(() => {});
   }, []);
+
+  // The roles asked about follow the chosen specialization, so they are fetched
+  // when it changes — and previous answers dropped, since they were about
+  // different roles.
+  useEffect(() => {
+    if (!form.specialization) { setCatRoles([]); setClosedCounts({}); return; }
+    let live = true;
+    setLoadingRoles(true);
+    setClosedCounts({});
+    axios.get('/api/direct-apply/latest-by-category', {
+      params: { skill_category: form.specialization, limit: 3 },
+    })
+      .then(r => { if (live) setCatRoles(r.data?.positions || []); })
+      .catch(() => { if (live) setCatRoles([]); })
+      .finally(() => { if (live) setLoadingRoles(false); });
+    return () => { live = false; };
+  }, [form.specialization]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -217,6 +248,11 @@ export default function Register() {
       planType: form.roleCategory === "Recruiter" ? parseInt(form.planType) : 1,
       skillCategory: form.specialization,
       agreementAccepted: true,   // ticked the mandatory Terms & Conditions checkbox
+      // Only the roles they actually answered for.
+      positionExperience: catRoles
+        .filter(r => closedCounts[r.position])
+        .map(r => ({ pos_id: r.pos_id || '', position: r.position, closed: closedCounts[r.position] })),
+      availability,
       ...(resumeUrl ? { resumeUrl } : {}),
     };
 
@@ -591,99 +627,6 @@ export default function Register() {
               </div>
             )}
 
-            {/* Plan Type Selection - Only shown when Recruiter is selected */}
-            {form.roleCategory === "Recruiter" && (
-              <div className="relative animate-fadeIn">
-                <label className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                  <TrendingUp size={16} className="text-blue-600" />
-                  Choose Your Plan
-                  <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Free Plan */}
-                  <label
-                    className={`relative p-6 border-2 rounded-xl cursor-pointer transition-all ${
-                      form.planType === "0"
-                        ? "border-blue-500 bg-blue-50 shadow-lg scale-105"
-                        : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="planType"
-                      value="0"
-                      checked={form.planType === "0"}
-                      onChange={handleChange}
-                      className="sr-only"
-                    />
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className={`text-lg font-bold ${
-                          form.planType === "0" ? "text-blue-700" : "text-gray-800"
-                        }`}>
-                          Free Plan
-                        </h3>
-                      </div>
-                      {form.planType === "0" && (
-                        <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
-                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <p className="text-xs text-gray-500">Perfect for trying out the platform</p>
-                    </div>
-                  </label>
-
-                  {/* Paid Plan */}
-                  <label
-                    className={`relative p-6 border-2 rounded-xl cursor-pointer transition-all ${
-                      form.planType === "1"
-                        ? "border-orange-500 bg-orange-50 shadow-lg scale-105"
-                        : "border-gray-200 hover:border-orange-300 hover:bg-gray-50"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="planType"
-                      value="1"
-                      checked={form.planType === "1"}
-                      onChange={handleChange}
-                      className="sr-only"
-                    />
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className={`text-lg font-bold ${
-                            form.planType === "1" ? "text-orange-700" : "text-gray-800"
-                          }`}>
-                            Paid Plan
-                          </h3>
-                          <span className="px-2 py-1 bg-orange-500 text-white text-xs font-bold rounded">
-                            POPULAR
-                          </span>
-                        </div>
-                      </div>
-                      {form.planType === "1" && (
-                        <div className="w-6 h-6 rounded-full bg-orange-600 flex items-center justify-center">
-                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <p className="text-xs text-gray-500">Best for professional recruiters</p>
-                    </div>
-                  </label>
-                </div>
-              </div>
-            )}
-
             {/* Specialization Field - shown for ALL roles once role is selected */}
             {form.roleCategory && (
               <div className="relative animate-fadeIn">
@@ -712,109 +655,75 @@ export default function Register() {
               </div>
             )}
 
-            {/* User Type (Paid/Free) - Only shown when Coach or Expert is selected */}
-            {(form.roleCategory === "Coach" || form.roleCategory === "Expert") && (
-              <div className="relative animate-fadeIn">
-                <label className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                  <TrendingUp size={16} className="text-blue-600" />
-                  Choose Your Plan
-                  <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Free Plan */}
-                  <label
-                    className={`relative p-6 border-2 rounded-xl cursor-pointer transition-all ${
-                      form.userType === "free"
-                        ? form.roleCategory === "Coach"
-                          ? "border-orange-500 bg-orange-50 shadow-lg"
-                          : "border-red-500 bg-red-50 shadow-lg"
-                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="userType"
-                      value="free"
-                      checked={form.userType === "free"}
-                      onChange={handleChange}
-                      className="sr-only"
-                    />
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className={`text-lg font-bold ${
-                          form.userType === "free"
-                            ? form.roleCategory === "Coach" ? "text-orange-700" : "text-red-700"
-                            : "text-gray-800"
-                        }`}>
-                          Free Plan
-                        </h3>
-                      </div>
-                      {form.userType === "free" && (
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                          form.roleCategory === "Coach" ? "bg-orange-600" : "bg-red-600"
-                        }`}>
-                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <p className="text-xs text-gray-500">Basic access to the platform</p>
-                    </div>
+            {/* Track record + availability. Both depend on the chosen
+                specialization, so they sit directly after it. */}
+            {form.specialization && (
+              <div className="relative animate-fadeIn space-y-6">
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                    <TrendingUp size={16} className="text-blue-600" />
+                    Your track record in {form.specialization}
                   </label>
+                  <p className="text-xs text-gray-500 mb-3">
+                    How many roles like these have you closed? Live openings in your specialization.
+                  </p>
 
-                  {/* Paid Plan */}
-                  <label
-                    className={`relative p-6 border-2 rounded-xl cursor-pointer transition-all ${
-                      form.userType === "paid"
-                        ? form.roleCategory === "Coach"
-                          ? "border-orange-500 bg-orange-50 shadow-lg"
-                          : "border-red-500 bg-red-50 shadow-lg"
-                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="userType"
-                      value="paid"
-                      checked={form.userType === "paid"}
-                      onChange={handleChange}
-                      className="sr-only"
-                    />
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className={`text-lg font-bold ${
-                            form.userType === "paid"
-                              ? form.roleCategory === "Coach" ? "text-orange-700" : "text-red-700"
-                              : "text-gray-800"
-                          }`}>
-                            Paid Plan
-                          </h3>
-                          <span className={`px-2 py-1 text-white text-xs font-bold rounded ${
-                            form.roleCategory === "Coach" ? "bg-orange-500" : "bg-red-500"
-                          }`}>
-                            POPULAR
-                          </span>
-                        </div>
-                      </div>
-                      {form.userType === "paid" && (
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                          form.roleCategory === "Coach" ? "bg-orange-600" : "bg-red-600"
-                        }`}>
-                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                      )}
+                  {loadingRoles ? (
+                    <div className="text-sm text-gray-400 py-4">Loading roles…</div>
+                  ) : catRoles.length === 0 ? (
+                    <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                      No live openings in {form.specialization} right now — you can skip this.
                     </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {catRoles.map(r => (
+                        <div key={r.pos_id || r.position}
+                          className="border-2 border-gray-200 rounded-xl p-4">
+                          <p className="font-semibold text-gray-800 text-[15px] mb-3">{r.position}</p>
+                          <div className="flex flex-wrap gap-2">
+                            {CLOSED_BANDS.map(band => {
+                              const on = closedCounts[r.position] === band;
+                              return (
+                                <button type="button" key={band}
+                                  onClick={() => setClosedCounts(c => ({
+                                    ...c, [r.position]: on ? undefined : band }))}
+                                  className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                                    on ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                       : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-gray-50'}`}>
+                                  {band} closed
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <p className="text-xs text-gray-500">Full access to all features</p>
-                    </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
+                    <Clock size={16} className="text-blue-600" />
+                    Your availability
                   </label>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Pick the two-hour windows you can usually be reached in. Choose as many as apply.
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {TIME_SLOTS.map(slot => {
+                      const on = availability.includes(slot);
+                      return (
+                        <button type="button" key={slot}
+                          onClick={() => setAvailability(a =>
+                            on ? a.filter(x => x !== slot) : [...a, slot])}
+                          className={`px-3 py-2.5 rounded-lg text-sm font-medium border-2 transition-all ${
+                            on ? 'border-orange-500 bg-orange-50 text-orange-700'
+                               : 'border-gray-200 text-gray-600 hover:border-orange-300 hover:bg-gray-50'}`}>
+                          {slot}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}

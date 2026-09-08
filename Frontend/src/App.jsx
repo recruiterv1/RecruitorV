@@ -416,7 +416,7 @@ const App = () => {
             <Route path='/old-home' element={<Homepage/>}/>
             <Route path='/new-home' element={<HomepageV2/>}/>
             {/* Registration opens only to someone who has cleared the check. */}
-            <Route path='/reg' element={<EligibilityGate><Register/></EligibilityGate>} />
+            <Route path='/reg' element={<Register/>} />
             <Route path='/otp' element={<Otp/>}/>
             <Route path='/dash_rec' element={<Dash_rec/>} />
             <Route path='/dash_position' element={<Dash_Position/>} />

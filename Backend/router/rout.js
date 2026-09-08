@@ -118,7 +118,7 @@ router.post('/upload-resume', async (req, res) => {
 
 router.post('/register',async (req,res)=>{
 
-    let {name,email,mobile,experienceCategory,password,roleCategory,planType,specialization,skillCategory,userType,resumeUrl,agreementAccepted}=req.body;
+    let {name,email,mobile,experienceCategory,password,roleCategory,planType,specialization,skillCategory,userType,resumeUrl,agreementAccepted,positionExperience,availability}=req.body;
 
     // The user ticks "I agree to the Terms & Conditions" on the registration
     // form, so the account is created already marked as having signed the
@@ -135,14 +135,22 @@ router.post('/register',async (req,res)=>{
         }
       : {};
 
+    // Registration no longer requires the eligibility check to have been passed
+    // (turned off 2026-09-08 at the client's request). The assessment itself is
+    // untouched: anyone who has passed still gets their tier, badge and
+    // certificate carried onto the new account by the block below. Flip this
+    // back to true to require a pass again.
+    const REQUIRE_ELIGIBILITY_TO_REGISTER = false;
+
     // Set when the eligibility gate finds a pass, and merged onto the new account.
     let eligibilityStamp = {};
 
     try{
         // ── Eligibility gate ────────────────────────────────────────────────
-        // A Coach, Expert or Recruiter signing themselves up must have cleared
-        // the eligibility check for that role first. Enforced here rather than
-        // only in the form, so it cannot be skipped by posting directly.
+        // Looks up whether this person has passed the eligibility check, so a
+        // pass can be carried onto the new account as their tier, badge and
+        // certificate. Whether a pass is *required* is REQUIRE_ELIGIBILITY_TO_REGISTER
+        // above; with it off this only stamps, and never refuses.
         //
         // Accounts created by an admin, vendor or consulting firm go through
         // their own routes and are unaffected. A role with no active questions
@@ -170,7 +178,7 @@ router.post('/register',async (req,res)=>{
                             ...(pass.positionCap ? { positionCap: pass.positionCap } : {}),
                         };
                     }
-                    if (!pass) {
+                    if (!pass && REQUIRE_ELIGIBILITY_TO_REGISTER) {
                         return res.status(403).json({
                             message: `Please clear the ${roleCategory} eligibility check before registering.`,
                             errorCode: 'ELIGIBILITY_REQUIRED',
@@ -229,6 +237,32 @@ router.post('/register',async (req,res)=>{
         const hashedOtp=crypto.createHash("sha256").update(String(otp)).digest('hex');
         const otpExpires=Date.now()+ 60*5*1000;
 
+        // Track record and availability, collected on the sign-up form.
+        //
+        // positionExperience is how many roles of each kind they have closed,
+        // asked against the live positions in their skill category:
+        //   [{ pos_id, position, closed: '0-2' | '3-5' | '6-10' | '10+' }]
+        // availability is the two-hour windows they can be reached in.
+        // Both are optional — an account is never refused for lacking them.
+        const CLOSED_BANDS = ['0-2', '3-5', '6-10', '10+'];
+        const cleanExperience = Array.isArray(positionExperience)
+            ? positionExperience
+                .filter(r => r && r.position && CLOSED_BANDS.includes(r.closed))
+                .slice(0, 10)
+                .map(r => ({
+                    pos_id: String(r.pos_id || ''),
+                    position: String(r.position).slice(0, 200),
+                    closed: r.closed,
+                }))
+            : [];
+        const cleanAvailability = Array.isArray(availability)
+            ? [...new Set(availability.map(v => String(v).slice(0, 20)))].slice(0, 12)
+            : [];
+        const profileFields = {
+            positionExperience: cleanExperience,
+            availability: cleanAvailability,
+        };
+
         // Handle registration based on role
         if (roleCategory === "Coach") {
             // Create coach record
@@ -248,6 +282,7 @@ router.post('/register',async (req,res)=>{
                 // needed. Admins can revoke access later (accountStatus: 'blocked').
                 accountStatus: 'approved',
                 ...agreementFields,
+                ...profileFields,
                 ...eligibilityStamp,
                 ...(resumeUrl ? { resumeUrl } : {}),
             };
@@ -289,6 +324,7 @@ router.post('/register',async (req,res)=>{
                 // needed. Admins can revoke access later (accountStatus: 'blocked').
                 accountStatus: 'approved',
                 ...agreementFields,
+                ...profileFields,
                 ...eligibilityStamp,
                 ...(resumeUrl ? { resumeUrl } : {}),
             };
@@ -330,6 +366,7 @@ router.post('/register',async (req,res)=>{
                 // needed. Admins can revoke access later (accountStatus: 'blocked').
                 accountStatus: 'approved',
                 ...agreementFields,
+                ...profileFields,
                 ...eligibilityStamp,
                 ...(resumeUrl ? { resumeUrl } : {}),
             };
