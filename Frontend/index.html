@@ -18,6 +18,18 @@
       gtag('config', 'G-H5ZLYTT55X');
     </script>
     <script type='text/javascript' src='https://platform-api.sharethis.com/js/sharethis.js#property=6a37e292a46843a3ae37492b&product=inline-share-buttons' async='async'></script>
+
+    <!-- Installable web app. iOS has no APK to sideload, so Add to Home Screen
+         is the install path there: apple-touch-icon is the home-screen icon
+         (iOS ignores the manifest's icons), and apple-mobile-web-app-capable
+         is what makes it open without Safari's chrome. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="RecruiterV" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   </head>
   <body>
 
