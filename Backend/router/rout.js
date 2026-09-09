@@ -118,7 +118,7 @@ router.post('/upload-resume', async (req, res) => {
 
 router.post('/register',async (req,res)=>{
 
-    let {name,email,mobile,experienceCategory,password,roleCategory,planType,specialization,skillCategory,userType,resumeUrl,agreementAccepted,positionExperience,availability}=req.body;
+    let {name,email,mobile,experienceCategory,password,roleCategory,planType,specialization,skillCategory,userType,resumeUrl,agreementAccepted,positionExperience,availability,selectedPosition}=req.body;
 
     // The user ticks "I agree to the Terms & Conditions" on the registration
     // form, so the account is created already marked as having signed the
@@ -256,9 +256,17 @@ router.post('/register',async (req,res)=>{
         const cleanAvailability = Array.isArray(availability)
             ? [...new Set(availability.map(v => String(v).slice(0, 20)))].slice(0, 12)
             : [];
+        // The single position they picked, with how many like it they have closed.
+        const chosen = selectedPosition && selectedPosition.pos_id ? {
+            pos_id: String(selectedPosition.pos_id),
+            position: String(selectedPosition.position || '').slice(0, 200),
+            closed: CLOSED_BANDS.includes(selectedPosition.closed) ? selectedPosition.closed : '',
+        } : null;
+
         const profileFields = {
             positionExperience: cleanExperience,
             availability: cleanAvailability,
+            ...(chosen ? { selectedPosition: chosen } : {}),
         };
 
         // Handle registration based on role
@@ -415,6 +423,25 @@ router.post('/register',async (req,res)=>{
             } else {
                 user = await recruiter.createRecruiter(recruiterData);
                 console.log("✅ Recruiter registered successfully:", user.id);
+            }
+
+            // The position they picked while registering becomes theirs straight
+            // away, so it is waiting on their Assigned Positions page when they
+            // first sign in. Assignment is auto-approved for recruiters anyway;
+            // doing it here just saves them going to find it.
+            if (selectedPosition?.pos_id) {
+                try {
+                    const positionAccess = require('../model_fire/positionAccessF');
+                    await positionAccess.createAssignRequest(
+                        user.id, email.toLowerCase(), String(selectedPosition.pos_id),
+                        'Chosen during registration',
+                    );
+                    console.log('assigned position', selectedPosition.pos_id, 'to', email);
+                } catch (assignErr) {
+                    // A failed assignment must never cost them the account they
+                    // just created — they can pick the position up themselves.
+                    console.error('registration position assign skipped:', assignErr.message);
+                }
             }
 
             let recruiterEmailSent = true;

@@ -388,7 +388,8 @@ router.get('/latest-by-category', async (req, res) => {
 
     const snap = await db.collection('admin_AddPos')
       .select('pos_id', 'position', 'client', 'skill_category', 'status', 'datePosted',
-              'consultingFirmId', 'openToAll')
+              'consultingFirmId', 'openToAll', 'location', 'loc', 'experience', 'exp',
+              'clientspoc')
       .get();
 
     const rows = snap.docs.map(d => d.data())
@@ -411,9 +412,30 @@ router.get('/latest-by-category', async (req, res) => {
       const key = title.toLowerCase();
       if (!title || seen.has(key)) continue;
       seen.add(key);
-      positions.push({ pos_id: p.pos_id, position: title, client: p.client || '' });
+      positions.push({
+        pos_id: p.pos_id,
+        position: title,
+        client: p.client || '',
+        location: p.location || p.loc || '',
+        experience: p.experience || p.exp || '',
+        clientspoc: String(p.clientspoc || '').toLowerCase(),
+      });
       if (positions.length >= limit) break;
     }
+
+    // Flag which of them the client has recorded a briefing for, so the picker
+    // can offer it without a round trip per card. Only the ClientSPOC's own
+    // briefing is public; coach and vendor ones stay with their teams.
+    await Promise.all(positions.map(async (p) => {
+      p.hasBriefing = false;
+      if (!p.clientspoc) return;
+      try {
+        const b = await db.collection('position_coach_briefing')
+          .doc(`${p.pos_id}__${p.clientspoc}`).get();
+        p.hasBriefing = b.exists && (b.data().status || 'draft') === 'ready';
+      } catch (e) { /* a briefing lookup must never fail the list */ }
+      delete p.clientspoc;   // internal only
+    }));
 
     res.json({ success: true, positions });
   } catch (e) {

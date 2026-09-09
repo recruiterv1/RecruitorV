@@ -8,6 +8,17 @@ import { UserDispatchContext } from "../context/AuthPro";
 import { setAuthToken, clearAuthToken } from "../lib/authToken";
 import { isNativeApp, isRoleAllowedInApp } from "../lib/apiBase";
 
+// A new joiner who picked a position while registering is taken straight to it
+// the first time they sign in — the flag is set at registration and cleared
+// here, so it only ever redirects once.
+const firstLoginPositionRedirect = () => {
+  try {
+    if (localStorage.getItem('rv_first_position') !== '1') return null;
+    localStorage.removeItem('rv_first_position');
+    return '/assigned-positions';
+  } catch { return null; }
+};
+
 const APP_ROLE_BLOCKED_MSG =
   "This app is for Recruiters, Coaches and Experts only. Please sign in to this account on the website at recruiterv.com.";
 import { auth, googleProvider } from "../firebase";
@@ -101,7 +112,10 @@ const Login = () => {
         const isVendorTeam = !!userData?.vendorEmail || !!userData?.consultingFirmId;
         const readyForPositions = isVendorTeam || (agreementSigned && profilePct >= 80);
 
-        if (role === 'Coach') {
+        const firstPos = firstLoginPositionRedirect();
+        if (firstPos) {
+          navigate(firstPos);
+        } else if (role === 'Coach') {
           navigate(readyForPositions ? "/coach-expert-positions" : "/coach-dashboard");
         } else if (role === 'Expert') {
           navigate(readyForPositions ? "/coach-expert-positions" : "/expert-dashboard");
@@ -205,11 +219,11 @@ const Login = () => {
       const readyForPositions = isVendorTeam || (agreementSigned && profilePct >= 80);
 
       if (role === 'Coach') {
-        navigate(readyForPositions ? "/coach-expert-positions" : "/coach-dashboard");
+        navigate(firstLoginPositionRedirect() || (readyForPositions ? "/coach-expert-positions" : "/coach-dashboard"));
       } else if (role === 'Expert') {
-        navigate(readyForPositions ? "/coach-expert-positions" : "/expert-dashboard");
+        navigate(firstLoginPositionRedirect() || (readyForPositions ? "/coach-expert-positions" : "/expert-dashboard"));
       } else {
-        navigate(readyForPositions ? "/dash_position" : "/dash_rec");
+        navigate(firstLoginPositionRedirect() || (readyForPositions ? "/dash_position" : "/dash_rec"));
       }
       
     } catch (error) {

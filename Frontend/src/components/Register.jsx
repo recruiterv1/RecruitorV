@@ -4,12 +4,14 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Eye, EyeOff, Phone, Mail, User, Lock, Briefcase, Shield, Users, UserCheck, BookOpen, Award, TrendingUp, Tag, FileText, Upload, Clock, X as XIcon } from "lucide-react";
 import TermsModal from "./TermsModal";
+import PositionPicker from "./PositionPicker";
 import { readEligibilityPass } from "../utils/eligibilityPass";
 import { buildRegistrationAgreementPDF, getRoleTerms } from "../lib/agreementTerms";
 
 // How many roles of a kind someone has closed, and when they can be reached.
 const MAX_SPECIALIZATIONS = 3;
 const MAX_AVAILABILITY_SLOTS = 3;
+const MAX_POSITIONS_PER_CATEGORY = 6;
 const CLOSED_BANDS = ['0-2', '3-5', '6-10', '10+'];
 // Two-hour windows across the working day and evening.
 const TIME_SLOTS = [
@@ -32,10 +34,11 @@ export default function Register() {
     userType: "free" // For Coach/Expert (paid/free)
   });
 
-  // Live roles in the chosen specialization, and what the applicant says about them.
-  const [catRoles, setCatRoles] = useState([]);
+  // Live openings in the chosen specializations, and the one they picked.
   const [loadingRoles, setLoadingRoles] = useState(false);
-  const [closedCounts, setClosedCounts] = useState({});   // position title -> band
+  const [posGroups, setPosGroups] = useState([]);          // [{category, positions}]
+  const [selectedPosition, setSelectedPosition] = useState(null);  // exactly one
+  const [selectedClosed, setSelectedClosed] = useState('');        // band for it
   const [availability, setAvailability] = useState([]);   // two-hour windows
 
   const [skillCategories, setSkillCategories] = useState([]);
@@ -61,30 +64,21 @@ export default function Register() {
   const specKey = form.specialization.join('|');   // stable dep for the array
   useEffect(() => {
     const cats = form.specialization;
-    if (!cats.length) { setCatRoles([]); setClosedCounts({}); return; }
+    if (!cats.length) { setPosGroups([]); setSelectedPosition(null); setSelectedClosed(''); return; }
     let live = true;
     setLoadingRoles(true);
-    setClosedCounts({});
-    // One request per chosen category, then merged — so a recruiter covering
-    // three fields is asked about a role from each rather than three from one.
+    // Dropped rather than carried over: the previous choice belonged to a
+    // specialization they have just changed.
+    setSelectedPosition(null);
+    setSelectedClosed('');
     Promise.all(cats.map(c =>
       axios.get('/api/direct-apply/latest-by-category', {
-        params: { skill_category: c, limit: 2 },
+        params: { skill_category: c, limit: MAX_POSITIONS_PER_CATEGORY },
       })
-        .then(r => (r.data?.positions || []).map(p => ({ ...p, category: c })))
-        .catch(() => [])
+        .then(r => ({ category: c, positions: r.data?.positions || [] }))
+        .catch(() => ({ category: c, positions: [] }))
     ))
-      .then(groups => {
-        if (!live) return;
-        // Round-robin across categories so no single field crowds the others out.
-        const merged = [];
-        for (let i = 0; merged.length < 3; i++) {
-          const before = merged.length;
-          groups.forEach(g => { if (g[i] && merged.length < 3) merged.push(g[i]); });
-          if (merged.length === before) break;      // every group exhausted
-        }
-        setCatRoles(merged);
-      })
+      .then(groups => { if (live) setPosGroups(groups); })
       .finally(() => { if (live) setLoadingRoles(false); });
     return () => { live = false; };
   }, [specKey]);
@@ -282,10 +276,12 @@ export default function Register() {
       planType: form.roleCategory === "Recruiter" ? parseInt(form.planType) : 1,
       skillCategory: form.specialization,   // array of up to 3
       agreementAccepted: true,   // ticked the mandatory Terms & Conditions checkbox
-      // Only the roles they actually answered for.
-      positionExperience: catRoles
-        .filter(r => closedCounts[r.position])
-        .map(r => ({ pos_id: r.pos_id || '', position: r.position, closed: closedCounts[r.position] })),
+      // The one position they picked; assigned to them on account creation.
+      selectedPosition: selectedPosition ? {
+        pos_id: selectedPosition.pos_id,
+        position: selectedPosition.position,
+        closed: selectedClosed,
+      } : null,
       availability,
       ...(resumeUrl ? { resumeUrl } : {}),
     };
@@ -338,6 +334,10 @@ export default function Register() {
       localStorage.setItem("planType", form.planType);
       // Store role and userType for redirect logic
       localStorage.setItem("roleCategory", form.roleCategory);
+      // Picked a position during sign-up: land them on it at first login.
+      if (selectedPosition?.pos_id) {
+        try { localStorage.setItem('rv_first_position', '1'); } catch { /* private mode */ }
+      }
       localStorage.setItem("skillCategory", form.specialization.join(", "));
       if (form.roleCategory === "Coach" || form.roleCategory === "Expert") {
         localStorage.setItem("userType", form.userType);
@@ -714,42 +714,32 @@ export default function Register() {
                 <div>
                   <label className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
                     <TrendingUp size={16} className="text-blue-600" />
-                    Your track record in {form.specialization.join(', ')}
+                    Pick a position to start on
+                    <span className="text-red-500">*</span>
                   </label>
                   <p className="text-xs text-gray-500 mb-3">
-                    How many roles like these have you closed? Live openings in your specialization.
+                    Live openings in {form.specialization.join(', ')}. Choose one — it is
+                    assigned to you as soon as your account is created, and waiting on your
+                    Assigned Positions page. Where the client has recorded a briefing you can
+                    hear it before you decide.
                   </p>
 
                   {loadingRoles ? (
-                    <div className="text-sm text-gray-400 py-4">Loading roles…</div>
-                  ) : catRoles.length === 0 ? (
+                    <div className="text-sm text-gray-400 py-4">Loading open positions…</div>
+                  ) : posGroups.every(g => !g.positions.length) ? (
                     <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-4">
-                      No live openings in {form.specialization.join(', ')} right now — you can skip this.
+                      No live openings in {form.specialization.join(', ')} right now — you can skip this
+                      and pick a position once you are in.
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      {catRoles.map(r => (
-                        <div key={r.pos_id || r.position}
-                          className="border-2 border-gray-200 rounded-xl p-4">
-                          <p className="font-semibold text-gray-800 text-[15px] mb-3">{r.position}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {CLOSED_BANDS.map(band => {
-                              const on = closedCounts[r.position] === band;
-                              return (
-                                <button type="button" key={band}
-                                  onClick={() => setClosedCounts(c => ({
-                                    ...c, [r.position]: on ? undefined : band }))}
-                                  className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
-                                    on ? 'border-blue-500 bg-blue-50 text-blue-700'
-                                       : 'border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-gray-50'}`}>
-                                  {band} closed
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <PositionPicker
+                      groups={posGroups}
+                      selected={selectedPosition}
+                      onSelect={p => { setSelectedPosition(p); setSelectedClosed(''); }}
+                      closed={selectedClosed}
+                      onClosedChange={setSelectedClosed}
+                      bands={CLOSED_BANDS}
+                    />
                   )}
                 </div>
 
