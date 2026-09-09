@@ -40,7 +40,12 @@ const buildCaption = (pos, link) => {
   const lines = [`🚀 We're hiring: ${title}`];
   if (pos.client) lines.push(`🏢 ${pos.client}`);
   if (loc) lines.push(`📍 ${loc}`);
-  if (exp) lines.push(`💼 Experience: ${exp} yrs`);
+  // The stored value usually carries its own unit ("5-12 Yrs", "7 to 12 years"),
+  // so appending one produced "5-12 Yrs yrs" on every post.
+  if (exp) {
+    const hasUnit = /\b(yr|yrs|year|years)\b/i.test(String(exp));
+    lines.push(`💼 Experience: ${exp}${hasUnit ? '' : ' yrs'}`);
+  }
   if (pos.employment_type || pos.work_mode) lines.push(`🗂️ ${[pos.employment_type, pos.work_mode].filter(Boolean).join(' · ')}`);
   if (link) lines.push(`\n👉 Apply / view details: ${link}`);
   const tags = [toHashtag('Hiring'), toHashtag('RecruiterV'), toHashtag(pos.skill_category), toHashtag(pos.pos_cat), toHashtag('Jobs')]
