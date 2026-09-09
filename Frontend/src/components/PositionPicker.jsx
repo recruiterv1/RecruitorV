@@ -100,9 +100,7 @@ function Carousel({ category, positions, selected, onSelect, onBriefing }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <p className="text-[13px] font-bold text-gray-700">{category}
-          <span className="ml-2 font-normal text-gray-400">{positions.length} open</span>
-        </p>
+        <p className="text-[13px] font-bold text-gray-700">{category}</p>
         {positions.length > 1 && (
           <div className="flex gap-1">
             <button type="button" onClick={() => scroll(-1)} aria-label={`Scroll ${category} left`}
