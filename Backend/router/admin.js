@@ -300,8 +300,23 @@ router.get('/zapier-config', adminAuthMiddleware, async (req, res) => {
     const { db } = require('./firebase_ad');
     const doc = await db.collection('app_config').doc('zapier').get();
     const c = doc.exists ? doc.data() : {};
-    // Never echo the full URL back to the UI — just whether it's set.
-    return res.json({ success: true, enabled: c.enabled !== false && !!c.webhookUrl, hasUrl: !!c.webhookUrl });
+    // Never echo the full URL back to the UI — just whether it's set, plus what
+    // happened on the last send, so a silent stop is visible without digging
+    // through logs.
+    const toIso = (v) => v?._seconds ? new Date(v._seconds * 1000).toISOString() : (v || null);
+    return res.json({
+      success: true,
+      enabled: c.enabled !== false && !!c.webhookUrl,
+      hasUrl: !!c.webhookUrl,
+      provider: c.provider || '',
+      host: c.webhookUrl ? String(c.webhookUrl).split('/')[2] : '',
+      lastSendAt: toIso(c.lastSendAt),
+      lastSendOk: c.lastSendOk ?? null,
+      lastSendStatus: c.lastSendStatus ?? null,
+      lastSendError: c.lastSendError || '',
+      lastSendPosId: c.lastSendPosId || '',
+      lastSendPosition: c.lastSendPosition || '',
+    });
   } catch (e) { return res.status(500).json({ success: false, message: e.message }); }
 });
 router.post('/zapier-config', adminAuthMiddleware, async (req, res) => {

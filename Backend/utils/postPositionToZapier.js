@@ -75,16 +75,52 @@ async function postPositionToZapier(pos) {
       postedAt: new Date().toISOString(),
     };
 
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    // Every attempt is recorded, success or failure. Without this the only trace
+    // was a console line, so the integration could stop for weeks with nothing
+    // to show whether positions were being sent at all.
+    //
+    // Note what a 200 here does and does not prove: Make accepts and queues a
+    // webhook even when its scenario is switched off or erroring, so a run of
+    // successes below still does not guarantee anything reached LinkedIn.
+    const record = async (fields) => {
+      try {
+        const { db } = require('../router/firebase_ad');
+        await db.collection('app_config').doc('zapier').set({
+          lastSendAt: new Date(),
+          lastSendPosId: pos.pos_id || '',
+          lastSendPosition: pos.position || '',
+          ...fields,
+        }, { merge: true });
+        if (pos.id) {
+          await db.collection('admin_AddPos').doc(pos.id).update({
+            zapier_sent_at: new Date(),
+            zapier_ok: fields.lastSendOk === true,
+          });
+        }
+      } catch (_) { /* logging must never break the send */ }
+    };
+
+    let resp;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (netErr) {
+      console.error('Zapier webhook unreachable:', netErr.message);
+      await record({ lastSendOk: false, lastSendError: netErr.message });
+      return { ok: false, error: netErr.message };
+    }
+
     if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
       console.error(`Zapier webhook responded ${resp.status}`);
+      await record({ lastSendOk: false, lastSendStatus: resp.status, lastSendError: body.slice(0, 200) });
       return { ok: false, status: resp.status };
     }
     console.log(`🔗 Zapier: sent position ${pos.pos_id} to LinkedIn webhook`);
+    await record({ lastSendOk: true, lastSendStatus: resp.status, lastSendError: '' });
     return { ok: true };
   } catch (e) {
     console.error('postPositionToZapier error:', e.message);

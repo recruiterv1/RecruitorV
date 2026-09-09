@@ -179,18 +179,61 @@ router.get('/linkedin-config', async (req, res) => {
   } catch (err) { return res.status(500).json({ success: false, message: err.message }); }
 });
 
-// POST /api/app/linkedin-config — set { enabled, accessToken?, orgId? }
+// POST /api/app/linkedin-config — set { enabled, accessToken?, orgId?,
+//                                        clientId?, clientSecret? }
+//
+// clientId/clientSecret are settable here because a rotated LinkedIn secret is
+// the one failure this integration cannot recover from on its own: the token
+// exchange returns invalid_client and there is nothing to re-authorise against.
+// Without this the only fix is editing Firestore by hand.
 router.post('/linkedin-config', async (req, res) => {
   try {
     if (!(await isAdmin(req))) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const { db } = require('./firebase_ad');
-    const { enabled, accessToken, orgId } = req.body || {};
+    const { enabled, accessToken, orgId, clientId, clientSecret } = req.body || {};
     const payload = { updatedAt: new Date() };
     if (enabled !== undefined) payload.enabled = !!enabled;
     if (accessToken) payload.accessToken = String(accessToken).trim();
     if (orgId !== undefined) payload.orgId = String(orgId).replace(/\D/g, '');
+    if (clientId) payload.clientId = String(clientId).trim();
+    if (clientSecret) payload.clientSecret = String(clientSecret).trim();
     await db.collection('app_config').doc('linkedin').set(payload, { merge: true });
     return res.json({ success: true });
+  } catch (err) { return res.status(500).json({ success: false, message: err.message }); }
+});
+
+// GET /api/app/linkedin-verify — does LinkedIn accept the stored clientId and
+// clientSecret? Answers that on its own, without anyone authorising anything,
+// which separates "the credentials are wrong" from "nobody has connected yet".
+router.get('/linkedin-verify', async (req, res) => {
+  try {
+    if (!(await isAdmin(req))) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const { db } = require('./firebase_ad');
+    const doc = await db.collection('app_config').doc('linkedin').get();
+    const c = doc.exists ? doc.data() : {};
+    if (!c.clientId || !c.clientSecret) {
+      return res.json({ success: true, credentialsValid: false, reason: 'clientId or clientSecret is not set.' });
+    }
+    const r = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: c.clientId, client_secret: c.clientSecret,
+      }),
+    });
+    const body = await r.text();
+    // A 2-legged token is not what posting needs; only whether LinkedIn accepts
+    // the pair matters here, and invalid_client is the unambiguous rejection.
+    const valid = !/invalid_client/i.test(body);
+    return res.json({
+      success: true,
+      credentialsValid: valid,
+      httpStatus: r.status,
+      reason: valid ? 'LinkedIn accepts these credentials.'
+                    : 'LinkedIn rejected the clientId/clientSecret pair — the secret has most likely been regenerated.',
+      detail: body.slice(0, 200),
+    });
   } catch (err) { return res.status(500).json({ success: false, message: err.message }); }
 });
 
