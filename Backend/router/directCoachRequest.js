@@ -22,6 +22,69 @@ function authMiddleware(req, res, next) {
 }
 
 // POST / — Coach/Expert clicks "Assign Me" on a position
+
+// Assign a coach or expert to a position, exactly as the self-assign route does:
+// the request record plus the assignment record that makes it appear under their
+// Assigned Positions. Extracted so registration can assign the position someone
+// picked while signing up without the two paths drifting apart.
+//
+// Returns null when there is nothing to do (already assigned, position missing);
+// throws only on a genuine fault.
+async function assignCoachExpertToPosition({ userDoc, roleCategory, positionId, note = '' }) {
+  const userEmail = String(userDoc?.email || '').toLowerCase();
+  if (!userEmail || !positionId) return null;
+  if (!['Coach', 'Expert'].includes(roleCategory)) return null;
+
+  const posSnap = await positionsDb.where('pos_id', '==', positionId).limit(1).get();
+  if (posSnap.empty) return null;
+  const position = posSnap.docs[0].data();
+
+  const existing = await directRequestsDb
+    .where('coachExpertEmail', '==', userEmail)
+    .where('positionId', '==', positionId).limit(1).get();
+  if (!existing.empty) return null;   // already theirs
+
+  const requestData = {
+    coachExpertId: userDoc.id,
+    coachExpertType: roleCategory,
+    coachExpertName: userDoc.name || '',
+    coachExpertEmail: userEmail,
+    coachExpertPhone: userDoc.phone || userDoc.mobile || '',
+    coachExpertSpecialization: userDoc.specialization || '',
+    positionId,
+    positionTitle: position.position || '',
+    client: position.client || '',
+    clientspocEmail: (position.clientspoc || '').toLowerCase(),
+    clientspocName: position.clientspoc_name || position.hr_name || '',
+    status: 'approved',
+    note,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    respondedAt: new Date(),
+    respondedBy: 'auto',
+  };
+  const docRef = await directRequestsDb.add(requestData);
+
+  await coachExpertRequestsDb.add({
+    coachExpertId: userDoc.id,
+    coachExpertType: roleCategory,
+    coachExpertName: userDoc.name || '',
+    coachExpertEmail: userEmail,
+    coachExpertPhone: userDoc.phone || userDoc.mobile || '',
+    recruiterId: 'direct_request',
+    recruiterName: 'Direct Request',
+    recruiterEmail: userEmail,
+    recruiterPhone: '',
+    positionId,
+    positionTitle: position.position || '',
+    status: 'accepted',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
+
+  return { id: docRef.id, ...requestData };
+}
+
 router.post('/', authMiddleware, async (req, res) => {
   try {
     const { positionId, roleCategory } = req.body;
@@ -363,3 +426,4 @@ router.put('/:id/status', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.assignCoachExpertToPosition = assignCoachExpertToPosition;

@@ -116,6 +116,39 @@ router.post('/upload-resume', async (req, res) => {
   }
 });
 
+// The position picked during sign-up becomes theirs immediately, so it is
+// waiting when they first sign in. Recruiters and coaches/experts are assigned
+// through their own existing routes — both are already auto-approved, so this
+// only saves the new joiner going to find the position again.
+//
+// A failure here is logged and swallowed: it must never cost someone the
+// account they have just created, and they can still assign it themselves.
+async function assignChosenPosition(user, roleCategory, email, selectedPosition) {
+    if (!selectedPosition?.pos_id || !user) return;
+    const posId = String(selectedPosition.pos_id);
+    try {
+        if (roleCategory === 'Recruiter') {
+            const positionAccess = require('../model_fire/positionAccessF');
+            await positionAccess.createAssignRequest(
+                user.id, String(email).toLowerCase(), posId, 'Chosen during registration',
+            );
+        } else if (roleCategory === 'Coach' || roleCategory === 'Expert') {
+            const { assignCoachExpertToPosition } = require('./directCoachRequest');
+            await assignCoachExpertToPosition({
+                userDoc: { ...user, email },
+                roleCategory,
+                positionId: posId,
+                note: 'Chosen during registration',
+            });
+        } else {
+            return;
+        }
+        console.log(`assigned position ${posId} to ${email} (${roleCategory})`);
+    } catch (assignErr) {
+        console.error('registration position assign skipped:', assignErr.message);
+    }
+}
+
 router.post('/register',async (req,res)=>{
 
     let {name,email,mobile,experienceCategory,password,roleCategory,planType,specialization,skillCategory,userType,resumeUrl,agreementAccepted,positionExperience,availability,selectedPosition}=req.body;
@@ -295,6 +328,7 @@ router.post('/register',async (req,res)=>{
             
             const newCoach = await coach.createCoach(coachData);
             console.log("✅ Coach registered successfully:", newCoach.id);
+            await assignChosenPosition(newCoach, "Coach", email, selectedPosition);
 
             let coachEmailSent = true;
             try {
@@ -337,6 +371,7 @@ router.post('/register',async (req,res)=>{
             
             const newExpert = await expert.createExpert(expertData);
             console.log("✅ Expert registered successfully:", newExpert.id);
+            await assignChosenPosition(newExpert, "Expert", email, selectedPosition);
 
             let expertEmailSent = true;
             try {
@@ -425,24 +460,7 @@ router.post('/register',async (req,res)=>{
                 console.log("✅ Recruiter registered successfully:", user.id);
             }
 
-            // The position they picked while registering becomes theirs straight
-            // away, so it is waiting on their Assigned Positions page when they
-            // first sign in. Assignment is auto-approved for recruiters anyway;
-            // doing it here just saves them going to find it.
-            if (selectedPosition?.pos_id) {
-                try {
-                    const positionAccess = require('../model_fire/positionAccessF');
-                    await positionAccess.createAssignRequest(
-                        user.id, email.toLowerCase(), String(selectedPosition.pos_id),
-                        'Chosen during registration',
-                    );
-                    console.log('assigned position', selectedPosition.pos_id, 'to', email);
-                } catch (assignErr) {
-                    // A failed assignment must never cost them the account they
-                    // just created — they can pick the position up themselves.
-                    console.error('registration position assign skipped:', assignErr.message);
-                }
-            }
+            await assignChosenPosition(user, 'Recruiter', email, selectedPosition);
 
             let recruiterEmailSent = true;
             try {

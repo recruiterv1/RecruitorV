@@ -11,11 +11,15 @@ import { isNativeApp, isRoleAllowedInApp } from "../lib/apiBase";
 // A new joiner who picked a position while registering is taken straight to it
 // the first time they sign in — the flag is set at registration and cleared
 // here, so it only ever redirects once.
-const firstLoginPositionRedirect = () => {
+//
+// Where they land differs by role: a recruiter works the position from Assigned
+// Positions, while a coach or expert's first job on one is to record its
+// briefing, so they go to My Briefings.
+const firstLoginPositionRedirect = (role) => {
   try {
     if (localStorage.getItem('rv_first_position') !== '1') return null;
     localStorage.removeItem('rv_first_position');
-    return '/assigned-positions';
+    return (role === 'Coach' || role === 'Expert') ? '/my-briefings' : '/assigned-positions';
   } catch { return null; }
 };
 
@@ -112,7 +116,7 @@ const Login = () => {
         const isVendorTeam = !!userData?.vendorEmail || !!userData?.consultingFirmId;
         const readyForPositions = isVendorTeam || (agreementSigned && profilePct >= 80);
 
-        const firstPos = firstLoginPositionRedirect();
+        const firstPos = firstLoginPositionRedirect(role);
         if (firstPos) {
           navigate(firstPos);
         } else if (role === 'Coach') {
@@ -219,11 +223,11 @@ const Login = () => {
       const readyForPositions = isVendorTeam || (agreementSigned && profilePct >= 80);
 
       if (role === 'Coach') {
-        navigate(firstLoginPositionRedirect() || (readyForPositions ? "/coach-expert-positions" : "/coach-dashboard"));
+        navigate(firstLoginPositionRedirect(role) || (readyForPositions ? "/coach-expert-positions" : "/coach-dashboard"));
       } else if (role === 'Expert') {
-        navigate(firstLoginPositionRedirect() || (readyForPositions ? "/coach-expert-positions" : "/expert-dashboard"));
+        navigate(firstLoginPositionRedirect(role) || (readyForPositions ? "/coach-expert-positions" : "/expert-dashboard"));
       } else {
-        navigate(firstLoginPositionRedirect() || (readyForPositions ? "/dash_position" : "/dash_rec"));
+        navigate(firstLoginPositionRedirect(role) || (readyForPositions ? "/dash_position" : "/dash_rec"));
       }
       
     } catch (error) {
