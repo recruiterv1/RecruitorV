@@ -12,6 +12,16 @@ import BriefingPlayer from './BriefingPlayer';
 // Where the client has recorded a briefing they can hear it here, before
 // committing: /api/briefing/public/:posId needs no login, and only ever returns
 // the ClientSPOC's own briefing.
+// Position location is sometimes a string and sometimes an array of up to eight
+// cities. React concatenates an array with no separator, so it has to be joined
+// deliberately — and trimmed, since eight cities will not fit on a card.
+const showLocation = (loc) => {
+  const list = Array.isArray(loc) ? loc.filter(Boolean) : (loc ? [loc] : []);
+  if (!list.length) return '';
+  if (list.length <= 2) return list.join(', ');
+  return `${list[0]}, ${list[1]} +${list.length - 2}`;
+};
+
 export default function PositionPicker({
   groups,            // [{ category, positions: [...] }]
   selected,          // the chosen position, or null
@@ -123,7 +133,12 @@ function Carousel({ category, positions, selected, onSelect, onBriefing }) {
 
               <p className="text-[12px] text-gray-500 mt-1.5 truncate">{p.client}</p>
               <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[11.5px] text-gray-400">
-                {p.location && <span className="inline-flex items-center gap-1 truncate max-w-[120px]"><MapPin size={10} />{p.location}</span>}
+                {showLocation(p.location) && (
+                  <span className="inline-flex items-center gap-1 truncate max-w-[130px]"
+                    title={Array.isArray(p.location) ? p.location.join(', ') : p.location}>
+                    <MapPin size={10} />{showLocation(p.location)}
+                  </span>
+                )}
                 {p.experience && <span className="inline-flex items-center gap-1"><Briefcase size={10} />{p.experience}</span>}
               </div>
 
