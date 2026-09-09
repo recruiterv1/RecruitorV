@@ -197,6 +197,21 @@ router.post('/register',async (req,res)=>{
                 const qSnap = await db.collection('eligibility_questions')
                     .where('role', '==', roleCategory).where('active', '==', true).limit(1).get();
 
+                // Someone who has cleared the check for one role must register as
+                // that role. Without this, switching the role on the form let
+                // them register as a role they were never assessed for — and
+                // Expert, which has no questions, skipped the block below
+                // entirely, so it was the free way in.
+                const passedRole = await eligibility.passedRoleFor(email);
+                if (passedRole && passedRole !== roleCategory) {
+                    return res.status(403).json({
+                        message: `You cleared the eligibility check as a ${passedRole}. Please register as a ${passedRole}, or take the ${roleCategory} check first.`,
+                        errorCode: 'ELIGIBILITY_ROLE_MISMATCH',
+                        role: passedRole,
+                        checkUrl: '/check-eligibility',
+                    });
+                }
+
                 if (!qSnap.empty) {                       // a check exists for this role
                     const pass = await eligibility.hasPassed(email, roleCategory);
                     if (pass) {

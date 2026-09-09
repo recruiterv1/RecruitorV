@@ -197,6 +197,10 @@ export default function Register() {
   // Arriving from the eligibility check: carry the email and role across so the
   // pass matches the address being registered.
   const [passInfo, setPassInfo] = useState(null);
+  // The role is fixed only once the server has confirmed a pass for it. A role
+  // in the URL alone is not enough — anyone can type one — so an unverified
+  // arrival keeps the normal choice and the server refuses on submit if wrong.
+  const roleLocked = !!passInfo?.passed && !!passInfo?.role;
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const remembered = readEligibilityPass();
@@ -541,24 +545,40 @@ export default function Register() {
               </div>
             </div>
 
-            {/* Role Category */}
+            {/* Role Category.
+                Locked when they arrived from a passed eligibility check: the
+                assessment was for one role, so switching here would register
+                them as a role they were never assessed for. Expert has no
+                questions, so without this lock picking Expert skipped the gate
+                entirely. */}
             <div className="relative">
               <label className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                 <Briefcase size={16} className="text-blue-600" />
                 Select Your Role
                 <span className="text-red-500">*</span>
+                {roleLocked && (
+                  <span className="text-xs font-normal text-gray-400">
+                    · set by your eligibility check
+                  </span>
+                )}
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {roleOptions.map((option) => {
                   const IconComponent = option.icon;
                   const selected = isRoleSelected(form.roleCategory, option.value);
 
+                  // Once locked, the other roles are shown but not choosable,
+                  // so it stays clear which role was assessed.
+                  if (roleLocked && !selected) return null;
+
                   return (
                     <label
                       key={option.value}
-                      className={`relative flex flex-col items-center gap-2 p-4 border-2 rounded-xl cursor-pointer transition-all group ${
+                      className={`relative flex flex-col items-center gap-2 p-4 border-2 rounded-xl transition-all group ${
+                        roleLocked ? "cursor-default" : "cursor-pointer"
+                      } ${
                         selected
-                          ? "border-blue-500 bg-blue-50 shadow-md scale-105"
+                          ? "border-blue-500 bg-blue-50 shadow-md"
                           : "border-gray-200 hover:border-blue-300 hover:bg-gray-50 hover:scale-102"
                       }`}
                     >
@@ -568,6 +588,7 @@ export default function Register() {
                         value={option.value}
                         checked={selected}
                         onChange={handleChange}
+                        disabled={roleLocked}
                         required
                         className="sr-only"
                       />
@@ -878,7 +899,7 @@ export default function Register() {
                 did, before an email had even been typed. */}
             {(passInfo?.passed || (eligibility?.required && eligibility?.passed)) && (
               <p className="rounded-xl border border-green-200 bg-green-50 text-green-800 text-[13px] font-semibold px-4 py-3 mb-4">
-                ✓ You have passed the eligibility check
+                ✓ You have passed the eligibility check as a {passInfo?.role || form.roleCategory}
                 {passInfo?.tierLabel ? ` — ${passInfo.tierLabel}` : ''}. Complete your registration below.
               </p>
             )}

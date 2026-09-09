@@ -987,7 +987,25 @@ router.get('/verify/:certificateId', async (req, res) => {
   }
 });
 
+// Which role, if any, this email has already cleared the check as. Used by
+// registration to stop someone passing as one role and signing up as another.
+const passedRoleFor = async (email) => {
+  const e = String(email || '').trim().toLowerCase();
+  if (!e) return null;
+  try {
+    const snap = await ATTEMPTS().where('email', '==', e).where('passed', '==', true).get();
+    if (snap.empty) return null;
+    const best = snap.docs.map(d => d.data())
+      .sort((a, b) => (b.submittedAt?._seconds || 0) - (a.submittedAt?._seconds || 0))[0];
+    return best.role || null;
+  } catch (err) {
+    console.error('passedRoleFor error:', err.message);
+    return null;   // never block a sign-up because this lookup failed
+  }
+};
+
 module.exports = router;
 // Exported so registration can enforce the gate server-side.
 module.exports.hasPassed = hasPassed;
+module.exports.passedRoleFor = passedRoleFor;
 module.exports.ROLES = ROLES;
