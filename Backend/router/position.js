@@ -313,6 +313,14 @@ router.post('/pos', authMiddleware, async (req,res)=>{
         const { postPositionToLinkedIn } = require('../utils/linkedinPost');
         postPositionToLinkedIn(usr).catch(() => {});
       } catch (_) { /* ignore */ }
+      // This branch used to stop here. Because the admin lookup above threw for
+      // every ClientSPOC, it was the branch they actually took — so their
+      // positions were created and then silently never sent to the webhook.
+      // The position is live either way, so it belongs on LinkedIn either way.
+      try {
+        const { postPositionToZapier } = require('../utils/postPositionToZapier');
+        postPositionToZapier(usr).catch(() => {});
+      } catch (_) { /* ignore */ }
       return res.status(200).json({
         success: true,
         message : "Position Added Successfully",

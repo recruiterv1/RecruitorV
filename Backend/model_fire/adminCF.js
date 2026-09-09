@@ -191,4 +191,23 @@ const getAdminByEmail = async (email) => {
     }
 }
 
-module.exports={checkCredentials,checkData,updateAdmin,getAdminByEmail}
+// Returns the admin/ClientSPOC/vendor document itself, or null.
+//
+// Fifteen call sites across position.js, notification.js and admin.js have
+// always called adminModel.findAdminByEmail — a function that did not exist, so
+// every one of them threw. Each is wrapped in a try/catch that swallows the
+// error, so the failure was invisible: the caller simply behaved as though no
+// admin account existed.
+//
+// The visible consequence was that a ClientSPOC creating a position fell into
+// the "user not found" branch of POST /pos, which returns early and never
+// reaches the LinkedIn/Make webhook — so ClientSPOC positions were never posted.
+//
+// getAdminByEmail wraps its result as { success, admin }; callers here expect
+// the document, so this unwraps it rather than changing fifteen call sites.
+const findAdminByEmail = async (email) => {
+    const r = await getAdminByEmail(email);
+    return r && r.success ? r.admin : null;
+};
+
+module.exports={checkCredentials,checkData,updateAdmin,getAdminByEmail,findAdminByEmail}
