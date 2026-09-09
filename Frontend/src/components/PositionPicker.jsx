@@ -6,8 +6,9 @@ import BriefingPlayer from './BriefingPlayer';
 // The position a new joiner picks while registering.
 //
 // One carousel per specialization they chose, six live openings in each. They
-// pick exactly one — it is assigned to them the moment the account is created,
-// so it is waiting on their Assigned Positions page when they first sign in.
+// pick one position from each carousel and say how many like it they have
+// closed. Every pick is assigned to them the moment the account is created, so
+// all of them are waiting on their Assigned Positions page at first sign-in.
 //
 // Where the client has recorded a briefing they can hear it here, before
 // committing: /api/briefing/public/:posId needs no login, and only ever returns
@@ -24,10 +25,9 @@ const showLocation = (loc) => {
 
 export default function PositionPicker({
   groups,            // [{ category, positions: [...] }]
-  selected,          // the chosen position, or null
-  onSelect,
-  closed,            // the band chosen against it
-  onClosedChange,
+  picks,             // { [category]: { ...position, closed } } — one per carousel
+  onPick,            // (category, position | null) => void
+  onClosedChange,    // (category, band) => void
   bands,
 }) {
   const [briefingFor, setBriefingFor] = useState(null);   // position whose briefing is open
@@ -47,32 +47,38 @@ export default function PositionPicker({
 
   return (
     <div className="space-y-5">
-      {groups.map(g => (
-        <Carousel key={g.category} category={g.category} positions={g.positions}
-          selected={selected} onSelect={onSelect} onBriefing={openBriefing} />
-      ))}
+      {groups.map(g => {
+        const pick = picks[g.category] || null;
+        return (
+          <div key={g.category}>
+            <Carousel category={g.category} positions={g.positions}
+              selected={pick} onSelect={p => onPick(g.category, p)} onBriefing={openBriefing} />
 
-      {/* The track-record question, asked only about the one they picked. */}
-      {selected && (
-        <div className="rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4">
-          <p className="text-sm font-semibold text-gray-800">
-            How many roles like <span className="text-blue-700">{selected.position}</span> have you closed?
-          </p>
-          <div className="flex flex-wrap gap-2 mt-3">
-            {bands.map(band => {
-              const on = closed === band;
-              return (
-                <button type="button" key={band} onClick={() => onClosedChange(on ? '' : band)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
-                    on ? 'border-blue-500 bg-blue-600 text-white'
-                       : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300'}`}>
-                  {band} closed
-                </button>
-              );
-            })}
+            {/* Asked per carousel, about the position picked in that one. */}
+            {pick && (
+              <div className="rounded-xl border-2 border-blue-200 bg-blue-50/50 p-4 mt-2">
+                <p className="text-sm font-semibold text-gray-800">
+                  How many roles like <span className="text-blue-700">{pick.position}</span> have you closed?
+                </p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {bands.map(band => {
+                    const on = pick.closed === band;
+                    return (
+                      <button type="button" key={band}
+                        onClick={() => onClosedChange(g.category, on ? '' : band)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
+                          on ? 'border-blue-500 bg-blue-600 text-white'
+                             : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300'}`}>
+                        {band} closed
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })}
 
       {briefingFor && (
         <BriefingModal position={briefingFor} items={items} loading={loadingBriefing}

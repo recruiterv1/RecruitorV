@@ -116,42 +116,46 @@ router.post('/upload-resume', async (req, res) => {
   }
 });
 
-// The position picked during sign-up becomes theirs immediately, so it is
-// waiting when they first sign in. Recruiters and coaches/experts are assigned
+// The positions picked during sign-up — one per specialization — become
+// theirs immediately, so they are waiting when they first sign in. Recruiters and coaches/experts are assigned
 // through their own existing routes — both are already auto-approved, so this
 // only saves the new joiner going to find the position again.
 //
 // A failure here is logged and swallowed: it must never cost someone the
 // account they have just created, and they can still assign it themselves.
-async function assignChosenPosition(user, roleCategory, email, selectedPosition) {
-    if (!selectedPosition?.pos_id || !user) return;
-    const posId = String(selectedPosition.pos_id);
-    try {
-        if (roleCategory === 'Recruiter') {
-            const positionAccess = require('../model_fire/positionAccessF');
-            await positionAccess.createAssignRequest(
-                user.id, String(email).toLowerCase(), posId, 'Chosen during registration',
-            );
-        } else if (roleCategory === 'Coach' || roleCategory === 'Expert') {
-            const { assignCoachExpertToPosition } = require('./directCoachRequest');
-            await assignCoachExpertToPosition({
-                userDoc: { ...user, email },
-                roleCategory,
-                positionId: posId,
-                note: 'Chosen during registration',
-            });
-        } else {
-            return;
+async function assignChosenPositions(user, roleCategory, email, chosen) {
+    if (!user || !Array.isArray(chosen) || !chosen.length) return;
+    // Assigned one at a time: one position failing must not cost them the rest.
+    for (const p of chosen) {
+        const posId = String(p.pos_id || '');
+        if (!posId) continue;
+        try {
+            if (roleCategory === 'Recruiter') {
+                const positionAccess = require('../model_fire/positionAccessF');
+                await positionAccess.createAssignRequest(
+                    user.id, String(email).toLowerCase(), posId, 'Chosen during registration',
+                );
+            } else if (roleCategory === 'Coach' || roleCategory === 'Expert') {
+                const { assignCoachExpertToPosition } = require('./directCoachRequest');
+                await assignCoachExpertToPosition({
+                    userDoc: { ...user, email },
+                    roleCategory,
+                    positionId: posId,
+                    note: 'Chosen during registration',
+                });
+            } else {
+                return;
+            }
+            console.log(`assigned position ${posId} to ${email} (${roleCategory})`);
+        } catch (assignErr) {
+            console.error(`registration assign skipped for ${posId}:`, assignErr.message);
         }
-        console.log(`assigned position ${posId} to ${email} (${roleCategory})`);
-    } catch (assignErr) {
-        console.error('registration position assign skipped:', assignErr.message);
     }
 }
 
 router.post('/register',async (req,res)=>{
 
-    let {name,email,mobile,experienceCategory,password,roleCategory,planType,specialization,skillCategory,userType,resumeUrl,agreementAccepted,positionExperience,availability,selectedPosition}=req.body;
+    let {name,email,mobile,experienceCategory,password,roleCategory,planType,specialization,skillCategory,userType,resumeUrl,agreementAccepted,positionExperience,availability,selectedPositions}=req.body;
 
     // The user ticks "I agree to the Terms & Conditions" on the registration
     // form, so the account is created already marked as having signed the
@@ -289,17 +293,22 @@ router.post('/register',async (req,res)=>{
         const cleanAvailability = Array.isArray(availability)
             ? [...new Set(availability.map(v => String(v).slice(0, 20)))].slice(0, 12)
             : [];
-        // The single position they picked, with how many like it they have closed.
-        const chosen = selectedPosition && selectedPosition.pos_id ? {
-            pos_id: String(selectedPosition.pos_id),
-            position: String(selectedPosition.position || '').slice(0, 200),
-            closed: CLOSED_BANDS.includes(selectedPosition.closed) ? selectedPosition.closed : '',
-        } : null;
+        // One position per specialization they chose, with how many like it they
+        // have closed. Capped at the number of specializations allowed.
+        const chosen = (Array.isArray(selectedPositions) ? selectedPositions : [])
+            .filter(p => p && p.pos_id)
+            .slice(0, 3)
+            .map(p => ({
+                pos_id: String(p.pos_id),
+                position: String(p.position || '').slice(0, 200),
+                category: String(p.category || '').slice(0, 60),
+                closed: CLOSED_BANDS.includes(p.closed) ? p.closed : '',
+            }));
 
         const profileFields = {
             positionExperience: cleanExperience,
             availability: cleanAvailability,
-            ...(chosen ? { selectedPosition: chosen } : {}),
+            ...(chosen.length ? { selectedPositions: chosen } : {}),
         };
 
         // Handle registration based on role
@@ -328,7 +337,7 @@ router.post('/register',async (req,res)=>{
             
             const newCoach = await coach.createCoach(coachData);
             console.log("✅ Coach registered successfully:", newCoach.id);
-            await assignChosenPosition(newCoach, "Coach", email, selectedPosition);
+            await assignChosenPositions(newCoach, "Coach", email, chosen);
 
             let coachEmailSent = true;
             try {
@@ -371,7 +380,7 @@ router.post('/register',async (req,res)=>{
             
             const newExpert = await expert.createExpert(expertData);
             console.log("✅ Expert registered successfully:", newExpert.id);
-            await assignChosenPosition(newExpert, "Expert", email, selectedPosition);
+            await assignChosenPositions(newExpert, "Expert", email, chosen);
 
             let expertEmailSent = true;
             try {
@@ -460,7 +469,7 @@ router.post('/register',async (req,res)=>{
                 console.log("✅ Recruiter registered successfully:", user.id);
             }
 
-            await assignChosenPosition(user, 'Recruiter', email, selectedPosition);
+            await assignChosenPositions(user, 'Recruiter', email, chosen);
 
             let recruiterEmailSent = true;
             try {

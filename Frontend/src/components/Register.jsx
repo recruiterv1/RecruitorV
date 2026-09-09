@@ -37,8 +37,8 @@ export default function Register() {
   // Live openings in the chosen specializations, and the one they picked.
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [posGroups, setPosGroups] = useState([]);          // [{category, positions}]
-  const [selectedPosition, setSelectedPosition] = useState(null);  // exactly one
-  const [selectedClosed, setSelectedClosed] = useState('');        // band for it
+  // One pick per specialization carousel: { [category]: { ...position, closed } }
+  const [picks, setPicks] = useState({});
   const [availability, setAvailability] = useState([]);   // two-hour windows
 
   const [skillCategories, setSkillCategories] = useState([]);
@@ -64,13 +64,12 @@ export default function Register() {
   const specKey = form.specialization.join('|');   // stable dep for the array
   useEffect(() => {
     const cats = form.specialization;
-    if (!cats.length) { setPosGroups([]); setSelectedPosition(null); setSelectedClosed(''); return; }
+    if (!cats.length) { setPosGroups([]); setPicks({}); return; }
     let live = true;
     setLoadingRoles(true);
-    // Dropped rather than carried over: the previous choice belonged to a
-    // specialization they have just changed.
-    setSelectedPosition(null);
-    setSelectedClosed('');
+    // Dropped rather than carried over: previous choices belonged to
+    // specializations they have just changed.
+    setPicks({});
     Promise.all(cats.map(c =>
       axios.get('/api/direct-apply/latest-by-category', {
         params: { skill_category: c, limit: MAX_POSITIONS_PER_CATEGORY },
@@ -276,12 +275,13 @@ export default function Register() {
       planType: form.roleCategory === "Recruiter" ? parseInt(form.planType) : 1,
       skillCategory: form.specialization,   // array of up to 3
       agreementAccepted: true,   // ticked the mandatory Terms & Conditions checkbox
-      // The one position they picked; assigned to them on account creation.
-      selectedPosition: selectedPosition ? {
-        pos_id: selectedPosition.pos_id,
-        position: selectedPosition.position,
-        closed: selectedClosed,
-      } : null,
+      // One position per specialization; all assigned on account creation.
+      selectedPositions: Object.entries(picks).map(([category, p]) => ({
+        pos_id: p.pos_id,
+        position: p.position,
+        closed: p.closed || '',
+        category,
+      })),
       availability,
       ...(resumeUrl ? { resumeUrl } : {}),
     };
@@ -335,7 +335,7 @@ export default function Register() {
       // Store role and userType for redirect logic
       localStorage.setItem("roleCategory", form.roleCategory);
       // Picked a position during sign-up: land them on it at first login.
-      if (selectedPosition?.pos_id) {
+      if (Object.keys(picks).length) {
         try { localStorage.setItem('rv_first_position', '1'); } catch { /* private mode */ }
       }
       localStorage.setItem("skillCategory", form.specialization.join(", "));
@@ -714,14 +714,14 @@ export default function Register() {
                 <div>
                   <label className="text-sm font-semibold text-gray-700 mb-1 flex items-center gap-2">
                     <TrendingUp size={16} className="text-blue-600" />
-                    Pick a position to start on
+                    Pick a position from each field
                     <span className="text-red-500">*</span>
                   </label>
                   <p className="text-xs text-gray-500 mb-3">
-                    Live openings in {form.specialization.join(', ')}. Choose one — it is
-                    assigned to you as soon as your account is created, and waiting on your
-                    Assigned Positions page. Where the client has recorded a briefing you can
-                    hear it before you decide.
+                    Live openings in {form.specialization.join(', ')}. Choose one from each
+                    row — every pick is assigned to you as soon as your account is created,
+                    and waiting on your Assigned Positions page. Where the client has recorded
+                    a briefing you can hear it before you decide.
                   </p>
 
                   {loadingRoles ? (
@@ -734,10 +734,16 @@ export default function Register() {
                   ) : (
                     <PositionPicker
                       groups={posGroups}
-                      selected={selectedPosition}
-                      onSelect={p => { setSelectedPosition(p); setSelectedClosed(''); }}
-                      closed={selectedClosed}
-                      onClosedChange={setSelectedClosed}
+                      picks={picks}
+                      onPick={(cat, p) => setPicks(prev => {
+                        const next = { ...prev };
+                        // Selecting the same card again clears that carousel.
+                        if (!p) delete next[cat];
+                        else next[cat] = { ...p, closed: '' };
+                        return next;
+                      })}
+                      onClosedChange={(cat, band) => setPicks(prev =>
+                        prev[cat] ? { ...prev, [cat]: { ...prev[cat], closed: band } } : prev)}
                       bands={CLOSED_BANDS}
                     />
                   )}
