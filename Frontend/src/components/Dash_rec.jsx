@@ -10,56 +10,6 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, TrendingUp, X, Users, Star, Zap, ArrowRight } from 'lucide-react';
 
-// ── Join-Team Modal ────────────────────────────────────────────────────────────
-const JoinTeamModal = ({ onClose }) => {
-  const navigate = useNavigate();
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-6 text-white relative">
-          <button onClick={onClose} className="absolute top-4 right-4 p-1 hover:bg-white/20 rounded-lg transition-colors"><X size={18} /></button>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Users size={24} />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold">Join a Team</h3>
-              <p className="text-orange-100 text-sm">Unlock better opportunities</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-6 space-y-4">
-          <p className="text-gray-700 text-sm leading-relaxed">
-            Work under a <strong>Coach or Expert</strong> and unlock exclusive benefits that solo recruiters don't get.
-          </p>
-          <div className="space-y-2.5">
-            {[
-              { icon: Zap,       text: 'Prior access to new positions before they go public' },
-              { icon: Star,      text: 'Better incentives & higher payout rates' },
-              { icon: Users,     text: 'Personal guidance from an experienced Coach/Expert' },
-            ].map(({ icon: Icon, text }, i) => (
-              <div key={i} className="flex items-start gap-3 bg-orange-50 rounded-xl px-4 py-3">
-                <Icon size={16} className="text-orange-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-gray-700">{text}</p>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all">
-              Maybe Later
-            </button>
-            <button
-              onClick={() => { onClose(); navigate('/recruiter-join-team'); }}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition-all"
-            >
-              Join a Team <ArrowRight size={15} />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 // import Dash_Candi from '../pages/Dash_Candi';
 // import Dash_Pos from '../pages/Dash_Pos';
 

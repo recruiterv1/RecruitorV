@@ -9,56 +9,6 @@ import MyCertificate from './MyCertificate';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, ClipboardList, Users, DollarSign, TrendingUp, Briefcase, BarChart2, UserPlus, Inbox, AlertTriangle, X, Star, Zap, ArrowRight, Gift } from 'lucide-react';
 
-// ── Build-Team Modal for Coach/Expert ─────────────────────────────────────────
-const BuildTeamModal = ({ role, onClose }) => {
-  const navigate = useNavigate();
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-6 text-white relative">
-          <button onClick={onClose} className="absolute top-4 right-4 p-1 hover:bg-white/20 rounded-lg transition-colors"><X size={18} /></button>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Users size={24} />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold">Build Your Team</h3>
-              <p className="text-orange-100 text-sm">Grow your network as a {role}</p>
-            </div>
-          </div>
-        </div>
-        <div className="p-6 space-y-4">
-          <p className="text-gray-700 text-sm leading-relaxed">
-            Start building your recruiter team today and unlock exclusive benefits for you and your team members.
-          </p>
-          <div className="space-y-2.5">
-            {[
-              { icon: Zap,  text: 'Give your team prior access to new positions before others' },
-              { icon: Star, text: 'Better incentives & higher earnings for you and your team' },
-              { icon: Users, text: 'Guide recruiters and grow your influence on the platform' },
-            ].map(({ icon: Icon, text }, i) => (
-              <div key={i} className="flex items-start gap-3 bg-orange-50 rounded-xl px-4 py-3">
-                <Icon size={16} className="text-orange-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-gray-700">{text}</p>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all">
-              Maybe Later
-            </button>
-            <button
-              onClick={() => { onClose(); navigate('/coach-team'); }}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-semibold transition-all"
-            >
-              My Team <ArrowRight size={15} />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const CoachExpertDashboard = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
