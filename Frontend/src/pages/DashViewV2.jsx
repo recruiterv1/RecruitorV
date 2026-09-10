@@ -611,6 +611,12 @@ function DashViewV2Inner() {
           if (recCats.length && !cCats.some(x => recCats.includes(x))) return false; // same skill category
           return true;
         });
+        // Certified coaches and experts lead the list — that badge is the one
+        // signal a recruiter can act on before working with someone. Nothing
+        // else about the ordering changes: Array.prototype.sort is stable, so
+        // within each group the API's existing order is preserved.
+        const certified = c => (c.eligibilityTier === 'certified' ? 0 : 1);
+        list.sort((a, b) => certified(a) - certified(b));
         setTeamCoaches(list);
         const req = {};
         all.forEach(c => { if (c.alreadyRequested) req[(c.email || '').toLowerCase()] = 'pending'; });
