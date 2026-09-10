@@ -718,6 +718,44 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
             <InfoItem icon={Calendar} label="Offer & DOJ"       value={candidate.offer_amt}                         color="#d97706" />
           </div>
 
+          {/* ── Reviewed By — the coach or expert who cleared this candidate before
+                 it reached the client. Only present for candidates that went
+                 through the review bin; everything else renders nothing. ── */}
+          {candidate.coachReviewBy && (() => {
+            const rRole = candidate.coachReviewByRole || 'Coach';
+            const approved = candidate.coachReviewDecision === 'approve';
+            return (
+              <>
+                <div style={{ fontSize:12, fontWeight:800, color:'#374151', textTransform:'uppercase', letterSpacing:0.6, margin:'18px 0 8px', paddingBottom:6, borderBottom:'2px solid #eef2f7', display:'flex', alignItems:'center', gap:8 }}>
+                  Reviewed By
+                  <span style={{ fontSize:10, fontWeight:800, padding:'2px 8px', borderRadius:99,
+                    background: approved ? '#dcfce7' : '#fee2e2', color: approved ? '#15803d' : '#b91c1c' }}>
+                    {approved ? 'APPROVED' : 'REJECTED'}
+                  </span>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:'0 28px' }}>
+                  <InfoItem icon={User}  label={rRole}             value={candidate.coachReviewByName || candidate.coachReviewBy} color="#7c3aed" />
+                  <InfoItem icon={Mail}  label={`${rRole} Email`}  value={candidate.coachReviewBy}       color="#6b7280" />
+                  <InfoItem icon={Phone} label={`${rRole} Phone`}  value={candidate.coachReviewByPhone}  color="#0891b2" />
+                </div>
+                {(candidate.coachReviewReason || candidate.coachReviewBriefing) && (
+                  <div style={{ marginTop:12, padding:14, background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:12 }}>
+                    {candidate.coachReviewReason && (
+                      <div style={{ fontSize:13, color:'#374151', marginBottom:6 }}>
+                        <strong style={{ color:'#6b21a8' }}>Reason:</strong> {candidate.coachReviewReason}
+                      </div>
+                    )}
+                    {candidate.coachReviewBriefing && (
+                      <div style={{ fontSize:13, color:'#374151' }}>
+                        <strong style={{ color:'#6b21a8' }}>Briefing:</strong> {candidate.coachReviewBriefing}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+
           {/* ── Submitter section — Coach / Expert / Recruiter depending on who submitted ── */}
           {!hideRecruiterInfo && (() => {
             const role = ['Coach', 'Expert', 'Recruiter'].includes(candidate.recRole) ? candidate.recRole : 'Recruiter';
@@ -1193,6 +1231,8 @@ const Ad_Candi = ({ clientSpocView = false, recruiterView = false, directOnly = 
       'Current Employer': c.curr_emp || '',
       'Highest Education': c.highest_education || '',
       'Recruiter': c.recName, 'Position': c.pos_name, 'Client': c.client,
+      'Reviewed By': c.coachReviewByName || '', 'Reviewed By Email': c.coachReviewBy || '',
+      'Reviewed By Phone': c.coachReviewByPhone || '', 'Review Decision': c.coachReviewDecision || '',
       'HR Name': c.hr_name, 'Current CTC': c.current_ctc, 'Expected CTC': c.exp_ctc,
       'Current Location': c.curr_loc, 'Preferred Location': c.pref_loc,
       'Rel Exp': c.rel_exp, 'Offer in Hand': c.offer_hand, 'Status': c.statusa,
@@ -1243,6 +1283,33 @@ const Ad_Candi = ({ clientSpocView = false, recruiterView = false, directOnly = 
     {
       accessorKey: 'recName', header: 'Recruiter', size: 150,
       Cell: ({ cell }) => <span style={{ fontSize:12, color:'#374151' }}>{cell.getValue() || '—'}</span>,
+    },
+    {
+      // Who cleared this candidate before the client saw them. Blank for
+      // candidates that did not go through a coach's review bin.
+      accessorKey: 'coachReviewByName', header: 'Reviewed By', size: 190,
+      Cell: ({ row }) => {
+        const c = row.original;
+        if (!c.coachReviewBy) return <span style={{ fontSize:12, color:'#d1d5db' }}>—</span>;
+        const approved = c.coachReviewDecision === 'approve';
+        return (
+          <div style={{ lineHeight:1.35 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+              <span style={{ fontSize:12.5, fontWeight:700, color:'#111827' }}>
+                {c.coachReviewByName || c.coachReviewBy.split('@')[0]}
+              </span>
+              <span style={{ fontSize:9.5, fontWeight:800, padding:'1px 6px', borderRadius:99,
+                background: approved ? '#dcfce7' : '#fee2e2', color: approved ? '#15803d' : '#b91c1c' }}>
+                {approved ? 'APPROVED' : 'REJECTED'}
+              </span>
+            </div>
+            <div style={{ fontSize:11, color:'#6b7280' }}>{c.coachReviewBy}</div>
+            {c.coachReviewByPhone && (
+              <div style={{ fontSize:11, color:'#6b7280' }}>{c.coachReviewByPhone}</div>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'curr_loc', header: 'Location', size: 130,

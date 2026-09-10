@@ -59,7 +59,10 @@ const pilotCoach = async (email) => {
       const d = s.docs[0].data();
       const cats = (Array.isArray(d.skillCategory) ? d.skillCategory : [d.skillCategory])
         .filter(Boolean).map(x => String(x).toLowerCase().trim());
-      return { email: e, name: d.name || '', role, id: s.docs[0].id, categories: cats };
+      return {
+        email: e, name: d.name || '', role, id: s.docs[0].id, categories: cats,
+        phone: d.phone || d.mobile || d.mob || '',
+      };
     }
   }
   return null;
@@ -288,6 +291,9 @@ router.post('/:id/review', coachOnly, async (req, res) => {
         coachReviewReason: reason.slice(0, 2000),
         coachReviewBriefing: briefing.slice(0, 5000),
         coachReviewBy: req.coach.email,
+        coachReviewByName: req.coach.name,
+        coachReviewByPhone: req.coach.phone,
+        coachReviewByRole: req.coach.role,
         coachReviewAt: now,
       });
     } catch (e) {
