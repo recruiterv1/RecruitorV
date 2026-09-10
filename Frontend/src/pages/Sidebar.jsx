@@ -178,6 +178,18 @@ const Sidebar = () => {
   // Is the certification assessment on offer for this account? Asked once, and
   // only for the roles it covers, so other user types make no request at all.
   const [canOfferAssessment, setCanOfferAssessment] = useState(false);
+
+  // The review bin is a pilot: the server decides who sees it, so the menu can
+  // never disagree with who the endpoints will actually admit.
+  const [hasReviewBin, setHasReviewBin] = useState(false);
+  useEffect(() => {
+    if (!user?.email) { setHasReviewBin(false); return; }
+    let live = true;
+    axios.get('/api/coach-bin/enabled', { withCredentials: true })
+      .then(r => { if (live) setHasReviewBin(r.data?.enabled === true); })
+      .catch(() => { if (live) setHasReviewBin(false); });
+    return () => { live = false; };
+  }, [user?.email]);
   const assessmentRole = user?.roleCategory?.toLowerCase();
   const mayHaveAssessment = !!user
     && !['clientspoc', 'vendor'].includes(assessmentRole)
@@ -379,6 +391,11 @@ const Sidebar = () => {
   // attempts, the entry disappears.
   if (Array.isArray(menuItems) && canOfferAssessment) {
     menuItems = [...menuItems, { icon: Award, label: 'Earn Certification', path: '/earn-certification' }];
+  }
+
+  // Review Bin — pilot only, so it sits above the everyday entries.
+  if (Array.isArray(menuItems) && hasReviewBin) {
+    menuItems = [...menuItems, { icon: Inbox, label: 'Review Bin', path: '/coach-bin' }];
   }
 
   // Coaches, experts and recruiters set the hours they can be reached in. It

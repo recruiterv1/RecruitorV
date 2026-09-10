@@ -637,6 +637,21 @@ let {
     } catch (_) { /* attribution is best-effort; never block a submission */ }
 
 
+    // Should this candidate be held for a coach's review before the Client SPOC
+    // sees them? False unless the pilot names this exact position, so by default
+    // every candidate follows the same path to the SPOC as before.
+    let holdForCoach = false;
+    let holdPosition = null;
+    try {
+      const coachBin = require('./coachBin');
+      holdPosition = await ad_Pos.findPositionByPosId(pos_id);
+      holdForCoach = await coachBin.shouldHold(holdPosition);
+    } catch (holdErr) {
+      // A fault here must never cost a submission — fall through as normal.
+      console.error('coach-bin hold check skipped:', holdErr.message);
+      holdForCoach = false;
+    }
+
     const user = await candida.createCandidate({
       ...carryReferral,
       id,
@@ -678,7 +693,7 @@ let {
       nontech_exp,
       mob,
       emails,
-      statusa:'Submitted',
+      statusa: holdForCoach ? 'In Review' : 'Submitted',
       dob,
       jr_number,
       pan_number,
@@ -687,6 +702,22 @@ let {
       photo_url: photo_url || '',
       client_answers
     });
+
+    // Into the review pool. After the record exists, so a bin entry can never
+    // point at a candidate that was not written.
+    if (holdForCoach) {
+      try {
+        const coachBin = require('./coachBin');
+        await coachBin.addToBin({
+          candidateId: user?.id || id,
+          candidate: { candidate, matchPercent: null },
+          position: holdPosition,
+          recruiterEmail: (news?.email || '').toLowerCase(),
+        });
+      } catch (binErr) {
+        console.error('coach-bin add failed:', binErr.message);
+      }
+    }
 
     // 🔒 Race-safe de-dupe: two near-simultaneous submits can both pass the pre-check
     // above before either writes. Immediately after writing, reconcile — if more than

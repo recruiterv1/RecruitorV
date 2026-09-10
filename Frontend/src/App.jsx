@@ -3,6 +3,7 @@ import TeamRecruiterProfile from './pages/TeamRecruiterProfile';
 import MyBriefings from './pages/MyBriefings';
 import DuplicateCheckQueue from './pages/DuplicateCheckQueue';
 import MyAvailability from './pages/MyAvailability';
+import CoachBin from './pages/CoachBin';
 import LinkedInSettings from './pages/LinkedInSettings';
 import BriefingEntry from './pages/BriefingEntry';
 import axios from 'axios';
@@ -414,6 +415,7 @@ const App = () => {
             <Route path='/my-briefings' element={<MyBriefings/>}/>
             <Route path='/duplicate-check-queue' element={<DuplicateCheckQueue/>}/>
             <Route path='/my-availability' element={<MyAvailability/>}/>
+            <Route path='/coach-bin' element={<CoachBin/>}/>
             <Route path='/linkedin-settings' element={<LinkedInSettings/>}/>
             <Route path='/briefing/:pos_id' element={<BriefingEntry/>}/>
             <Route  path='/' element={<HomeLanding/>}/>
