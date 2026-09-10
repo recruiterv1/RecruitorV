@@ -26,6 +26,7 @@ export default function CoachBin() {
   const [tab, setTab] = useState('bin');
   const [rows, setRows] = useState([]);
   const [missed, setMissed] = useState([]);
+  const [reviewed, setReviewed] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState(null);
@@ -34,12 +35,14 @@ export default function CoachBin() {
 
   const load = useCallback(async () => {
     try {
-      const [a, m] = await Promise.all([
+      const [a, m, v] = await Promise.all([
         axios.get('/api/coach-bin/available', { withCredentials: true }),
         axios.get('/api/coach-bin/missed', { withCredentials: true }).catch(() => null),
+        axios.get('/api/coach-bin/reviewed', { withCredentials: true }).catch(() => null),
       ]);
       setRows(a.data?.requests || []);
       setMissed(m?.data?.requests || []);
+      setReviewed(v?.data?.requests || []);
       setMsg(null);
     } catch (e) {
       setMsg({ ok: false, text: e?.response?.data?.message || 'Could not load the bin.' });
@@ -135,7 +138,7 @@ export default function CoachBin() {
     );
   };
 
-  const list = tab === 'bin' ? rows : missed;
+  const list = tab === 'bin' ? rows : tab === 'reviewed' ? reviewed : missed;
 
   return (
     <DashShell>
@@ -150,7 +153,7 @@ export default function CoachBin() {
         </p>
 
         <div className="flex gap-2 mb-5">
-          {[['bin', `Bin (${rows.length})`], ['missed', `Missed CVs (${missed.length})`]].map(([id, label]) => (
+          {[['bin', `Bin (${rows.length})`], ['reviewed', `Reviewed (${reviewed.length})`], ['missed', `Missed CVs (${missed.length})`]].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
               className={`px-4 py-2 rounded-xl text-[13px] font-bold border-2 transition ${
                 tab === id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
@@ -166,11 +169,16 @@ export default function CoachBin() {
         ) : !list.length ? (
           <div className="text-center py-16 text-gray-500">
             <Inbox size={34} className="mx-auto mb-3 text-gray-300" />
-            <p className="text-sm">{tab === 'bin' ? 'Nothing waiting for review.' : 'No missed CVs.'}</p>
+            <p className="text-sm">{
+              tab === 'bin' ? 'Nothing waiting for review.'
+              : tab === 'reviewed' ? 'You have not reviewed any candidates yet.'
+              : 'No missed CVs.'}</p>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {list.map(r => <Card key={r.id} r={r} isMissed={tab === 'missed'} />)}
+            {list.map(r => tab === 'reviewed'
+              ? <ReviewedCard key={r.id} r={r} />
+              : <Card key={r.id} r={r} isMissed={tab === 'missed'} />)}
           </div>
         )}
       </div>
@@ -180,6 +188,46 @@ export default function CoachBin() {
           onDone={async (text) => { setReviewing(null); setMsg({ ok: true, text }); await load(); }} />
       )}
     </DashShell>
+  );
+}
+
+// A candidate this coach has already decided on, and where they got to since.
+function ReviewedCard({ r }) {
+  const approved = r.decision === 'approve';
+  return (
+    <div className={`rounded-2xl border-2 p-4 ${approved ? 'border-emerald-200 bg-emerald-50/40' : 'border-red-200 bg-red-50/30'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-bold text-gray-900 text-[15px] truncate">{r.candidateName || '—'}</p>
+          <p className="text-[13px] text-gray-600 truncate">{r.positionTitle}</p>
+          <p className="text-[12px] text-gray-400 truncate">{r.client}</p>
+        </div>
+        <span className={`flex-shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[12px] font-bold ${
+          approved ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+          {approved ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+          {approved ? 'Approved' : 'Rejected'}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3 mt-2.5 flex-wrap text-[12.5px]">
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${scoreColour(r.matchPercent)}`}>
+          <Gauge size={11} />{r.matchPercent == null ? '—' : `${r.matchPercent}%`}
+        </span>
+        {r.reviewedAt && (
+          <span className="text-gray-500">Reviewed {new Date(r.reviewedAt).toLocaleString('en-IN')}</span>
+        )}
+        {/* Where the candidate stands now — a SPOC may have moved them on. */}
+        {r.currentStatus && (
+          <span className="text-gray-500">Now: <strong className="text-gray-700">{r.currentStatus}</strong></span>
+        )}
+      </div>
+
+      <div className="mt-3 rounded-xl bg-white border border-gray-200 p-3 space-y-1.5">
+        {r.reason && <p className="text-[12.5px] text-gray-700"><strong>Reason:</strong> {r.reason}</p>}
+        {r.briefing && <p className="text-[12.5px] text-gray-700"><strong>Briefing:</strong> {r.briefing}</p>}
+        {r.suitability && <p className="text-[12.5px] text-gray-700"><strong>Suitability:</strong> {r.suitability}</p>}
+      </div>
+    </div>
   );
 }
 

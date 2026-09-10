@@ -302,6 +302,36 @@ router.post('/:id/review', coachOnly, async (req, res) => {
   }
 });
 
+// GET /reviewed — what this coach has already decided, and where those
+// candidates got to afterwards. Without it a coach approves someone and never
+// sees them again, so there is no way to tell an approval actually landed.
+router.get('/reviewed', coachOnly, async (req, res) => {
+  try {
+    const snap = await BIN().where('reviewedBy', '==', req.coach.email).get();
+    const rows = snap.docs.map(shape)
+      .sort((a, b) => (b.reviewedAt || '').localeCompare(a.reviewedAt || ''));
+
+    // The candidate's status now — a SPOC may have moved them on since.
+    await Promise.all(rows.map(async (r) => {
+      try {
+        const c = await db.collection('candidate_db').doc(r.candidateId).get();
+        r.currentStatus = c.exists ? (c.data().statusa || '') : '(candidate removed)';
+      } catch (_) { r.currentStatus = ''; }
+    }));
+
+    res.json({
+      success: true,
+      requests: rows,
+      count: rows.length,
+      approved: rows.filter(r => r.decision === 'approve').length,
+      rejected: rows.filter(r => r.decision === 'reject').length,
+    });
+  } catch (e) {
+    console.error('coach-bin/reviewed error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // GET /missed — past the 4-hour window: visible, never actionable.
 router.get('/missed', coachOnly, async (req, res) => {
   try {

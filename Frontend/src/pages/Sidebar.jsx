@@ -393,9 +393,19 @@ const Sidebar = () => {
     menuItems = [...menuItems, { icon: Award, label: 'Earn Certification', path: '/earn-certification' }];
   }
 
-  // Review Bin — pilot only, so it sits above the everyday entries.
+  // Review Bin — pilot only. It belongs under Candidates alongside Teams
+  // Candidates, since both are lists of candidates, just at different stages:
+  // the bin holds them before the client sees them.
+  //
+  // The role menus are module-level constants shared across renders, so the
+  // entry is spliced into a copy — mutating them would append the item again on
+  // every render.
   if (Array.isArray(menuItems) && hasReviewBin) {
-    menuItems = [...menuItems, { icon: Inbox, label: 'Review Bin', path: '/coach-bin' }];
+    const binItem = { icon: Inbox, label: 'Review Bin', path: '/coach-bin' };
+    const i = menuItems.findIndex(m => m.label === 'Candidates' && Array.isArray(m.children));
+    menuItems = i === -1
+      ? [...menuItems, binItem]      // no Candidates group on this role's menu
+      : menuItems.map((m, k) => (k === i ? { ...m, children: [...m.children, binItem] } : m));
   }
 
   // Coaches, experts and recruiters set the hours they can be reached in. It
