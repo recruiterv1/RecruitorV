@@ -131,6 +131,7 @@ const RecruiterJoinTeam = React.lazy(() => import('./pages/RecruiterJoinTeam'));
 import AgreementGuard from './components/AgreementGuard';
 import ProfileGuard from './components/ProfileGuard';
 import ProfileCompletionPopup from './components/ProfileCompletionPopup';
+import AvailabilityNudge from './components/AvailabilityNudge';
 const ClientSpocReports = React.lazy(() => import('./pages/ClientSpocReports'));
 const VendorDashboard = React.lazy(() => import('./pages/VendorDashboard'));
 
@@ -388,6 +389,7 @@ const App = () => {
           <ChatNotifyProvider>
           <MobileAppGate />
           <ProfileCompletionPopup />
+          <AvailabilityNudge />
           <CommsBubbles />
           <React.Suspense fallback={<div style={{ padding: 20 }}>Loading...</div>}>
           <Routes>
