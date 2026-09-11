@@ -41,8 +41,11 @@ export default function FullBriefingPlayer({ items = [], onPlay, dark = true }) 
   const [playing, setPlaying] = useState(false);
   const [at, setAt] = useState(0);
   const [dur, setDur] = useState(0);
+  const [hover, setHover] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const audioRef = useRef(null);
   const urlRef = useRef('');
+  const barRef = useRef(null);
 
   const release = () => {
     if (urlRef.current) { try { URL.revokeObjectURL(urlRef.current); } catch (_) { /* already gone */ } }
@@ -85,11 +88,35 @@ export default function FullBriefingPlayer({ items = [], onPlay, dark = true }) 
     a.currentTime = Math.min(Math.max(0, a.currentTime + by), a.duration || 0);
   };
 
-  const scrub = (e) => {
+  // A YouTube-style bar: a thin track that thickens on hover, with a thumb that
+  // only appears then. An <input type="range"> cannot be styled to that without
+  // per-browser pseudo-elements, so the track is a div and the position comes
+  // from where the pointer is along it.
+  const seekTo = (clientX) => {
     const a = audioRef.current;
-    if (!a || !dur) return;
-    a.currentTime = (Number(e.target.value) / 1000) * dur;
+    const el = barRef.current;
+    if (!a || !el || !dur) return;
+    const { left, width } = el.getBoundingClientRect();
+    const pct = Math.min(Math.max((clientX - left) / width, 0), 1);
+    a.currentTime = pct * dur;
+    setAt(pct * dur);
   };
+
+  useEffect(() => {
+    if (!dragging) return;
+    const move = (e) => seekTo(e.touches ? e.touches[0].clientX : e.clientX);
+    const up = () => setDragging(false);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    window.addEventListener('touchmove', move);
+    window.addEventListener('touchend', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      window.removeEventListener('touchmove', move);
+      window.removeEventListener('touchend', up);
+    };
+  }, [dragging, dur]);
 
   const changeLang = (code) => {
     setLang(code);
@@ -97,6 +124,8 @@ export default function FullBriefingPlayer({ items = [], onPlay, dark = true }) 
   };
 
   if (!script) return null;
+
+  const pct = dur ? Math.min(100, (at / dur) * 100) : 0;
 
   const shell = dark
     ? { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)' }
@@ -110,7 +139,9 @@ export default function FullBriefingPlayer({ items = [], onPlay, dark = true }) 
   };
 
   return (
-    <div style={{ ...shell, borderRadius: 16, padding: 14 }}>
+    // overflow hidden + minWidth 0 throughout: at half width the seek bar was
+    // escaping the card and the two time labels were landing on top of each other.
+    <div style={{ ...shell, borderRadius: 16, padding: 12, minWidth: 0, overflow: 'hidden' }}>
       <audio
         ref={audioRef}
         src={url || undefined}
@@ -123,45 +154,78 @@ export default function FullBriefingPlayer({ items = [], onPlay, dark = true }) 
         style={{ display: 'none' }}
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* Controls on one line, the seek bar on its own below it — a single row
+          cannot hold all of this at half width without crushing something. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <button onClick={toggle} disabled={loading} aria-label={playing ? 'Pause' : 'Play'}
-          style={{ ...btn, width: 44, height: 44, flexShrink: 0,
-            background: dark ? 'var(--orange, #f47b20)' : '#0f172a', color: '#fff' }}>
-          {loading ? <Loader2 size={18} className="animate-spin" />
-            : playing ? <Pause size={18} /> : <Play size={18} style={{ marginLeft: 2 }} />}
+          style={{ ...btn, width: 40, height: 40, flexShrink: 0,
+            background: 'var(--orange, #f47b20)', color: '#fff' }}>
+          {loading ? <Loader2 size={17} className="animate-spin" />
+            : playing ? <Pause size={17} /> : <Play size={17} style={{ marginLeft: 2 }} />}
         </button>
 
         <button onClick={() => jump(-SKIP)} disabled={!url} aria-label={`Back ${SKIP} seconds`}
-          style={{ ...btn, width: 34, height: 34, flexShrink: 0, opacity: url ? 1 : 0.4 }}>
-          <RotateCcw size={15} />
+          style={{ ...btn, width: 30, height: 30, flexShrink: 0, opacity: url ? 1 : 0.35 }}>
+          <RotateCcw size={14} />
         </button>
         <button onClick={() => jump(SKIP)} disabled={!url} aria-label={`Forward ${SKIP} seconds`}
-          style={{ ...btn, width: 34, height: 34, flexShrink: 0, opacity: url ? 1 : 0.4 }}>
-          <RotateCw size={15} />
+          style={{ ...btn, width: 30, height: 30, flexShrink: 0, opacity: url ? 1 : 0.35 }}>
+          <RotateCw size={14} />
         </button>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <input type="range" min={0} max={1000} value={dur ? (at / dur) * 1000 : 0}
-            onChange={scrub} disabled={!url} aria-label="Seek"
-            style={{ width: '100%', accentColor: '#f47b20', cursor: url ? 'pointer' : 'default' }} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: mut, marginTop: 2 }}>
-            <span>{clock(at)}</span>
-            <span>{url ? clock(dur) : `${items.length} section${items.length === 1 ? '' : 's'}`}</span>
-          </div>
-        </div>
+        {/* Elapsed / total, or how many sections are queued before first play. */}
+        <span style={{ fontSize: 11.5, color: mut, whiteSpace: 'nowrap', flexShrink: 0,
+          fontVariantNumeric: 'tabular-nums' }}>
+          {url ? `${clock(at)} / ${clock(dur)}` : `${items.length} section${items.length === 1 ? '' : 's'}`}
+        </span>
 
-        <select value={lang} onChange={e => changeLang(e.target.value)}
-          aria-label="Language"
-          style={{ flexShrink: 0, fontSize: 12, padding: '5px 8px', borderRadius: 8,
+        <select value={lang} onChange={e => changeLang(e.target.value)} aria-label="Language"
+          style={{ marginLeft: 'auto', flexShrink: 0, maxWidth: 104, fontSize: 11.5,
+            padding: '4px 6px', borderRadius: 8,
             background: dark ? 'rgba(255,255,255,0.1)' : '#fff', color: fg,
             border: `1px solid ${dark ? 'rgba(255,255,255,0.18)' : '#e2e8f0'}` }}>
           {LANGS.map(l => <option key={l.code} value={l.code} style={{ color: '#0f172a' }}>{l.label}</option>)}
         </select>
       </div>
 
+      {/* The bar. Padding above and below gives a comfortable hit area while the
+          visible track stays thin. */}
+      <div
+        ref={barRef}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        onMouseDown={(e) => { if (url) { setDragging(true); seekTo(e.clientX); } }}
+        onTouchStart={(e) => { if (url) { setDragging(true); seekTo(e.touches[0].clientX); } }}
+        role="slider"
+        aria-label="Seek"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(dur)}
+        aria-valuenow={Math.round(at)}
+        tabIndex={url ? 0 : -1}
+        onKeyDown={(e) => {
+          if (!url) return;
+          if (e.key === 'ArrowLeft') { jump(-5); e.preventDefault(); }
+          if (e.key === 'ArrowRight') { jump(5); e.preventDefault(); }
+        }}
+        style={{ marginTop: 10, padding: '7px 0', cursor: url ? 'pointer' : 'default',
+          touchAction: 'none', opacity: url ? 1 : 0.45 }}>
+        <div style={{ position: 'relative', height: hover || dragging ? 5 : 3,
+          borderRadius: 99, background: dark ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+          transition: 'height .12s ease' }}>
+          <div style={{ position: 'absolute', inset: 0, width: `${pct}%`,
+            background: 'var(--orange, #f47b20)', borderRadius: 99 }} />
+          {/* The thumb shows only while hovering or dragging, as YouTube's does. */}
+          <div style={{ position: 'absolute', top: '50%', left: `${pct}%`,
+            width: 13, height: 13, marginLeft: -6.5, borderRadius: '50%',
+            background: 'var(--orange, #f47b20)',
+            transform: `translateY(-50%) scale(${hover || dragging ? 1 : 0})`,
+            transition: 'transform .12s ease', pointerEvents: 'none' }} />
+        </div>
+      </div>
+
       {err && (
-        <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#f87171', marginTop: 8 }}>
-          <AlertCircle size={13} /> {err}
+        <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#f87171', marginTop: 8 }}>
+          <AlertCircle size={12} /> {err}
         </p>
       )}
     </div>

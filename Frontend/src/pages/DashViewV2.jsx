@@ -1581,9 +1581,14 @@ function DashViewV2Inner() {
                 The coach/vendor ones only ever reach here for that author's own
                 team — the server decides that, not this component, and the
                 public fallback used when signed out returns the client's alone. */}
+            {/* Client and team briefings side by side, half each, so both are
+                visible without scrolling; they stack on a narrow screen. */}
             {headerBriefings.length > 0 && (
               <div style={{ position: 'relative', zIndex: 1, marginTop: 20, paddingTop: 16,
-                borderTop: '1px solid rgba(255,255,255,0.15)', display: 'grid', gap: 16 }}>
+                borderTop: '1px solid rgba(255,255,255,0.15)', display: 'grid', gap: 16,
+                gridTemplateColumns: headerBriefings.length > 1
+                  ? 'repeat(auto-fit, minmax(320px, 1fr))' : '1fr',
+                alignItems: 'start' }}>
                 {headerBriefings.map(b => {
                   const label = b.isPublic ? '🎙️ Client Briefing'
                     : b.authorType === 'vendor' ? '🎙️ Vendor Briefing' : '🎙️ Coach Briefing';
