@@ -2907,6 +2907,11 @@ router.get('/team/available-coaches', authMiddleware, async (req, res) => {
         // The two-hour windows this person said they can be reached in, so
         // whoever is picking a team can see when they are actually around.
         availability: Array.isArray(data.availability) ? data.availability : [],
+        // Assessment standing. Omitted before, so the badge on the dash_view
+        // card rendered from an undefined tier and never appeared — and any
+        // sort on it had nothing to sort by.
+        eligibilityTier: data.eligibilityTier || null,
+        certificateId: data.certificateId || '',
       };
     };
 
@@ -2951,6 +2956,21 @@ router.get('/team/available-coaches', authMiddleware, async (req, res) => {
     });
 
     // Strip internal fields before sending to client
+    // Whether each person has already recorded a briefing for THIS position —
+    // a coach who has briefed the role is more use than one who has not, so the
+    // card can lead with them. Only asked for when a position is named.
+    const posId = String(req.query.pos_id || '').trim();
+    if (posId) {
+      await Promise.all(all.map(async (c) => {
+        c.hasBriefingForPosition = false;
+        try {
+          const b = await db.collection('position_coach_briefing')
+            .doc(`${posId}__${String(c.email).toLowerCase()}`).get();
+          c.hasBriefingForPosition = b.exists && (b.data().status || 'draft') === 'ready';
+        } catch (_) { /* a briefing lookup must never fail the list */ }
+      }));
+    }
+
     const cleaned = all.map(({ _raw, lastActiveMs, ...rest }) => rest); // lastActiveDate is kept in rest
 
     // Mark already-requested coaches

@@ -11,7 +11,7 @@ import Footer from './Footer';
 import { indiaStatesAndCities } from './Ad_Pos';
 import { formatCommission } from '../lib/commission';
 import SpeakButton from '../components/SpeakButton';
-import BriefingPlayer from '../components/BriefingPlayer';
+import FullBriefingPlayer from '../components/FullBriefingPlayer';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EXPERIMENTAL layout for the position / JD-submission page. Isolated on its own
@@ -600,7 +600,7 @@ function DashViewV2Inner() {
     const recCats = (Array.isArray(teamUser.skillCategory) ? teamUser.skillCategory : (teamUser.skillCategory ? [teamUser.skillCategory] : []))
       .map(c => String(c).toLowerCase().trim());
     const FORTY_EIGHT = 48 * 60 * 60 * 1000, now = Date.now();
-    axios.get('/api/coach-expert/team/available-coaches?scope=all', { withCredentials: true })
+    axios.get(`/api/coach-expert/team/available-coaches?scope=all&pos_id=${encodeURIComponent(pos_id || '')}`, { withCredentials: true })
       .then(r => {
         const all = r.data?.coaches || [];
         const list = all.filter(c => {
@@ -611,12 +611,14 @@ function DashViewV2Inner() {
           if (recCats.length && !cCats.some(x => recCats.includes(x))) return false; // same skill category
           return true;
         });
-        // Certified coaches and experts lead the list — that badge is the one
-        // signal a recruiter can act on before working with someone. Nothing
-        // else about the ordering changes: Array.prototype.sort is stable, so
-        // within each group the API's existing order is preserved.
-        const certified = c => (c.eligibilityTier === 'certified' ? 0 : 1);
-        list.sort((a, b) => certified(a) - certified(b));
+        // Lead with the people a recruiter can most use: certified first, and
+        // within that, whoever has already briefed THIS position. Both are
+        // things you would want to know before asking someone to join.
+        // Array.prototype.sort is stable, so the API's order holds inside each
+        // group.
+        const rank = (c) =>
+          (c.eligibilityTier === 'certified' ? 0 : 2) + (c.hasBriefingForPosition ? 0 : 1);
+        list.sort((a, b) => rank(a) - rank(b));
         setTeamCoaches(list);
         const req = {};
         all.forEach(c => { if (c.alreadyRequested) req[(c.email || '').toLowerCase()] = 'pending'; });
@@ -1601,15 +1603,13 @@ function DashViewV2Inner() {
                         <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>{who}</span>
                       </div>
 
-                      {/* Audio only — the briefing is heard, never read. Each item
-                          gets its own player so it can be paused, scrubbed and
-                          repeated on its own. */}
-                      <div style={{ display: 'grid', gap: 8, marginTop: 12,
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
-                        {(b.items || []).map(it => (
-                          <BriefingPlayer key={it.key} item={it}
-                            onPlay={() => markBriefingListened(b.authorEmail)} />
-                        ))}
+                      {/* Audio only — the briefing is heard, never read. One clip
+                          per author: the whole briefing plays through, with
+                          pause, seek and ten-second jumps. Client and team
+                          briefings stay separate, being different people. */}
+                      <div style={{ marginTop: 12 }}>
+                        <FullBriefingPlayer items={b.items || []}
+                          onPlay={() => markBriefingListened(b.authorEmail)} />
                       </div>
                     </div>
                   );
@@ -1717,6 +1717,15 @@ function DashViewV2Inner() {
                         <div key={c.id || key} style={{ flex: 1, minWidth: 0, border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff', position: 'relative' }}>
                           {/* Certified sits in the card corner, so the standing is
                               visible before anyone opens the profile. */}
+                          {c.hasBriefingForPosition && (
+                            <span title="Has already briefed this position"
+                              style={{ position: 'absolute', top: 10, left: 10, display: 'inline-flex',
+                                alignItems: 'center', gap: 3, fontSize: 9.5, fontWeight: 800,
+                                padding: '2px 6px', borderRadius: 999, background: '#fff7ed',
+                                color: '#c2410c', border: '1px solid #fed7aa' }}>
+                              🎙 BRIEFED
+                            </span>
+                          )}
                           {c.eligibilityTier === 'certified' && (
                             <span style={{ position: 'absolute', top: 10, right: 10 }}>
                               <CertifiedBadge tier={c.eligibilityTier} size="xs" />
