@@ -82,9 +82,19 @@ const buildRecruiterMenu = ({ isVendorTeam } = {}) => [
 // ── Coach menu ────────────────────────────────────────────────────────────────
 const coachMenuItems = [
   { icon: LayoutDashboard, label: 'Dashboard',           path: '/coach-dashboard' },
-  { icon: Briefcase,       label: 'Open Positions',     path: '/coach-expert-positions' },
-  { icon: Briefcase,       label: 'Assigned Positions', path: '/coach-expert-assigned-positions' },
-  { icon: Mic, label: 'Position Briefings', path: '/my-briefings' },
+  // Everything about a position in one place. These four used to sit apart —
+  // the two lists at the top, the stats near the bottom — so a coach checking
+  // how a position was doing had to hunt down the sidebar for it.
+  {
+    icon: Briefcase,
+    label: 'Positions',
+    children: [
+      { icon: Briefcase,     label: 'Open Positions',     path: '/coach-expert-positions' },
+      { icon: ClipboardList, label: 'Assigned Positions', path: '/coach-expert-assigned-positions' },
+      { icon: Mic,           label: 'Position Briefings', path: '/my-briefings' },
+      { icon: BarChart3,     label: 'My Position Stats',  path: '/coach-expert-position-stats' },
+    ],
+  },
   {
     icon: Users,
     label: 'Candidates',
@@ -104,7 +114,6 @@ const coachMenuItems = [
       { icon: ClipboardList, label: 'Follow-ups',   path: '/coach-followups' },
     ],
   },
-  { icon: BarChart3,   label: 'My Position Stats', path: '/coach-expert-position-stats' },
   {
     icon: Gift,
     label: 'Refer & Earn',

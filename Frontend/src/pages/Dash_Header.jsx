@@ -1,7 +1,6 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
 import AnnouncementBar from '../components/AnnouncementBar';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { Bell, Search, Menu, X, Check, CheckCheck, HelpCircle, Sun, Moon } from 'lucide-react';
 import { UserStateContext } from '../context/AuthPro';
 import { useTheme } from '../context/ThemeContext';
@@ -151,7 +150,6 @@ const Dash_Header = ({ onMenuClick }) => {
   const { user } = useContext(UserStateContext);
   const { theme, toggleTheme, canUseDark } = useTheme();
   const [greeting, setGreeting] = useState('');
-  const [profileCompletion, setProfileCompletion] = useState(0);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
 
@@ -176,22 +174,6 @@ const Dash_Header = ({ onMenuClick }) => {
     } else {
       setGreeting('Good Evening');
     }
-  }, []);
-
-  // Fetch profile completion percentage
-  useEffect(() => {
-    const fetchProfileCompletion = async () => {
-      try {
-        const response = await axios.get('/api/profile/profile-completion', { withCredentials: true });
-        if (response.data.success) {
-          setProfileCompletion(response.data.completion.percentage);
-        }
-      } catch (error) {
-        console.error('Error fetching profile completion:', error);
-      }
-    };
-
-    fetchProfileCompletion();
   }, []);
 
   // Close dropdown when clicking outside
@@ -377,27 +359,6 @@ const Dash_Header = ({ onMenuClick }) => {
                   )}
                 </div>
               )}
-            </div>
-
-            {/* Profile Completion Badge */}
-            <div className="relative group">
-              <div 
-                className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm cursor-pointer hover:scale-110 transition-transform shadow-md ${
-                  profileCompletion >= 100 
-                    ? 'bg-green-500 text-white' 
-                    : profileCompletion >= 50 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-orange-500 text-white'
-                }`}
-                title={`Profile Completion: ${profileCompletion}%`}
-              >
-                {profileCompletion}%
-              </div>
-              {/* Tooltip */}
-              <div className="absolute right-0 top-full mt-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
-                {profileCompletion < 100 ? 'Complete your profile' : 'Profile Complete!'}
-                <div className="absolute -top-1 right-3 w-2 h-2 bg-gray-900 rotate-45"></div>
-              </div>
             </div>
 
             {/* Profile Avatar + Dropdown */}
