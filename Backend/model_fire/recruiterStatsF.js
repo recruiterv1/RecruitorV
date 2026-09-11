@@ -180,6 +180,13 @@ const getRecruiterStats = async () => {
         suspendedReason: recruiterData.suspendedReason || '',
         mobile: recruiterData.mobile || recruiterData.phone || recruiterData.mob || '',
         experienceCategory: recruiterData.experienceCategory || '',
+        // The two-hour windows they said they can be reached in.
+        availability: Array.isArray(recruiterData.availability) ? recruiterData.availability : [],
+        // Assessment standing. Omitted before, so the Certified badge on the
+        // SuperAdmin recruiter list rendered from an undefined tier and never
+        // appeared — the same gap that hid it on the dash_view coach card.
+        eligibilityTier: recruiterData.eligibilityTier || null,
+        certificateId: recruiterData.certificateId || '',
         planType: recruiterData.planType,
         resumeUrl: recruiterData.resumeUrl || '',
         // Team membership (coach/expert teams) — see step 2b above.

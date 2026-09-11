@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import CertifiedBadge from '../components/CertifiedBadge';
+import { availabilityColumn, AvailabilityFilter, matchesAvailability } from '../components/AvailabilityColumn';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
 import ChangeRoleControl from '../components/ChangeRoleControl';
@@ -37,6 +38,8 @@ const AllRecruiters = ({ embedded = false }) => {
   const [commisionFilter, setCommisionFilter] = useState('all');
   const [activityFilter, setActivityFilter] = useState('all');
   const [skillCatFilter, setSkillCatFilter] = useState([]);
+  const [availFilter, setAvailFilter] = useState('all');   // all | set | unset
+  const [availSlot, setAvailSlot] = useState('');
   const [teamFilter, setTeamFilter] = useState('all');   // all | joined | none
   const [statusFilter, setStatusFilter] = useState('all'); // all | active | inactive
   const [updatingId, setUpdatingId] = useState(null);
@@ -305,6 +308,7 @@ const AllRecruiters = ({ embedded = false }) => {
         );
       },
     },
+    availabilityColumn,
     {
       accessorFn: (row) => row.skillCategory || '',
       id: 'skillCategory',
@@ -508,9 +512,10 @@ const AllRecruiters = ({ embedded = false }) => {
       const inactive = r.isActive === false || r.accountStatus === 'suspended';
       if (statusFilter === 'active' && inactive) return false;
       if (statusFilter === 'inactive' && !inactive) return false;
+      if (!matchesAvailability(r, availFilter, availSlot)) return false;
       return true;
     });
-  }, [recruiters, agreementFilter, commisionFilter, activityFilter, skillCatFilter, teamFilter, statusFilter, embedded]);
+  }, [recruiters, agreementFilter, commisionFilter, activityFilter, skillCatFilter, teamFilter, statusFilter, embedded, availFilter, availSlot]);
 
   const table = useMaterialReactTable({
     columns,
@@ -607,6 +612,10 @@ const AllRecruiters = ({ embedded = false }) => {
           </div>
 
           <RecruiterFilterBar
+            availFilter={availFilter}
+            setAvailFilter={setAvailFilter}
+            availSlot={availSlot}
+            setAvailSlot={setAvailSlot}
             agreementFilter={agreementFilter}
             setAgreementFilter={setAgreementFilter}
             commisionFilter={commisionFilter}
@@ -692,6 +701,10 @@ const AllRecruiters = ({ embedded = false }) => {
           </div>
 
           <RecruiterFilterBar
+            availFilter={availFilter}
+            setAvailFilter={setAvailFilter}
+            availSlot={availSlot}
+            setAvailSlot={setAvailSlot}
             agreementFilter={agreementFilter}
             setAgreementFilter={setAgreementFilter}
             commisionFilter={commisionFilter}
@@ -740,7 +753,7 @@ export default AllRecruiters;
 
 const COMMISSION_OPTIONS = ['Own Sourcing Tools', 'Job Portal Access'];
 
-const RecruiterFilterBar = ({ agreementFilter, setAgreementFilter, commisionFilter, setCommisionFilter, activityFilter, setActivityFilter, teamFilter, setTeamFilter, statusFilter, setStatusFilter, skillCatFilter, setSkillCatFilter, skillCategories = [], total, filtered }) => {
+const RecruiterFilterBar = ({ agreementFilter, setAgreementFilter, commisionFilter, setCommisionFilter, activityFilter, setActivityFilter, teamFilter, setTeamFilter, statusFilter, setStatusFilter, skillCatFilter, setSkillCatFilter, skillCategories = [], total, filtered , availFilter = 'all', setAvailFilter = () => {}, availSlot = '', setAvailSlot = () => {} }) => {
   const btn = (active, onClick, label, color = 'blue') => {
     const colors = {
       blue: active ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-blue-600 border border-blue-300 hover:bg-blue-50',
@@ -836,6 +849,8 @@ const RecruiterFilterBar = ({ agreementFilter, setAgreementFilter, commisionFilt
       )}
 
       {/* Result count */}
+      <div className="w-px h-6 bg-gray-300 hidden sm:block" />
+      <AvailabilityFilter mode={availFilter} setMode={setAvailFilter} slot={availSlot} setSlot={setAvailSlot} />
       <div className="ml-auto text-xs text-gray-500 font-medium">
         {isFiltered ? (
           <span>

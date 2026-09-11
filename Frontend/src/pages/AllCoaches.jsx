@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import CertifiedBadge from '../components/CertifiedBadge';
+import { availabilityColumn, AvailabilityFilter, matchesAvailability } from '../components/AvailabilityColumn';
 import ChangeRoleControl from '../components/ChangeRoleControl';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
@@ -33,6 +34,8 @@ const AllCoaches = ({ embedded = false }) => {
   const [agreementFilter, setAgreementFilter] = useState('all');
   const [activityFilter, setActivityFilter] = useState('all');
   const [skillCatFilter, setSkillCatFilter] = useState([]);
+  const [availFilter, setAvailFilter] = useState('all');   // all | set | unset
+  const [availSlot, setAvailSlot] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // all | active | inactive
   const impersonate = async (row) => {
     if (!window.confirm(`Log in as ${row.name || row.email}?\n\nThis replaces your Super Admin session with theirs — log back in as admin afterwards.`)) return;
@@ -330,6 +333,7 @@ const AllCoaches = ({ embedded = false }) => {
         );
       },
     },
+    availabilityColumn,
     {
       accessorKey: 'specialization',
       header: 'Specialization',
@@ -510,9 +514,10 @@ const AllCoaches = ({ embedded = false }) => {
       const inactive = c.isActive === false || c.accountStatus === 'suspended';
       if (statusFilter === 'active' && inactive) return false;
       if (statusFilter === 'inactive' && !inactive) return false;
+      if (!matchesAvailability(c, availFilter, availSlot)) return false;
       return true;
     });
-  }, [coaches, agreementFilter, activityFilter, skillCatFilter, statusFilter, embedded]);
+  }, [coaches, agreementFilter, activityFilter, skillCatFilter, statusFilter, embedded, availFilter, availSlot]);
 
   const table = useMaterialReactTable({
     columns,
@@ -712,6 +717,10 @@ const AllCoaches = ({ embedded = false }) => {
             </div>
           </div>
           <CoachFilterBar
+            availFilter={availFilter}
+            setAvailFilter={setAvailFilter}
+            availSlot={availSlot}
+            setAvailSlot={setAvailSlot}
             agreementFilter={agreementFilter}
             setAgreementFilter={setAgreementFilter}
             activityFilter={activityFilter}
@@ -972,6 +981,10 @@ const AllCoaches = ({ embedded = false }) => {
 
             {/* Coaches Table */}
             <CoachFilterBar
+            availFilter={availFilter}
+            setAvailFilter={setAvailFilter}
+            availSlot={availSlot}
+            setAvailSlot={setAvailSlot}
               agreementFilter={agreementFilter}
               setAgreementFilter={setAgreementFilter}
               statusFilter={statusFilter}
@@ -1268,7 +1281,7 @@ const AllCoaches = ({ embedded = false }) => {
 
 export default AllCoaches;
 
-const CoachFilterBar = ({ agreementFilter, setAgreementFilter, activityFilter, setActivityFilter, statusFilter = 'all', setStatusFilter = () => {}, skillCatFilter, setSkillCatFilter, skillCategories = [], total, filtered }) => {
+const CoachFilterBar = ({ agreementFilter, setAgreementFilter, activityFilter, setActivityFilter, statusFilter = 'all', setStatusFilter = () => {}, skillCatFilter, setSkillCatFilter, skillCategories = [], total, filtered , availFilter = 'all', setAvailFilter = () => {}, availSlot = '', setAvailSlot = () => {} }) => {
   const isFiltered = agreementFilter !== 'all' || activityFilter !== 'all' || statusFilter !== 'all' || (skillCatFilter?.length || 0) > 0;
   const ACTIVITY_OPTIONS = [
     { key: 'all', label: 'All' }, { key: '24h', label: '24 Hours' }, { key: '48h', label: '48 Hours' },
@@ -1294,6 +1307,8 @@ const CoachFilterBar = ({ agreementFilter, setAgreementFilter, activityFilter, s
         {btn(statusFilter === 'active', () => setStatusFilter('active'), '● Active', 'bg-green-600 text-white shadow-md', 'bg-white text-green-700 border border-green-300 hover:bg-green-50')}
         {btn(statusFilter === 'inactive', () => setStatusFilter('inactive'), '● Inactive', 'bg-red-500 text-white shadow-md', 'bg-white text-red-600 border border-red-300 hover:bg-red-50')}
       </div>
+      <div className="w-px h-6 bg-gray-300 hidden sm:block" />
+      <AvailabilityFilter mode={availFilter} setMode={setAvailFilter} slot={availSlot} setSlot={setAvailSlot} />
       <div className="w-px h-6 bg-gray-300 hidden sm:block" />
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Agreement:</span>
