@@ -1717,13 +1717,24 @@ function DashViewV2Inner() {
                         <div key={c.id || key} style={{ flex: 1, minWidth: 0, border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff', position: 'relative' }}>
                           {/* Certified sits in the card corner, so the standing is
                               visible before anyone opens the profile. */}
+                          {/* A speaker in the corner means this coach has recorded a
+                              briefing for this position. An indicator only — a coach
+                              briefing is private to their own team, so someone not on
+                              it could not play it anyway. */}
                           {c.hasBriefingForPosition && (
-                            <span title="Has already briefed this position"
-                              style={{ position: 'absolute', top: 10, left: 10, display: 'inline-flex',
-                                alignItems: 'center', gap: 3, fontSize: 9.5, fontWeight: 800,
-                                padding: '2px 6px', borderRadius: 999, background: '#fff7ed',
-                                color: '#c2410c', border: '1px solid #fed7aa' }}>
-                              🎙 BRIEFED
+                            <span title="Has recorded a briefing for this position"
+                              style={{ position: 'absolute', top: 9, left: 9, display: 'inline-flex',
+                                alignItems: 'center', justifyContent: 'center', width: 22, height: 22,
+                                borderRadius: 999, background: '#fff7ed', border: '1px solid #fed7aa' }}>
+                              {/* Inline rather than an icon import: this file uses no
+                                  icon library, and adding one for a single glyph
+                                  would pull a dependency into the page. */}
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                stroke="#c2410c" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="#c2410c" />
+                                <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                                <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+                              </svg>
                             </span>
                           )}
                           {c.eligibilityTier === 'certified' && (
