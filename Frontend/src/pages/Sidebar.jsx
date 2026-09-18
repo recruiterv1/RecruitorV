@@ -34,6 +34,7 @@ import {
   Wallet,
   Bell,
   Clock,
+  RotateCcw,
 } from 'lucide-react';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import { SidebarContext } from '../context/Sidebarcontext';
@@ -60,6 +61,9 @@ const buildRecruiterMenu = ({ isVendorTeam } = {}) => [
     children: [
       { icon: Users,     label: 'My Candidates',    path: '/dash_candidate' },
       { icon: UserCheck, label: 'Direct Applicants', path: '/recruiter-direct-applicants' },
+      // What the coach decided on each candidate, and where a rejection can be
+      // appealed.
+      { icon: FileText,  label: 'My Submissions',    path: '/my-submissions' },
     ],
   },
   { icon: BarChart3, label: 'My Report',  path: '/recruiter-reports' },
@@ -345,6 +349,9 @@ const Sidebar = () => {
         children: [
           { icon: Users,    label: 'All Candidates',     path: '/ad_panel#candidates' },
           { icon: FileText, label: 'Direct Applications', path: '/clientspoc-direct-applications' },
+          // Rejections a recruiter has asked to be reconsidered, with the
+          // coach's original feedback so the client can weigh both.
+          { icon: RotateCcw, label: 'Second Reviews',    path: '/clientspoc-second-reviews' },
           { icon: BarChart3, label: 'Candidate Stats',   path: '/ad_panel#position-stats' },
         ],
       },
@@ -411,10 +418,11 @@ const Sidebar = () => {
   // every render.
   if (Array.isArray(menuItems) && hasReviewBin) {
     const binItem = { icon: Inbox, label: 'Review Bin', path: '/coach-bin' };
+    const srItem = { icon: RotateCcw, label: 'Second Reviews', path: '/second-reviews' };
     const i = menuItems.findIndex(m => m.label === 'Candidates' && Array.isArray(m.children));
     menuItems = i === -1
-      ? [...menuItems, binItem]      // no Candidates group on this role's menu
-      : menuItems.map((m, k) => (k === i ? { ...m, children: [...m.children, binItem] } : m));
+      ? [...menuItems, binItem, srItem]   // no Candidates group on this role's menu
+      : menuItems.map((m, k) => (k === i ? { ...m, children: [...m.children, binItem, srItem] } : m));
   }
 
   // Coaches, experts and recruiters set the hours they can be reached in. It
