@@ -399,6 +399,237 @@ router.post('/missed/:id/briefing', coachOnly, async (req, res) => {
   }
 });
 
+/* ── Second review ────────────────────────────────────────────────────────── */
+//
+// A rejection is one person's read. When a recruiter believes their candidate
+// was turned down wrongly they can ask for a second look, stating why — and it
+// goes to the coach who rejected AND to the Client SPOC who owns the position,
+// so the decision does not rest again with the same person alone.
+//
+// The coach's original reason and briefing travel with it, so the SPOC is
+// deciding with the full picture rather than the recruiter's account of it.
+
+const secondReviewShape = (doc) => {
+  const d = doc.data();
+  const sr = d.secondReview || {};
+  return {
+    id: doc.id,
+    candidateId: d.candidateId,
+    candidateName: d.candidateName,
+    pos_id: d.pos_id,
+    positionTitle: d.positionTitle,
+    client: d.client,
+    clientspoc: d.clientspoc,
+    matchPercent: d.matchPercent,
+    recruiterEmail: d.recruiterEmail,
+    submittedAt: toIso(d.submittedAt),
+
+    // What the coach decided first time, and why.
+    originalDecision: d.decision || '',
+    originalReason: d.reason || '',
+    originalBriefing: d.briefing || '',
+    originalComments: d.comments || '',
+    reviewedBy: d.reviewedBy || '',
+    reviewedByName: d.reviewedByName || '',
+    reviewedAt: toIso(d.reviewedAt),
+
+    // The recruiter's case for looking again.
+    recruiterPoints: sr.recruiterPoints || '',
+    requestedAt: toIso(sr.requestedAt),
+    status: sr.status || '',
+    coachFeedback: sr.coachFeedback || '',
+    coachDecision: sr.coachDecision || '',
+    coachRespondedAt: toIso(sr.coachRespondedAt),
+    spocFeedback: sr.spocFeedback || '',
+    spocDecision: sr.spocDecision || '',
+    spocRespondedAt: toIso(sr.spocRespondedAt),
+    outcome: sr.outcome || '',
+  };
+};
+
+// POST /:id/second-review { points } — the recruiter asks for another look.
+router.post('/:id/second-review', authed, async (req, res) => {
+  try {
+    const points = String(req.body?.points || '').trim();
+    if (!points) return res.status(400).json({ success: false, message: 'Please say why this candidate should be looked at again.' });
+
+    const ref = BIN().doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Not found.' });
+    const d = doc.data();
+
+    // Only the recruiter who submitted may ask, and only about a rejection.
+    if (String(d.recruiterEmail || '').toLowerCase() !== String(req.user.email || '').toLowerCase()) {
+      return res.status(403).json({ success: false, message: 'This is not your candidate.' });
+    }
+    if (d.decision !== 'reject') {
+      return res.status(409).json({ success: false, message: 'A second review can only be asked for on a rejected candidate.' });
+    }
+    if (d.secondReview?.status) {
+      return res.status(409).json({ success: false, message: 'A second review has already been raised for this candidate.' });
+    }
+
+    const now = new Date();
+    await ref.update({
+      secondReview: {
+        requestedBy: String(req.user.email).toLowerCase(),
+        requestedAt: now,
+        recruiterPoints: points.slice(0, 3000),
+        status: 'open',
+        coachFeedback: '', coachDecision: '', coachRespondedAt: null,
+        spocFeedback: '', spocDecision: '', spocRespondedAt: null,
+        outcome: '',
+      },
+    });
+
+    // Tell the two people who have to look at it.
+    try {
+      const { sendPushToEmails } = require('../utils/push');
+      const to = [d.reviewedBy, d.clientspoc].filter(Boolean);
+      if (to.length) {
+        await sendPushToEmails(to, {
+          title: 'Second review requested',
+          body: `${d.candidateName || 'A candidate'} · ${d.positionTitle || 'position ' + d.pos_id}`,
+          data: { type: 'second_review', binId: req.params.id },
+        });
+      }
+    } catch (e) {
+      console.error('second-review notification failed:', e.message);   // the queues still show it
+    }
+
+    res.json({ success: true, message: 'Second review requested. The coach and the client will both take a look.' });
+  } catch (e) {
+    console.error('second-review error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /second-reviews — the coach's queue: candidates they rejected and were asked
+// to reconsider.
+router.get('/second-reviews', coachOnly, async (req, res) => {
+  try {
+    const snap = await BIN().where('reviewedBy', '==', req.coach.email).get();
+    const rows = snap.docs
+      .filter(d => d.data().secondReview?.status)
+      .map(secondReviewShape)
+      .sort((a, b) => (b.requestedAt || '').localeCompare(a.requestedAt || ''));
+    res.json({ success: true, requests: rows, count: rows.length });
+  } catch (e) {
+    console.error('coach second-reviews error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// Resolves a Client SPOC from the session, for their own queue.
+const spocOnly = (req, res, next) => authed(req, res, async () => {
+  try {
+    const email = String(req.user.email || '').toLowerCase();
+    const snap = await db.collection('admin_db').where('email', '==', email).limit(1).get();
+    if (snap.empty) return res.status(403).json({ success: false, message: 'Client SPOC only.' });
+    const role = String(snap.docs[0].data().roleCategory || snap.docs[0].data().role || '')
+      .toLowerCase().replace(/\s/g, '');
+    if (!role.includes('clientspoc')) return res.status(403).json({ success: false, message: 'Client SPOC only.' });
+    req.spocEmail = email;
+    next();
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /spoc/second-reviews — the SPOC's queue, for their own positions. Carries
+// the coach's original reason and briefing so the decision is informed.
+router.get('/spoc/second-reviews', spocOnly, async (req, res) => {
+  try {
+    const snap = await BIN().where('clientspoc', '==', req.spocEmail).get();
+    const rows = snap.docs
+      .filter(d => d.data().secondReview?.status)
+      .map(secondReviewShape)
+      .sort((a, b) => (b.requestedAt || '').localeCompare(a.requestedAt || ''));
+    res.json({ success: true, requests: rows, count: rows.length });
+  } catch (e) {
+    console.error('spoc second-reviews error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// POST /:id/second-review/feedback { feedback, decision }
+// Either reviewer responds. 'uphold' leaves the rejection standing; 'overturn'
+// releases the candidate to the client. Only the SPOC can overturn — the
+// position is theirs, and asking the coach to reverse themselves is what the
+// recruiter already disputed.
+router.post('/:id/second-review/feedback', authed, async (req, res) => {
+  try {
+    const feedback = String(req.body?.feedback || '').trim();
+    const decision = String(req.body?.decision || '').toLowerCase();
+    if (!feedback) return res.status(400).json({ success: false, message: 'Feedback is required.' });
+    if (decision && !['uphold', 'overturn'].includes(decision)) {
+      return res.status(400).json({ success: false, message: "decision must be 'uphold' or 'overturn'." });
+    }
+
+    const ref = BIN().doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Not found.' });
+    const d = doc.data();
+    if (!d.secondReview?.status) return res.status(409).json({ success: false, message: 'No second review was requested for this candidate.' });
+
+    const email = String(req.user.email || '').toLowerCase();
+    const isCoach = email === String(d.reviewedBy || '').toLowerCase();
+    const isSpoc = email === String(d.clientspoc || '').toLowerCase();
+    if (!isCoach && !isSpoc) {
+      return res.status(403).json({ success: false, message: 'Only the reviewing coach or the position\'s Client SPOC can respond.' });
+    }
+    if (decision === 'overturn' && !isCoach && !isSpoc) {
+      return res.status(403).json({ success: false, message: 'Not permitted.' });
+    }
+
+    const now = new Date();
+    const patch = isCoach
+      ? { 'secondReview.coachFeedback': feedback.slice(0, 3000),
+          'secondReview.coachDecision': decision || '',
+          'secondReview.coachRespondedAt': now }
+      : { 'secondReview.spocFeedback': feedback.slice(0, 3000),
+          'secondReview.spocDecision': decision || '',
+          'secondReview.spocRespondedAt': now };
+
+    // The client's word settles it: their position, their decision.
+    if (isSpoc && decision) {
+      patch['secondReview.status'] = 'resolved';
+      patch['secondReview.outcome'] = decision;
+      patch['secondReview.resolvedAt'] = now;
+    }
+    await ref.update(patch);
+
+    // Overturned by the client — the candidate goes through after all.
+    if (isSpoc && decision === 'overturn') {
+      try {
+        await db.collection('candidate_db').doc(d.candidateId).update({
+          statusa: 'Submitted',
+          statusaDate: now,
+          statusChangedAt: now,
+          statusChangedBy: email,
+          statusChangedByName: 'Client SPOC (second review)',
+          secondReviewOutcome: 'overturn',
+          secondReviewSpocFeedback: feedback.slice(0, 3000),
+          secondReviewAt: now,
+        });
+      } catch (e) {
+        console.error('second-review overturn status update failed:', e.message);
+        return res.status(500).json({ success: false, message: 'Feedback saved, but the candidate status could not be updated. Please tell an admin.' });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: isSpoc && decision === 'overturn' ? 'Rejection overturned — the candidate is now with you.'
+        : isSpoc && decision === 'uphold' ? 'Rejection upheld.'
+        : 'Feedback saved.',
+    });
+  } catch (e) {
+    console.error('second-review feedback error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 /* ── Recruiter side ───────────────────────────────────────────────────────── */
 
 // GET /my-submissions — what happened to the candidates this recruiter sent.
@@ -407,6 +638,11 @@ router.get('/my-submissions', authed, async (req, res) => {
     const email = String(req.user.email || '').toLowerCase();
     const snap = await BIN().where('recruiterEmail', '==', email).get();
     const rows = snap.docs.map(shape).sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+    // Keyed by id, not position: rows are sorted and snap.docs are not, so
+    // indexing into snap.docs attached each coach's remarks to the wrong
+    // candidate.
+    const rawById = {};
+    snap.docs.forEach(d => { rawById[d.id] = d.data(); });
     await Promise.all(rows.map(async (r) => {
       try {
         const c = await db.collection('candidate_db').doc(r.candidateId).get();
@@ -414,6 +650,25 @@ router.get('/my-submissions', authed, async (req, res) => {
         r.currentStatus = cd.statusa || '';
         r.missedBriefing = cd.coachMissedBriefing || '';
       } catch (_) { r.currentStatus = ''; }
+      // Who reviewed it and what they said — the recruiter is shown the reason
+      // and the briefing, and whether a second review is running.
+      const raw = rawById[r.id] || {};
+      r.reviewedByName = raw.reviewedByName || '';
+      r.comments = raw.comments || '';
+      r.suitability = raw.suitability || '';
+      const sr = raw.secondReview || {};
+      r.secondReview = sr.status ? {
+        status: sr.status,
+        requestedAt: toIso(sr.requestedAt),
+        recruiterPoints: sr.recruiterPoints || '',
+        coachFeedback: sr.coachFeedback || '',
+        coachDecision: sr.coachDecision || '',
+        spocFeedback: sr.spocFeedback || '',
+        spocDecision: sr.spocDecision || '',
+        outcome: sr.outcome || '',
+      } : null;
+      // Only a standing rejection with no request yet can be appealed.
+      r.canRequestSecondReview = raw.decision === 'reject' && !sr.status;
     }));
     res.json({ success: true, submissions: rows, count: rows.length });
   } catch (e) {

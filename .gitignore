@@ -71,3 +71,6 @@ node_modules/
 # macOS junk
 .DS_Store
 **/.DS_Store
+
+# Backups of deleted user records — personal data, keep out of the repo
+Backend/scripts/deleted_*.json
