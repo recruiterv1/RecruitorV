@@ -45,6 +45,22 @@ const config = async () => {
   }
 };
 
+// Which pilot role, if any, this person holds. The pilot spans three roles —
+// the coach who reviews, the recruiter whose candidate it is, and the client who
+// settles a dispute — so each is named separately in the config. Anyone not
+// listed sees none of it.
+const pilotRoleOf = async (email) => {
+  const e = String(email || '').toLowerCase().trim();
+  if (!e) return null;
+  const cfg = await config();
+  if (cfg.enabled !== true) return null;
+  const inList = (k) => (cfg[k] || []).map(x => String(x).toLowerCase()).includes(e);
+  if (inList('coaches')) return 'coach';
+  if (inList('recruiters')) return 'recruiter';
+  if (inList('clientspocs')) return 'clientspoc';
+  return null;
+};
+
 // Is this person a pilot reviewer? Returns their record, or null.
 const pilotCoach = async (email) => {
   const e = String(email || '').toLowerCase().trim();
@@ -174,8 +190,14 @@ const coachOnly = (req, res, next) => authed(req, res, async () => {
 
 // Does this account get the Bin at all? Drives the sidebar entry.
 router.get('/enabled', authed, async (req, res) => {
-  const c = await pilotCoach(req.user.email);
-  res.json({ success: true, enabled: !!c, role: c?.role || '' });
+  const pilotRole = await pilotRoleOf(req.user.email);
+  const c = pilotRole === 'coach' ? await pilotCoach(req.user.email) : null;
+  res.json({
+    success: true,
+    enabled: !!pilotRole,
+    pilotRole: pilotRole || '',      // coach | recruiter | clientspoc
+    role: c?.role || '',             // Coach | Expert, for a reviewer
+  });
 });
 
 // GET /available — everything claimable right now, plus anything this coach holds.
@@ -450,6 +472,9 @@ const secondReviewShape = (doc) => {
 // POST /:id/second-review { points } — the recruiter asks for another look.
 router.post('/:id/second-review', authed, async (req, res) => {
   try {
+    if (await pilotRoleOf(req.user.email) !== 'recruiter') {
+      return res.status(403).json({ success: false, message: 'Not enabled for this account.' });
+    }
     const points = String(req.body?.points || '').trim();
     if (!points) return res.status(400).json({ success: false, message: 'Please say why this candidate should be looked at again.' });
 
@@ -529,6 +554,9 @@ const spocOnly = (req, res, next) => authed(req, res, async () => {
     const role = String(snap.docs[0].data().roleCategory || snap.docs[0].data().role || '')
       .toLowerCase().replace(/\s/g, '');
     if (!role.includes('clientspoc')) return res.status(403).json({ success: false, message: 'Client SPOC only.' });
+    if (await pilotRoleOf(email) !== 'clientspoc') {
+      return res.status(403).json({ success: false, message: 'Not enabled for this account.' });
+    }
     req.spocEmail = email;
     next();
   } catch (e) {
@@ -636,6 +664,11 @@ router.post('/:id/second-review/feedback', authed, async (req, res) => {
 router.get('/my-submissions', authed, async (req, res) => {
   try {
     const email = String(req.user.email || '').toLowerCase();
+    // Pilot-only, like the bin itself: a recruiter outside it has nothing here
+    // and should not be told the feature exists.
+    if (await pilotRoleOf(email) !== 'recruiter') {
+      return res.status(403).json({ success: false, message: 'Not enabled for this account.' });
+    }
     const snap = await BIN().where('recruiterEmail', '==', email).get();
     const rows = snap.docs.map(shape).sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
     // Keyed by id, not position: rows are sorted and snap.docs are not, so
@@ -681,3 +714,4 @@ module.exports = router;
 module.exports.shouldHold = shouldHold;
 module.exports.addToBin = addToBin;
 module.exports.pilotCoach = pilotCoach;
+module.exports.pilotRoleOf = pilotRoleOf;

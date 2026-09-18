@@ -61,9 +61,7 @@ const buildRecruiterMenu = ({ isVendorTeam } = {}) => [
     children: [
       { icon: Users,     label: 'My Candidates',    path: '/dash_candidate' },
       { icon: UserCheck, label: 'Direct Applicants', path: '/recruiter-direct-applicants' },
-      // What the coach decided on each candidate, and where a rejection can be
-      // appealed.
-      { icon: FileText,  label: 'My Submissions',    path: '/my-submissions' },
+
     ],
   },
   { icon: BarChart3, label: 'My Report',  path: '/recruiter-reports' },
@@ -194,15 +192,19 @@ const Sidebar = () => {
 
   // The review bin is a pilot: the server decides who sees it, so the menu can
   // never disagree with who the endpoints will actually admit.
-  const [hasReviewBin, setHasReviewBin] = useState(false);
+  // Which pilot role this account holds, if any — coach, recruiter or
+  // clientspoc. The server decides, so no menu can offer a page its endpoints
+  // would refuse. Empty for everyone outside the pilot, which is everyone.
+  const [pilotRole, setPilotRole] = useState('');
   useEffect(() => {
-    if (!user?.email) { setHasReviewBin(false); return; }
+    if (!user?.email) { setPilotRole(''); return; }
     let live = true;
     axios.get('/api/coach-bin/enabled', { withCredentials: true })
-      .then(r => { if (live) setHasReviewBin(r.data?.enabled === true); })
-      .catch(() => { if (live) setHasReviewBin(false); });
+      .then(r => { if (live) setPilotRole(r.data?.pilotRole || ''); })
+      .catch(() => { if (live) setPilotRole(''); });
     return () => { live = false; };
   }, [user?.email]);
+  const hasReviewBin = pilotRole === 'coach';
   const assessmentRole = user?.roleCategory?.toLowerCase();
   const mayHaveAssessment = !!user
     && !['clientspoc', 'vendor'].includes(assessmentRole)
@@ -349,9 +351,6 @@ const Sidebar = () => {
         children: [
           { icon: Users,    label: 'All Candidates',     path: '/ad_panel#candidates' },
           { icon: FileText, label: 'Direct Applications', path: '/clientspoc-direct-applications' },
-          // Rejections a recruiter has asked to be reconsidered, with the
-          // coach's original feedback so the client can weigh both.
-          { icon: RotateCcw, label: 'Second Reviews',    path: '/clientspoc-second-reviews' },
           { icon: BarChart3, label: 'Candidate Stats',   path: '/ad_panel#position-stats' },
         ],
       },
@@ -407,6 +406,26 @@ const Sidebar = () => {
   // attempts, the entry disappears.
   if (Array.isArray(menuItems) && canOfferAssessment) {
     menuItems = [...menuItems, { icon: Award, label: 'Earn Certification', path: '/earn-certification' }];
+  }
+
+  // My Submissions — the pilot recruiter's view of what the coach decided, and
+  // where they appeal a rejection. Gated the same way as the bin.
+  if (Array.isArray(menuItems) && pilotRole === 'recruiter') {
+    const subItem = { icon: FileText, label: 'My Submissions', path: '/my-submissions' };
+    const i = menuItems.findIndex(m => m.label === 'Candidates' && Array.isArray(m.children));
+    menuItems = i === -1
+      ? [...menuItems, subItem]
+      : menuItems.map((m, k) => (k === i ? { ...m, children: [...m.children, subItem] } : m));
+  }
+
+  // Second Reviews for the pilot Client SPOC — rejections a recruiter has asked
+  // to be reconsidered, carrying the coach's original feedback.
+  if (Array.isArray(menuItems) && pilotRole === 'clientspoc') {
+    const srSpoc = { icon: RotateCcw, label: 'Second Reviews', path: '/clientspoc-second-reviews' };
+    const i = menuItems.findIndex(m => m.label === 'Candidates' && Array.isArray(m.children));
+    menuItems = i === -1
+      ? [...menuItems, srSpoc]
+      : menuItems.map((m, k) => (k === i ? { ...m, children: [...m.children, srSpoc] } : m));
   }
 
   // Review Bin — pilot only. It belongs under Candidates alongside Teams
