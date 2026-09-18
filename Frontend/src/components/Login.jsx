@@ -232,6 +232,21 @@ const Login = () => {
       
     } catch (error) {
       console.error("Google login error:", error);
+
+      // No RecruiterV account behind this Google address. The server tells us
+      // where they should go: the eligibility check, or straight to registration
+      // if they have already passed it. Signing in with Google is not a way past
+      // the check.
+      const d = error?.response?.data;
+      if (error?.response?.status === 403 && d?.redirectTo) {
+        clearAuthToken();
+        dispatch({ type: "LOGIN_FAILURE" });
+        setMessage(d.message || 'Please clear the eligibility check to join.');
+        setTimeout(() => { window.location.href = d.redirectTo; }, 2200);
+        setLoading(false);
+        return;
+      }
+
       dispatch({ type: "LOGIN_FAILURE" });
       setMessage("Google login failed. Please try again.");
     }
