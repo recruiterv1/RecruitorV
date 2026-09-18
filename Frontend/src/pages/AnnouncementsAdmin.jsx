@@ -22,6 +22,8 @@ const Editor = ({ item, roles, tones, onCancel, onSaved }) => {
   const [text, setText] = useState(item?.text || '');
   const [picked, setPicked] = useState(item?.roles || ['all']);
   const [tone, setTone] = useState(item?.tone || 'info');
+  // Bar across the top of every page, or a dismissible toast in the corner.
+  const [display, setDisplay] = useState(item?.display || 'bar');
   const [link, setLink] = useState(item?.link || '');
   const [enabled, setEnabled] = useState(item?.enabled ?? true);
   const [startsAt, setStartsAt] = useState(fmt(item?.startsAt));
@@ -42,7 +44,7 @@ const Editor = ({ item, roles, tones, onCancel, onSaved }) => {
   const save = async () => {
     setSaving(true); setErr('');
     const payload = {
-      text, roles: picked, tone, link, enabled,
+      text, roles: picked, tone, display, link, enabled,
       startsAt: startsAt || null, endsAt: endsAt || null,
     };
     try {
@@ -85,6 +87,14 @@ const Editor = ({ item, roles, tones, onCancel, onSaved }) => {
           <select value={tone} onChange={e => setTone(e.target.value)}
             className="w-full h-9 border-2 border-gray-200 rounded-lg px-2 text-sm bg-white focus:border-blue-500 outline-none">
             {tones.map(t => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-600 block mb-1.5">Show as</label>
+          <select value={display} onChange={e => setDisplay(e.target.value)}
+            className="w-full h-9 border-2 border-gray-200 rounded-lg px-2 text-sm bg-white focus:border-blue-500 outline-none">
+            <option value="bar">Bar — across the top of every page</option>
+            <option value="toast">Toast — corner, dismissible</option>
           </select>
         </div>
         <div>
@@ -226,6 +236,9 @@ export default function AnnouncementsAdmin() {
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                      {a.display === 'toast' ? 'toast' : 'bar'}
+                    </span>
                     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${TONE_STYLE[a.tone] || TONE_STYLE.info}`}>
                       {a.tone}
                     </span>

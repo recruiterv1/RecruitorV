@@ -32,7 +32,9 @@ export default function AnnouncementBar() {
   useEffect(() => {
     let live = true;
     axios.get('/api/announcements/mine', { withCredentials: true })
-      .then(r => { if (live) setItems(r.data?.announcements || []); })
+      // Bars only — anything set to 'toast' is rendered by AnnouncementToast, and
+      // showing it here as well would put the same message on screen twice.
+      .then(r => { if (live) setItems((r.data?.announcements || []).filter(a => (a.display || 'bar') === 'bar')); })
       .catch(() => { if (live) setItems([]); });   // never break the dashboard
     return () => { live = false; };
   }, []);

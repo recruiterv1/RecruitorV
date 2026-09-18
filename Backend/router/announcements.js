@@ -29,6 +29,11 @@ const AUDIENCE_ROLES = [
 const ROLE_KEYS = new Set(AUDIENCE_ROLES.map(r => r.key));
 
 const TONES = ['info', 'success', 'warning', 'critical'];
+// How the message reaches the reader. A bar sits across the top of every page
+// until it is switched off; a toast appears in the corner, is dismissible, and
+// stays dismissed for that person. Existing announcements have no display
+// field, so they default to 'bar' and behave exactly as before.
+const DISPLAYS = ['bar', 'toast'];
 
 const toDate = (v) => {
   if (!v) return null;
@@ -69,6 +74,8 @@ const shape = (doc) => {
     text: a.text || '',
     roles: Array.isArray(a.roles) ? a.roles : [],
     tone: TONES.includes(a.tone) ? a.tone : 'info',
+    // Older announcements predate this field and are bars, as they always were.
+    display: DISPLAYS.includes(a.display) ? a.display : 'bar',
     link: a.link || '',
     enabled: a.enabled === true,
     startsAt: toDate(a.startsAt),
@@ -98,7 +105,7 @@ router.get('/', managerAuth, async (_req, res) => {
     const snap = await db.collection('announcements').get();
     const items = snap.docs.map(shape).sort((a, b) =>
       (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0));
-    res.json({ success: true, announcements: items, roles: AUDIENCE_ROLES, tones: TONES });
+    res.json({ success: true, announcements: items, roles: AUDIENCE_ROLES, tones: TONES, displays: DISPLAYS });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
@@ -110,6 +117,7 @@ const readBody = (body, existing = {}) => {
     text: String(body?.text ?? existing.text ?? '').trim().slice(0, 500),
     roles,
     tone: TONES.includes(body?.tone) ? body.tone : (existing.tone || 'info'),
+    display: DISPLAYS.includes(body?.display) ? body.display : (existing.display || 'bar'),
     link: String(body?.link ?? existing.link ?? '').trim().slice(0, 500),
     enabled: body?.enabled === undefined ? (existing.enabled === true) : body.enabled === true,
     startsAt: body?.startsAt ? new Date(body.startsAt) : (existing.startsAt || null),
@@ -194,7 +202,7 @@ router.get('/mine', async (req, res) => {
       .filter(a => isCurrent(a, now))
       .filter(a => a.roles.includes('all') || a.roles.includes(role))
       .sort((a, b) => (b.updatedAt?.getTime() || 0) - (a.updatedAt?.getTime() || 0))
-      .map(({ id, text, tone, link }) => ({ id, text, tone, link }));
+      .map(({ id, text, tone, link, display }) => ({ id, text, tone, link, display: display || 'bar' }));
 
     res.json({ success: true, role, announcements: items });
   } catch (e) {

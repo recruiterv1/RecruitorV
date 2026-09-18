@@ -25,6 +25,7 @@ import {
   UploadCloud,
   Building2,
   BookOpen,
+  RotateCcw,
 } from 'lucide-react';
 
 const clientSpocMenuItems = [
@@ -87,9 +88,32 @@ const ClientSpocSidebar = () => {
 
   // Managers (employees with the "Manager" designation) get a Manager Panel.
   const isManager = !!user?.isEmployee && (user?.designation || '').toLowerCase() === 'manager';
-  const menuItems = isManager
+
+  // Second Reviews — pilot only. The server decides who is in the pilot, so this
+  // menu can never offer a page the endpoints would refuse.
+  const [pilotRole, setPilotRole] = useState('');
+  useEffect(() => {
+    if (!user?.email) { setPilotRole(''); return; }
+    let live = true;
+    axios.get('/api/coach-bin/enabled', { withCredentials: true })
+      .then(r => { if (live) setPilotRole(r.data?.pilotRole || ''); })
+      .catch(() => { if (live) setPilotRole(''); });
+    return () => { live = false; };
+  }, [user?.email]);
+
+  let menuItems = isManager
     ? [{ icon: UserCheck, label: 'Manager Panel', path: '/manager' }, ...clientSpocMenuItems]
     : clientSpocMenuItems;
+
+  // Spliced into a copy: clientSpocMenuItems is a module-level constant shared
+  // across renders, so mutating it would append the entry again every time.
+  if (pilotRole === 'clientspoc') {
+    const srItem = { icon: RotateCcw, label: 'Second Reviews', path: '/clientspoc-second-reviews' };
+    const i = menuItems.findIndex(m => m.label === 'Candidates' && Array.isArray(m.children));
+    menuItems = i === -1
+      ? [...menuItems, srItem]
+      : menuItems.map((m, k) => (k === i ? { ...m, children: [...m.children, srItem] } : m));
+  }
 
   const isActive = (path) => {
     if (path.includes('#')) {
