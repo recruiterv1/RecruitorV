@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { Inbox, Clock, Lock, CheckCircle2, XCircle, Loader2, AlertTriangle, Gauge, FileText, ExternalLink, Mail, Phone, Briefcase, MapPin } from 'lucide-react';
 import DashShell from '../components/DashShell';
+import { SCREEN_REJECT_REASONS } from '../constants/rejectReasons';
 
 // The Coach/Expert review bin.
 //
@@ -288,6 +289,9 @@ function ReviewModal({ entry, onClose, onDone }) {
   }, [entry.id]);
   const [decision, setDecision] = useState('approve');
   const [reason, setReason] = useState('');
+  // On a rejection the coach picks from the same list the Client SPOC uses, so
+  // the two can be counted together and mean the same thing.
+  const [rejectCategory, setRejectCategory] = useState('');
   const [briefing, setBriefing] = useState('');
   const [comments, setComments] = useState('');
   const [suitability, setSuitability] = useState('');
@@ -306,12 +310,14 @@ function ReviewModal({ entry, onClose, onDone }) {
       finally { setBusy(false); }
       return;
     }
+    if (decision === 'reject' && !rejectCategory) return setErr('Choose a rejection reason.');
     if (!reason.trim()) return setErr('A reason is required.');
     if (!briefing.trim()) return setErr('A briefing against the position is required.');
     setBusy(true);
     try {
       const r = await axios.post(`/api/coach-bin/${entry.id}/review`,
-        { decision, reason, briefing, comments, suitability }, { withCredentials: true });
+        { decision, reason, briefing, comments, suitability, rejectCategory },
+        { withCredentials: true });
       onDone(r.data?.message || 'Review saved.');
     } catch (e) { setErr(e?.response?.data?.message || 'Could not save the review.'); }
     finally { setBusy(false); }
@@ -387,7 +393,7 @@ function ReviewModal({ entry, onClose, onDone }) {
           {!missedOnly && (
             <div className="flex gap-2">
               {[['approve', 'Approve', CheckCircle2, 'emerald'], ['reject', 'Reject', XCircle, 'red']].map(([v, label, Icon, c]) => (
-                <button key={v} onClick={() => setDecision(v)}
+                <button key={v} onClick={() => { setDecision(v); if (v === 'approve') setRejectCategory(''); }}
                   className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold border-2 ${
                     decision === v
                       ? (c === 'emerald' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-red-500 bg-red-50 text-red-700')
@@ -398,13 +404,28 @@ function ReviewModal({ entry, onClose, onDone }) {
             </div>
           )}
 
+          {/* The client's own rejection categories — the same fifteen they pick
+              from when screening, so a coach rejection reads identically. */}
+          {!missedOnly && decision === 'reject' && (
+            <div>
+              <label className="text-[12.5px] font-bold text-gray-700">
+                Rejection reason <span className="text-red-500">*</span>
+              </label>
+              <select value={rejectCategory} onChange={e => setRejectCategory(e.target.value)}
+                className={field + ' mt-1'}>
+                <option value="">Choose a reason…</option>
+                {SCREEN_REJECT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+          )}
+
           {!missedOnly && (
             <div>
               <label className="text-[12.5px] font-bold text-gray-700">
-                {decision === 'approve' ? 'Approval reason' : 'Rejection reason'} <span className="text-red-500">*</span>
+                {decision === 'approve' ? 'Approval reason' : 'In your own words'} <span className="text-red-500">*</span>
               </label>
               <textarea className={field + ' mt-1'} rows={2} value={reason} onChange={e => setReason(e.target.value)}
-                placeholder={decision === 'approve' ? 'Why this candidate fits' : 'Why this candidate does not fit'} />
+                placeholder={decision === 'approve' ? 'Why this candidate fits' : 'What specifically led to that reason'} />
             </div>
           )}
 

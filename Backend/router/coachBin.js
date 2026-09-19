@@ -168,6 +168,7 @@ const shape = (doc) => {
     claimedBy: r.claimLapsed ? '' : (d.claimedBy || ''),
     claimExpiresAt: r.claimLapsed ? null : toIso(d.claimExpiresAt),
     decision: d.decision || '',
+    rejectCategory: d.rejectCategory || '',
     reason: d.reason || '',
     briefing: d.briefing || '',
     reviewedBy: d.reviewedBy || '',
@@ -411,9 +412,14 @@ router.post('/:id/review', coachOnly, async (req, res) => {
 
     const now = new Date();
     const approved = decision === 'approve';
+    // The client's own rejection category, so coach and client rejections can be
+    // counted together. Only meaningful on a rejection.
+    const rejectCategory = approved ? '' : String(req.body?.rejectCategory || '').trim().slice(0, 60);
+
     await ref.update({
       status: approved ? 'approved' : 'rejected',
       decision,
+      rejectCategory,
       reason: reason.slice(0, 2000),
       briefing: briefing.slice(0, 5000),
       comments: String(req.body?.comments || '').trim().slice(0, 2000),
@@ -433,6 +439,10 @@ router.post('/:id/review', coachOnly, async (req, res) => {
         statusChangedByName: `${req.coach.name} (${req.coach.role})`,
         coachReviewDecision: decision,
         coachReviewReason: reason.slice(0, 2000),
+        coachRejectCategory: rejectCategory,
+        // Mirrors the field a Client SPOC's own rejection writes, so existing
+        // reporting on rejection reasons picks these up without change.
+        ...(approved ? {} : { rejectReason: rejectCategory || reason.slice(0, 200) }),
         coachReviewBriefing: briefing.slice(0, 5000),
         coachReviewBy: req.coach.email,
         coachReviewByName: req.coach.name,

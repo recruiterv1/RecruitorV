@@ -15,6 +15,9 @@ import * as XLSX from 'xlsx';
 import AiMatchInfo from '../components/AiMatchInfo';
 import { formatCommission } from '../lib/commission';
 import CvPreview from '../components/CvPreview';
+// Rejection reasons, shared with the coach review bin so a rejection means the
+// same thing wherever it was made.
+import { SCREEN_REJECT_REASONS } from '../constants/rejectReasons';
 
 // True when the AI auto-rejected this candidate via CV↔JD screening
 const aiRejected = (c) => c?.statusChangedBy === 'ai-screening' ||
@@ -86,14 +89,7 @@ const STATUS_OPTIONS = [
   'Client Drop','Candidate Drop','Duplicate','Position On Hold',
 ];
 
-// Predefined reasons shown when a candidate is set to "Screen Reject". One must
-// be selected; the backend emails the sharing recruiter the matching guidance.
-const SCREEN_REJECT_REASONS = [
-  'Experience Short', 'Experience High', 'Skill Mismatch', 'Notice Period',
-  'Budget Mismatch', 'Notice Verification', 'Relevant Experience', 'Job Stability',
-  'Recent Switch', 'Employer Concern', 'Employment Gap', 'Location Mismatch',
-  'Industry Mismatch', 'Communication', 'Skills Not Evident',
-];
+
 
 // ── Info row for modal ────────────────────────────────────────────────────────
 const InfoItem = ({ icon: Icon, label, value, color = '#6b7280' }) => {
