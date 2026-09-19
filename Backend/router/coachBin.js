@@ -214,8 +214,15 @@ router.get('/available', coachOnly, async (req, res) => {
       .filter(r => !r.expired)
       .filter(r => !req.coach.categories.length
         || req.coach.categories.includes(String(r.skillCategory || '').toLowerCase().trim()))
-      // Someone else's live claim is not shown as available.
-      .filter(r => !r.claimedBy || r.claimedBy === req.coach.email)
+      // A candidate another coach holds stays on the list, marked and not
+      // claimable — hiding it made candidates appear to vanish and come back.
+      // One already reviewed is gone from here entirely: its status is approved
+      // or rejected, which this query never returns.
+      .map(r => ({
+        ...r,
+        mine: r.claimedBy === req.coach.email,
+        heldByOther: !!r.claimedBy && r.claimedBy !== req.coach.email,
+      }))
       .sort((a, b) => a.msLeftAvailable - b.msLeftAvailable);   // most urgent first
     const heldByMe = rows.filter(r => r.claimedBy === req.coach.email).length;
     res.json({
@@ -358,13 +365,31 @@ router.post('/:id/claim', coachOnly, async (req, res) => {
         return { error: 'Another coach is reviewing this candidate.' };
       }
       const now = new Date();
-      // The claim never runs past the candidate's own 4-hour window.
-      const claimEnd = Math.min(now.getTime() + CLAIM_HOURS * 3600 * 1000, msOf(d.expiresAt));
+
+      // The hour is a budget per coach per candidate, anchored to the first time
+      // THIS coach claimed it — so releasing and claiming again continues the
+      // same hour rather than starting a fresh one. Another coach claiming for
+      // the first time gets their own hour.
+      const history = d.claimHistory || {};
+      const key = req.coach.email.replace(/[.]/g, '_');   // Firestore keys cannot hold dots
+      const firstClaim = msOf(history[key]) || now.getTime();
+
+      // Never past the candidate's own 4-hour window either.
+      const claimEnd = Math.min(
+        firstClaim + CLAIM_HOURS * 3600 * 1000,
+        msOf(d.expiresAt),
+      );
+
+      if (claimEnd <= now.getTime()) {
+        return { error: 'Your hour on this candidate has already been used. It stays open for another coach.' };
+      }
+
       tx.update(ref, {
         status: 'claimed',
         claimedBy: req.coach.email,
         claimedAt: now,
         claimExpiresAt: new Date(claimEnd),
+        [`claimHistory.${key}`]: history[key] || now,
       });
       return { ok: true, claimExpiresAt: new Date(claimEnd).toISOString() };
     });

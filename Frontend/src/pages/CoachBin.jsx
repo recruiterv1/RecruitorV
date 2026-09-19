@@ -88,11 +88,13 @@ export default function CoachBin() {
   const Card = ({ r, isMissed }) => {
     const avail = left(r.expiresAt);
     const claimLeft = left(r.claimExpiresAt);
-    const mine = !!r.claimedBy;
+    const mine = !!r.mine;
+    const heldByOther = !!r.heldByOther;
     return (
       <div className={`rounded-2xl border-2 p-4 ${
         isMissed ? 'border-gray-200 bg-gray-50'
         : mine ? 'border-blue-300 bg-blue-50/40'
+        : heldByOther ? 'border-gray-200 bg-gray-50/70'
         : avail < 30 * 60000 ? 'border-amber-300 bg-amber-50/40'
         : 'border-gray-200 bg-white'}`}>
         <div className="flex items-start justify-between gap-3">
@@ -120,6 +122,11 @@ export default function CoachBin() {
           {mine && !isMissed && (
             <span className="inline-flex items-center gap-1.5 text-blue-700 font-semibold">
               <Lock size={13} /> Yours for {fmt(claimLeft)}
+            </span>
+          )}
+          {heldByOther && !isMissed && (
+            <span className="inline-flex items-center gap-1.5 text-gray-500 font-semibold">
+              <Lock size={13} /> Held by {String(r.claimedBy).split('@')[0]} · free in {fmt(claimLeft)}
             </span>
           )}
           {r.currentStatus && (
@@ -156,10 +163,15 @@ export default function CoachBin() {
               </button>
             </>
           ) : (
-            <button onClick={() => claim(r)} disabled={busy === r.id || atCap}
-              title={atCap ? `You are holding ${held} of ${maxClaims} — review or release one first` : undefined}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-[13px] font-bold disabled:opacity-40">
-              {busy === r.id ? 'Claiming…' : atCap ? 'Limit reached' : 'Claim'}
+            <button onClick={() => claim(r)} disabled={busy === r.id || atCap || heldByOther}
+              title={heldByOther
+                ? `${r.claimedBy} is reviewing this — it returns to the bin in ${fmt(claimLeft)} if they do not finish`
+                : atCap ? `You are holding ${held} of ${maxClaims} — review or release one first` : undefined}
+              className={`flex-1 px-4 py-2.5 rounded-lg text-[13px] font-bold disabled:opacity-60 ${
+                heldByOther ? 'bg-gray-200 text-gray-600' : 'bg-gray-900 text-white disabled:opacity-40'}`}>
+              {busy === r.id ? 'Claiming…'
+                : heldByOther ? `Already claimed · wait ${fmt(claimLeft)}`
+                : atCap ? 'Limit reached' : 'Claim'}
             </button>
           )}
         </div>
