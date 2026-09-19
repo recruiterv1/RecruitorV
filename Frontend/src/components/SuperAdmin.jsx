@@ -35,7 +35,8 @@ import {
   Landmark,
   Sparkles,
   MessageSquare,
-  BadgeCheck, Megaphone, ShieldCheck, CreditCard, FileSignature, Mic, ClipboardCheck, Clock
+  BadgeCheck, Megaphone, ShieldCheck, CreditCard, FileSignature, Mic, ClipboardCheck, Clock,
+  ListChecks,
 } from 'lucide-react';
 import SuperAdminAIReports from '../pages/SuperAdminAIReports';
 import ChatPanel from './ChatPanel';
@@ -63,6 +64,7 @@ import { PendingUsersPanel, VendorManagement } from './AdminDashboard';
 import AllVendors from '../pages/AllVendors';
 import InternalMessageTemplates from '../pages/InternalMessageTemplates';
 import AnnouncementsAdmin from '../pages/AnnouncementsAdmin';
+import ReviewReasonsAdmin from '../pages/ReviewReasonsAdmin';
 import PortalApprovals from '../pages/PortalApprovals';
 import PortalSubscriptions from '../pages/PortalSubscriptions';
 import AgreementTemplates from '../pages/AgreementTemplates';
@@ -306,6 +308,7 @@ const SuperAdmin = () => {
       { id: 'email-templates', icon: Mail, label: 'Email Templates', component: <SuperAdminEmailTemplates /> },
       { id: 'internal-message-templates', icon: MessageSquare, label: 'Internal Message Templates', component: <InternalMessageTemplates /> },
       { id: 'announcements', icon: Megaphone, label: 'Announcements', component: <AnnouncementsAdmin /> },
+      { id: 'review-reasons', icon: ListChecks, label: 'Review Reasons', component: <ReviewReasonsAdmin /> },
       { id: 'inbox-access', icon: Inbox, label: 'Inbox Access', component: <SuperAdminInboxAccess /> },
       ]
     },

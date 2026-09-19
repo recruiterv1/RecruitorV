@@ -1324,10 +1324,24 @@ router.patch("/update/status/:id", async (req, res) => {
         }
 
         const { templates, renderEmail } = require('../utils/email');
-        const { REASON_TEXTS } = require('../utils/screenRejectReasons');
         const isScreenReject = String(statusa).toLowerCase().trim() === 'screen reject';
         const reasonKey = String(rejectReason || '').trim();
-        const reasonText = isScreenReject ? REASON_TEXTS[reasonKey] : null;
+        // Guidance now comes from the editable list, so an admin's wording is
+        // what the recruiter receives. Falls back to the original file when the
+        // collection has nothing for this label.
+        let reasonText = null;
+        if (isScreenReject && reasonKey) {
+          try {
+            const { guidanceFor } = require('./reviewReasons');
+            reasonText = (await guidanceFor(reasonKey)) || null;
+          } catch (e) {
+            console.error('reason guidance lookup failed:', e.message);
+            try {
+              const { REASON_TEXTS } = require('../utils/screenRejectReasons');
+              reasonText = REASON_TEXTS[reasonKey] || null;
+            } catch (_) { reasonText = null; }
+          }
+        }
 
         if (reasonText) {
           // ── Screen-reject with a specific reason → send the reason guidance ──

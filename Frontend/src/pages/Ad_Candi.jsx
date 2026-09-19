@@ -17,7 +17,7 @@ import { formatCommission } from '../lib/commission';
 import CvPreview from '../components/CvPreview';
 // Rejection reasons, shared with the coach review bin so a rejection means the
 // same thing wherever it was made.
-import { SCREEN_REJECT_REASONS } from '../constants/rejectReasons';
+import useReviewReasons from '../hooks/useReviewReasons';
 
 // True when the AI auto-rejected this candidate via CV↔JD screening
 const aiRejected = (c) => c?.statusChangedBy === 'ai-screening' ||
@@ -321,6 +321,8 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
   const [rejectReason, setRejectReason] = useState(candidate?.rejectReason || '');
+  // Maintained by an admin; falls back to the built-in list if unreachable.
+  const { rejectReasons } = useReviewReasons();
   const [statusError, setStatusError]   = useState('');
 
   // Edit mode state
@@ -590,7 +592,7 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
                 </label>
                 {isScreenReject ? (
                   <select
-                    value={SCREEN_REJECT_REASONS.includes(rejectReason) ? rejectReason : ''}
+                    value={rejectReasons.includes(rejectReason) ? rejectReason : ''}
                     onChange={e => { setRejectReason(e.target.value); setStatusError(''); setSaved(false); }}
                     style={{
                       width:'100%', padding:'10px 12px', borderRadius:10, fontSize:13,
@@ -599,7 +601,7 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
                     }}
                   >
                     <option value="">— Select a reason —</option>
-                    {SCREEN_REJECT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                    {rejectReasons.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 ) : (
                   <textarea

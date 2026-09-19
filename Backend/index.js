@@ -158,6 +158,7 @@ app.use("/api/eligibility", require("./router/eligibility"));
 app.use("/api/training", require("./router/training"));
 app.use("/api/dupcheck", require("./router/dupcheck"));
 app.use("/api/coach-bin", require("./router/coachBin"));
+app.use("/api/review-reasons", require("./router/reviewReasons"));
 app.use("/api/inbox-payment", inboxPayment);
 app.use("/api/company", companyPortal);
 app.use("/api/public-job", publicJob);

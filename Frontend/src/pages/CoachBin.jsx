@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { Inbox, Clock, Lock, CheckCircle2, XCircle, Loader2, AlertTriangle, Gauge, FileText, ExternalLink, Mail, Phone, Briefcase, MapPin } from 'lucide-react';
 import DashShell from '../components/DashShell';
-import { SCREEN_REJECT_REASONS } from '../constants/rejectReasons';
+import useReviewReasons from '../hooks/useReviewReasons';
 
 // The Coach/Expert review bin.
 //
@@ -292,6 +292,8 @@ function ReviewModal({ entry, onClose, onDone }) {
   // On a rejection the coach picks from the same list the Client SPOC uses, so
   // the two can be counted together and mean the same thing.
   const [rejectCategory, setRejectCategory] = useState('');
+  // Maintained by an admin; falls back to the built-in list if unreachable.
+  const { rejectReasons } = useReviewReasons();
   const [briefing, setBriefing] = useState('');
   const [comments, setComments] = useState('');
   const [suitability, setSuitability] = useState('');
@@ -414,7 +416,7 @@ function ReviewModal({ entry, onClose, onDone }) {
               <select value={rejectCategory} onChange={e => setRejectCategory(e.target.value)}
                 className={field + ' mt-1'}>
                 <option value="">Choose a reason…</option>
-                {SCREEN_REJECT_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                {rejectReasons.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
           )}
