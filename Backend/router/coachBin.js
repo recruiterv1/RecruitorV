@@ -33,6 +33,12 @@ const CLAIM_HOURS = 1;
 // away from every other coach for an hour, so an unbounded claim is a way to
 // corner the bin. Four is enough to work through without starving anyone else.
 const MAX_OPEN_CLAIMS = 4;
+// Once a coach's hour on a candidate is spent, they must wait this long before
+// taking it again. Long enough that any other eligible coach gets a real first
+// refusal; short enough that a candidate nobody else wants is not simply left
+// to expire unreviewed — which, with one coach on the pilot, is exactly what a
+// permanent lockout would guarantee.
+const CLAIM_COOLDOWN_MINUTES = 15;
 
 const msOf = (v) => v?._seconds ? v._seconds * 1000
   : (typeof v?.toDate === 'function' ? v.toDate().getTime()
@@ -381,7 +387,26 @@ router.post('/:id/claim', coachOnly, async (req, res) => {
       );
 
       if (claimEnd <= now.getTime()) {
-        return { error: 'Your hour on this candidate has already been used. It stays open for another coach.' };
+        // The hour is spent. After a cooling-off period the coach may start a
+        // fresh one rather than watch the candidate expire unreviewed.
+        const cooledAt = firstClaim + (CLAIM_HOURS * 3600 * 1000) + (CLAIM_COOLDOWN_MINUTES * 60000);
+        if (now.getTime() < cooledAt) {
+          const mins = Math.ceil((cooledAt - now.getTime()) / 60000);
+          return { error: `Your hour on this candidate is used. You can take it again in ${mins} minute${mins === 1 ? '' : 's'} if no one else has.` };
+        }
+        // Fresh hour, still capped by the candidate's own 4-hour window.
+        const restarted = Math.min(now.getTime() + CLAIM_HOURS * 3600 * 1000, msOf(d.expiresAt));
+        if (restarted <= now.getTime()) {
+          return { error: 'This candidate has run out of time in the bin.' };
+        }
+        tx.update(ref, {
+          status: 'claimed',
+          claimedBy: req.coach.email,
+          claimedAt: now,
+          claimExpiresAt: new Date(restarted),
+          [`claimHistory.${key}`]: now,        // the new hour anchors here
+        });
+        return { ok: true, claimExpiresAt: new Date(restarted).toISOString(), restarted: true };
       }
 
       tx.update(ref, {
