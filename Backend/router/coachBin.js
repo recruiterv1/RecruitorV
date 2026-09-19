@@ -218,6 +218,64 @@ router.get('/available', coachOnly, async (req, res) => {
   }
 });
 
+// GET /:id/candidate — the candidate behind a bin entry: their details, their
+// CV, and the position they were submitted against.
+//
+// The review modal had only a name and a job title, which is not enough to
+// judge anyone. Served through the bin rather than the general candidate route
+// so a coach sees exactly the candidates in their own bin and no others.
+router.get('/:id/candidate', coachOnly, async (req, res) => {
+  try {
+    const doc = await BIN().doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Not found.' });
+    const b = doc.data();
+
+    // Their own bin only — an id from elsewhere must not open a candidate.
+    if (req.coach.categories.length
+      && !req.coach.categories.includes(String(b.skillCategory || '').toLowerCase().trim())) {
+      return res.status(403).json({ success: false, message: 'This candidate is outside your categories.' });
+    }
+
+    const c = await db.collection('candidate_db').doc(b.candidateId).get();
+    if (!c.exists) return res.json({ success: true, candidate: null, message: 'The candidate record is no longer available.' });
+    const d = c.data();
+
+    res.json({
+      success: true,
+      candidate: {
+        name: d.candidate || b.candidateName || '',
+        email: d.emails || '',
+        phone: d.mob || '',
+        currentEmployer: d.curr_emp || '',
+        totalExp: d.total_exp || '',
+        relevantExp: d.rel_exp || '',
+        currentCtc: d.current_ctc || '',
+        expectedCtc: d.exp_ctc || '',
+        currentLocation: Array.isArray(d.curr_loc) ? d.curr_loc.join(', ') : (d.curr_loc || ''),
+        preferredLocation: Array.isArray(d.pref_loc) ? d.pref_loc.join(', ') : (d.pref_loc || ''),
+        noticePeriod: d.notice_period || '',
+        education: Array.isArray(d.highest_education) ? d.highest_education.join(', ') : (d.highest_education || ''),
+        skills: [d.tech_skill, d.nontech_skill].filter(Boolean).join(', '),
+        photoUrl: d.photo_url || '',
+        cvUrl: d.cv_data || '',            // where the uploaded CV lives
+        matchPercent: d.matchPercent ?? b.matchPercent ?? null,
+        matchSummary: d.matchSummary || '',
+        status: d.statusa || '',
+      },
+      position: {
+        pos_id: b.pos_id,
+        title: b.positionTitle,
+        client: b.client,
+        // The full JD, opened in its own tab.
+        url: `/position/${encodeURIComponent(b.pos_id)}`,
+      },
+    });
+  } catch (e) {
+    console.error('coach-bin candidate error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // POST /:id/claim — lock a candidate to this coach for an hour.
 router.post('/:id/claim', coachOnly, async (req, res) => {
   try {

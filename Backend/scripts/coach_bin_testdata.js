@@ -31,11 +31,13 @@ const POSITIONS = [
 // that state rather than merely labelled as it.
 const CASES = [
   { name: 'Aarti Menon',    pos: 0, submittedAgo: 0.4 * H, state: 'open',             match: 88,
-    title: 'Snowflake + dbt, 6 yrs' },
+    employer: 'Zeta Analytics', totalExp: '8', relExp: '6', ctc: '26,00,000', expCtc: '34,00,000',
+    loc: 'Pune', notice: '60 days', skills: 'Snowflake, dbt, Airflow, Python' },
   { name: 'Rahul Verma',    pos: 0, submittedAgo: 1.2 * H, state: 'open',             match: 71,
     title: 'Data engineer, Airflow heavy' },
   { name: 'Sneha Iyer',     pos: 1, submittedAgo: 3.6 * H, state: 'open',             match: 64,
-    title: 'Wealth RM, 4 yrs at a private bank' },
+    employer: 'Meridian Private Bank', totalExp: '5', relExp: '4', ctc: '12,00,000', expCtc: '16,00,000',
+    loc: 'Mumbai', notice: '30 days', education: 'MBA Finance', skills: 'Wealth advisory, HNI relationships' },
   { name: 'Imran Qureshi',  pos: 0, submittedAgo: 1.0 * H, state: 'claimed_by_me',    match: 79,
     title: 'Senior data engineer' },
   { name: 'Divya Nair',     pos: 1, submittedAgo: 2.0 * H, state: 'claimed_by_other', match: 55,
@@ -58,6 +60,8 @@ const CASES = [
   // Rejected AND already appealed, with the coach's view in — this is what the
   // Client SPOC's queue is for.
   { name: 'Meera Krishnan',  pos: 1, submittedAgo: 3.0 * H, state: 'appealed',        match: 67,
+    employer: 'Crestline Wealth', totalExp: '6', relExp: '3', ctc: '14,00,000', expCtc: '19,00,000',
+    loc: 'Bengaluru', notice: '45 days', education: 'MBA Finance', skills: 'Portfolio advisory, HNI',
     reason: 'Wealth experience looks thin for a senior RM brief.',
     briefing: 'Three years is on the light side against the eight the client asked for, and the book size is not stated on the CV.',
     recruiterPoints: 'Her book was 120 crore at her last employer — it is not on the CV but I confirmed it on the call, and she handled HNI clients directly. I think the three years understates her.',
@@ -95,6 +99,21 @@ const create = async () => {
         : c.state === 'approved' ? 'Submitted' : 'In Review',
       matchPercent: c.match,
       matchSummary: `Demo score ${c.match} — synthetic fixture, not a real assessment.`,
+      // Enough of a profile for the review screen to be worth looking at. All
+      // invented; no real candidate's details are copied here.
+      curr_emp: c.employer || 'Demo Technologies Pvt Ltd',
+      total_exp: c.totalExp || '7',
+      rel_exp: c.relExp || '5',
+      current_ctc: c.ctc || '18,00,000',
+      exp_ctc: c.expCtc || '24,00,000',
+      curr_loc: c.loc || 'Pune',
+      pref_loc: c.prefLoc || 'Pune, Bengaluru',
+      notice_period: c.notice || '30 days',
+      highest_education: c.education || 'B.E. Computer Science',
+      tech_skill: c.skills || 'SQL, Python, Snowflake, dbt',
+      // A public dummy PDF, so 'View CV' opens something real without using
+      // anybody's actual resume.
+      cv_data: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
       addedBy: RECRUITER,
       datePosted: submittedAt,
       createdAt: now,

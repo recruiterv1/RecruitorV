@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
-import { Inbox, Clock, Lock, CheckCircle2, XCircle, Loader2, AlertTriangle, Gauge } from 'lucide-react';
+import { Inbox, Clock, Lock, CheckCircle2, XCircle, Loader2, AlertTriangle, Gauge, FileText, ExternalLink, Mail, Phone, Briefcase, MapPin } from 'lucide-react';
 import DashShell from '../components/DashShell';
 
 // The Coach/Expert review bin.
@@ -235,6 +235,20 @@ function ReviewedCard({ r }) {
 // shown both, and a verdict with no explanation teaches them nothing.
 function ReviewModal({ entry, onClose, onDone }) {
   const missedOnly = entry.missedOnly;
+  // The candidate themselves. A name and a job title is not enough to judge
+  // anyone, so the record and the CV are pulled in when the modal opens.
+  const [cand, setCand] = useState(null);
+  const [pos, setPos] = useState(null);
+  const [loadingCand, setLoadingCand] = useState(true);
+
+  useEffect(() => {
+    let live = true;
+    axios.get(`/api/coach-bin/${entry.id}/candidate`, { withCredentials: true })
+      .then(r => { if (live) { setCand(r.data?.candidate || null); setPos(r.data?.position || null); } })
+      .catch(() => { if (live) setCand(null); })
+      .finally(() => { if (live) setLoadingCand(false); });
+    return () => { live = false; };
+  }, [entry.id]);
   const [decision, setDecision] = useState('approve');
   const [reason, setReason] = useState('');
   const [briefing, setBriefing] = useState('');
@@ -272,8 +286,64 @@ function ReviewModal({ entry, onClose, onDone }) {
     <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-100">
-          <p className="font-bold text-gray-900">{entry.candidateName}</p>
-          <p className="text-[13px] text-gray-500">{entry.positionTitle} · {entry.client}</p>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-bold text-gray-900">{entry.candidateName}</p>
+              <p className="text-[13px] text-gray-500">{entry.positionTitle} · {entry.client}</p>
+            </div>
+            <div className="flex gap-2">
+              {cand?.cvUrl && (
+                <a href={cand.cvUrl} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-blue-300 text-blue-700 text-[12.5px] font-bold hover:bg-blue-50">
+                  <FileText size={13} /> View CV
+                </a>
+              )}
+              {pos?.url && (
+                // The JD opens in its own tab so the review in progress is not lost.
+                <a href={pos.url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 border-gray-300 text-gray-700 text-[12.5px] font-bold hover:bg-gray-50">
+                  <ExternalLink size={13} /> View JD
+                </a>
+              )}
+            </div>
+          </div>
+
+          {loadingCand ? (
+            <p className="mt-3 text-[12.5px] text-gray-400 flex items-center gap-2">
+              <Loader2 size={12} className="animate-spin" /> Loading the candidate…
+            </p>
+          ) : !cand ? (
+            <p className="mt-3 text-[12.5px] text-amber-700">The candidate record could not be loaded.</p>
+          ) : (
+            <>
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12.5px]">
+                {[
+                  [Mail, 'Email', cand.email],
+                  [Phone, 'Phone', cand.phone],
+                  [Briefcase, 'Current employer', cand.currentEmployer],
+                  [Clock, 'Notice', cand.noticePeriod],
+                  [null, 'Experience', [cand.totalExp && `${cand.totalExp} yrs total`, cand.relevantExp && `${cand.relevantExp} relevant`].filter(Boolean).join(' · ')],
+                  [null, 'CTC', [cand.currentCtc && `₹${cand.currentCtc}`, cand.expectedCtc && `exp ₹${cand.expectedCtc}`].filter(Boolean).join(' · ')],
+                  [MapPin, 'Location', [cand.currentLocation, cand.preferredLocation && `prefers ${cand.preferredLocation}`].filter(Boolean).join(' · ')],
+                  [null, 'Education', cand.education],
+                ].filter(([, , v]) => v).map(([Icon, label, value]) => (
+                  <div key={label} className="min-w-0">
+                    <span className="text-gray-400 inline-flex items-center gap-1">
+                      {Icon ? <Icon size={11} /> : null}{label}
+                    </span>
+                    <p className="text-gray-800 font-medium truncate" title={value}>{value}</p>
+                  </div>
+                ))}
+              </div>
+              {cand.skills && (
+                <p className="mt-2 text-[12.5px]"><span className="text-gray-400">Skills</span>{' '}
+                  <span className="text-gray-800">{cand.skills}</span></p>
+              )}
+              {cand.matchSummary && (
+                <p className="mt-2 text-[12px] text-gray-500 italic">{cand.matchSummary}</p>
+              )}
+            </>
+          )}
         </div>
 
         <div className="p-5 space-y-3.5">
