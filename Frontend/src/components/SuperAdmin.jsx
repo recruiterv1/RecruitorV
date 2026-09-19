@@ -234,6 +234,8 @@ const SuperAdmin = () => {
       { id: 'candidates-direct', icon: UserPlus, label: 'Direct Candidate', component: <DirectCandidatesPanel /> },
       { id: 'candidates-active', icon: Briefcase, label: 'Active Candidates', component: <ActiveCandidatesPanel /> },
       { id: 'direct-applicants', icon: UserPlus, label: 'Direct Applicants', component: <DirectApplicants /> },
+      // The approve/reject reasons applied to the candidates above.
+      { id: 'review-reasons', icon: ListChecks, label: 'Review Reasons', component: <ReviewReasonsAdmin /> },
       ]
     },
     {
@@ -308,7 +310,6 @@ const SuperAdmin = () => {
       { id: 'email-templates', icon: Mail, label: 'Email Templates', component: <SuperAdminEmailTemplates /> },
       { id: 'internal-message-templates', icon: MessageSquare, label: 'Internal Message Templates', component: <InternalMessageTemplates /> },
       { id: 'announcements', icon: Megaphone, label: 'Announcements', component: <AnnouncementsAdmin /> },
-      { id: 'review-reasons', icon: ListChecks, label: 'Review Reasons', component: <ReviewReasonsAdmin /> },
       { id: 'inbox-access', icon: Inbox, label: 'Inbox Access', component: <SuperAdminInboxAccess /> },
       ]
     },
