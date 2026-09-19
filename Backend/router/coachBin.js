@@ -386,12 +386,18 @@ router.post('/:id/review', coachOnly, async (req, res) => {
     if (!['approve', 'reject'].includes(decision)) {
       return res.status(400).json({ success: false, message: "decision must be 'approve' or 'reject'." });
     }
-    // Reason and briefing are required either way — the recruiter is shown both,
-    // and a decision with no explanation teaches them nothing.
+    // A reason is required either way — the recruiter is shown it, and a
+    // decision with no explanation teaches them nothing.
+    //
+    // The briefing is required only on a rejection. An approval sends the
+    // candidate onward, where the client forms their own view; a rejection ends
+    // the road there, so the recruiter needs to know what to do differently.
     const reason = String(req.body?.reason || '').trim();
     const briefing = String(req.body?.briefing || '').trim();
     if (!reason) return res.status(400).json({ success: false, message: 'A reason is required.' });
-    if (!briefing) return res.status(400).json({ success: false, message: 'A briefing against the position is required.' });
+    if (decision === 'reject' && !briefing) {
+      return res.status(400).json({ success: false, message: 'A briefing against the position is required when rejecting.' });
+    }
 
     const ref = BIN().doc(req.params.id);
     const doc = await ref.get();

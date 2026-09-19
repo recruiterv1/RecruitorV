@@ -320,7 +320,9 @@ function ReviewModal({ entry, onClose, onDone }) {
       return setErr('Choose an approval reason.');
     }
     if (!reason.trim()) return setErr('A reason is required.');
-    if (!briefing.trim()) return setErr('A briefing against the position is required.');
+    if (decision === 'reject' && !briefing.trim()) {
+      return setErr('A briefing against the position is required when rejecting.');
+    }
     setBusy(true);
     try {
       const r = await axios.post(`/api/coach-bin/${entry.id}/review`,
@@ -401,7 +403,12 @@ function ReviewModal({ entry, onClose, onDone }) {
           {!missedOnly && (
             <div className="flex gap-2">
               {[['approve', 'Approve', CheckCircle2, 'emerald'], ['reject', 'Reject', XCircle, 'red']].map(([v, label, Icon, c]) => (
-                <button key={v} onClick={() => { setDecision(v); setRejectCategory(''); setApproveCategory(''); }}
+                <button key={v} onClick={() => {
+                    setDecision(v); setRejectCategory(''); setApproveCategory('');
+                    // Fields hidden on approve are cleared, so nothing typed
+                    // before switching is submitted invisibly.
+                    if (v === 'approve') { setBriefing(''); setSuitability(''); }
+                  }}
                   className={`flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-bold border-2 ${
                     decision === v
                       ? (c === 'emerald' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-red-500 bg-red-50 text-red-700')
@@ -451,21 +458,28 @@ function ReviewModal({ entry, onClose, onDone }) {
             </div>
           )}
 
-          <div>
-            <label className="text-[12.5px] font-bold text-gray-700">
-              Briefing against the position <span className="text-red-500">*</span>
-            </label>
-            <textarea className={field + ' mt-1'} rows={3} value={briefing} onChange={e => setBriefing(e.target.value)}
-              placeholder="What the recruiter should know about this candidate against this role" />
-          </div>
+          {/* Only on a rejection. An approval sends the candidate onward for the
+              client to judge; a rejection ends the road there, so that is when
+              the recruiter needs to know what to do differently. */}
+          {(missedOnly || decision === 'reject') && (
+            <div>
+              <label className="text-[12.5px] font-bold text-gray-700">
+                Briefing against the position <span className="text-red-500">*</span>
+              </label>
+              <textarea className={field + ' mt-1'} rows={3} value={briefing} onChange={e => setBriefing(e.target.value)}
+                placeholder="What the recruiter should know about this candidate against this role" />
+            </div>
+          )}
 
           {!missedOnly && (
             <>
-              <div>
-                <label className="text-[12.5px] font-bold text-gray-700">Suitability for the position</label>
-                <input className={field + ' mt-1'} value={suitability} onChange={e => setSuitability(e.target.value)}
-                  placeholder="e.g. Strong fit for the data-modelling half of the role" />
-              </div>
+              {decision === 'reject' && (
+                <div>
+                  <label className="text-[12.5px] font-bold text-gray-700">Suitability for the position</label>
+                  <input className={field + ' mt-1'} value={suitability} onChange={e => setSuitability(e.target.value)}
+                    placeholder="e.g. Strong fit for the data-modelling half of the role" />
+                </div>
+              )}
               <div>
                 <label className="text-[12.5px] font-bold text-gray-700">
                   {decision === 'approve' ? 'Other comments' : 'Concerns about the candidate'}
