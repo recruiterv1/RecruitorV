@@ -32,6 +32,8 @@ export default function CoachBin() {
   const [msg, setMsg] = useState(null);
   const [reviewing, setReviewing] = useState(null);
   const [tick, setTick] = useState(0);
+  const [held, setHeld] = useState(0);
+  const [maxClaims, setMaxClaims] = useState(4);
 
   const load = useCallback(async () => {
     try {
@@ -41,6 +43,8 @@ export default function CoachBin() {
         axios.get('/api/coach-bin/reviewed', { withCredentials: true }).catch(() => null),
       ]);
       setRows(a.data?.requests || []);
+      setHeld(a.data?.held ?? 0);
+      setMaxClaims(a.data?.maxClaims ?? 4);
       setMissed(m?.data?.requests || []);
       setReviewed(v?.data?.requests || []);
       setMsg(null);
@@ -55,6 +59,18 @@ export default function CoachBin() {
 
   const left = (iso) => (iso ? new Date(iso).getTime() - Date.now() : 0);
 
+  const release = async (r) => {
+    setBusy(r.id); setMsg(null);
+    try {
+      const res = await axios.post(`/api/coach-bin/${r.id}/release`, {}, { withCredentials: true });
+      setMsg({ ok: true, text: res.data?.message || 'Released.' });
+      await load();
+    } catch (e) {
+      setMsg({ ok: false, text: e?.response?.data?.message || 'Could not release that candidate.' });
+      await load();
+    } finally { setBusy(''); }
+  };
+
   const claim = async (r) => {
     setBusy(r.id); setMsg(null);
     try {
@@ -65,6 +81,8 @@ export default function CoachBin() {
       await load();
     } finally { setBusy(''); }
   };
+
+  const atCap = held >= maxClaims;
 
   const Card = ({ r, isMissed }) => {
     const avail = left(r.expiresAt);
@@ -123,14 +141,24 @@ export default function CoachBin() {
               Add a briefing
             </button>
           ) : mine ? (
-            <button onClick={() => setReviewing(r)}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 text-white text-[13px] font-bold">
-              Review candidate
-            </button>
+            <>
+              <button onClick={() => setReviewing(r)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 text-white text-[13px] font-bold">
+                Review candidate
+              </button>
+              {/* Claimed the wrong CV? Hand it straight back rather than
+                  locking it away from everyone else for the full hour. */}
+              <button onClick={() => release(r)} disabled={busy === r.id}
+                title="Return this candidate to the bin"
+                className="px-3 py-2.5 rounded-lg border-2 border-gray-300 text-gray-600 text-[12.5px] font-bold hover:bg-gray-50 disabled:opacity-60">
+                {busy === r.id ? '…' : 'Release'}
+              </button>
+            </>
           ) : (
-            <button onClick={() => claim(r)} disabled={busy === r.id}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-[13px] font-bold disabled:opacity-60">
-              {busy === r.id ? 'Claiming…' : 'Claim'}
+            <button onClick={() => claim(r)} disabled={busy === r.id || atCap}
+              title={atCap ? `You are holding ${held} of ${maxClaims} — review or release one first` : undefined}
+              className="flex-1 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-[13px] font-bold disabled:opacity-40">
+              {busy === r.id ? 'Claiming…' : atCap ? 'Limit reached' : 'Claim'}
             </button>
           )}
         </div>
@@ -161,6 +189,15 @@ export default function CoachBin() {
             </button>
           ))}
         </div>
+
+        {/* How many you are holding — claiming locks a candidate away from every
+            other coach, so the cap is worth showing before it bites. */}
+        {tab === 'bin' && (
+          <p className={`mb-3 text-[12.5px] font-semibold ${atCap ? 'text-amber-700' : 'text-gray-500'}`}>
+            Holding {held} of {maxClaims}
+            {atCap && ' — review or release one before claiming another.'}
+          </p>
+        )}
 
         {msg && <p className={`mb-4 text-sm font-semibold ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</p>}
 

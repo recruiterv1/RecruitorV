@@ -29,6 +29,10 @@ const { db } = require('./firebase_ad');
 const BIN = () => db.collection('coach_bin');
 const AVAILABLE_HOURS = 4;
 const CLAIM_HOURS = 1;
+// How many candidates one coach may hold at once. Claiming locks a candidate
+// away from every other coach for an hour, so an unbounded claim is a way to
+// corner the bin. Four is enough to work through without starving anyone else.
+const MAX_OPEN_CLAIMS = 4;
 
 const msOf = (v) => v?._seconds ? v._seconds * 1000
   : (typeof v?.toDate === 'function' ? v.toDate().getTime()
@@ -211,9 +215,55 @@ router.get('/available', coachOnly, async (req, res) => {
       // Someone else's live claim is not shown as available.
       .filter(r => !r.claimedBy || r.claimedBy === req.coach.email)
       .sort((a, b) => a.msLeftAvailable - b.msLeftAvailable);   // most urgent first
-    res.json({ success: true, coach: req.coach, requests: rows, count: rows.length });
+    const heldByMe = rows.filter(r => r.claimedBy === req.coach.email).length;
+    res.json({
+      success: true, coach: req.coach, requests: rows, count: rows.length,
+      held: heldByMe, maxClaims: MAX_OPEN_CLAIMS,
+    });
   } catch (e) {
     console.error('coach-bin/available error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// POST /:id/release — hand a claimed candidate back to the pool.
+//
+// A coach who claims the wrong CV would otherwise lock it away from everyone
+// else for a full hour. Releasing returns it immediately, with whatever is left
+// of its original 4-hour window — the window never restarts.
+router.post('/:id/release', coachOnly, async (req, res) => {
+  try {
+    const ref = BIN().doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Not found.' });
+    const d = doc.data();
+
+    if (['approved', 'rejected'].includes(d.status)) {
+      return res.status(409).json({ success: false, message: 'This candidate has already been reviewed.' });
+    }
+    if (String(d.claimedBy || '').toLowerCase() !== req.coach.email) {
+      return res.status(403).json({ success: false, message: 'You are not holding this candidate.' });
+    }
+
+    await ref.update({
+      status: 'open',
+      claimedBy: '',
+      claimedAt: null,
+      claimExpiresAt: null,
+      // Kept so it is clear the candidate was handled, not ignored.
+      lastReleasedBy: req.coach.email,
+      lastReleasedAt: new Date(),
+    });
+
+    const left = Math.max(0, msOf(d.expiresAt) - Date.now());
+    res.json({
+      success: true,
+      message: left > 0
+        ? 'Released — back in the bin for anyone to claim.'
+        : 'Released, but its 4-hour window has already closed.',
+    });
+  } catch (e) {
+    console.error('coach-bin/release error:', e.message);
     res.status(500).json({ success: false, message: e.message });
   }
 });
@@ -282,6 +332,20 @@ router.post('/:id/claim', coachOnly, async (req, res) => {
     const ref = BIN().doc(req.params.id);
     // A transaction, because two coaches clicking Claim together must not both win.
     const out = await db.runTransaction(async (tx) => {
+      // Counted inside the transaction, so two quick claims cannot both slip
+      // past the cap by reading the same count.
+      const held = await tx.get(BIN().where('claimedBy', '==', req.coach.email).where('status', '==', 'claimed'));
+      const live = held.docs.filter(h => {
+        const hd = h.data();
+        if (h.id === req.params.id) return false;          // re-claiming one you hold
+        const hr = resolve(hd);
+        // A lapsed or expired claim is not held any more and must not count.
+        return !hr.claimLapsed && !hr.expired;
+      });
+      if (live.length >= MAX_OPEN_CLAIMS) {
+        return { error: `You are holding ${live.length} candidates already. Review or release one before claiming another (limit ${MAX_OPEN_CLAIMS}).` };
+      }
+
       const doc = await tx.get(ref);
       if (!doc.exists) return { error: 'That candidate is no longer in the bin.' };
       const d = doc.data();
