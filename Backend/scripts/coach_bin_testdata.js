@@ -67,6 +67,13 @@ const CASES = [
     recruiterPoints: 'Her book was 120 crore at her last employer — it is not on the CV but I confirmed it on the call, and she handled HNI clients directly. I think the three years understates her.',
     coachFeedback: 'Fair point on the book size, I had only the CV to go on. I would still flag the tenure but I am comfortable if the client wants to meet her.' },
 
+  // This coach already spent their hour on this one and released it. Clicking
+  // Claim should refuse with the cooling-off countdown, and it should still be
+  // claimable by anybody else.
+  { name: 'Anand Pillai',   pos: 0, submittedAgo: 1.5 * H, state: 'hour_spent',       match: 74,
+    employer: 'Northwind Data', totalExp: '7', relExp: '5', ctc: '21,00,000', expCtc: '27,00,000',
+    loc: 'Hyderabad', notice: '30 days', skills: 'Snowflake, Python, Kafka' },
+
   // Past the 4-hour window.
   { name: 'Pooja Shetty',   pos: 1, submittedAgo: 5.0 * H, state: 'missed',           match: 47,
     title: 'RM, 2 yrs' },
@@ -182,6 +189,11 @@ const create = async () => {
         spocFeedback: '', spocDecision: '', spocRespondedAt: null,
         outcome: '',
       };
+    }
+    if (c.state === 'hour_spent') {
+      // First claimed 70 minutes ago: the hour is gone, the 15-minute cooling-off
+      // is still running.
+      entry.claimHistory = { [COACH.replace(/[.]/g, '_')]: ago(70 * 60 * 1000) };
     }
     if (c.state === 'missed_rejected') {
       Object.assign(entry, {
