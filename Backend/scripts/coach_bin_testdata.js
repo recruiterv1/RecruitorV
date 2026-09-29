@@ -85,6 +85,25 @@ const CASES = [
     briefing: 'Two years of general SQL, no warehouse ownership. Not close enough for this brief.' },
 ];
 
+// Positions the pilot coach does NOT qualify for, one per failing condition.
+// These exist to prove the rule from the other side: none of them should ever
+// reach the bin, and their candidates should sit with the Client SPOC instead.
+//
+// A category-only failure cannot be built from live data — every position this
+// coach has briefed is in a category they hold — so 2770 fails on category and
+// assignment together. Category on its own is covered by the unit check.
+const BLOCKED = [
+  { pos_id: '2806', position: 'Python Data Scientist', client: 'LTM', skill_category: 'Technology',
+    fails: 'assigned to the coach, but no briefing recorded',
+    candidate: 'Nikhil Bansal', match: 84, control: true },
+  { pos_id: '2099', position: '.Net Fullstack Developer (Angular, Azure)', client: 'LTIMindtree', skill_category: 'Technology',
+    fails: 'category matches, but the coach is not on this position',
+    candidate: 'Ritu Agarwal', match: 76 },
+  { pos_id: '2770', position: 'Institutional Business - Wealth', client: 'TATA Capital', skill_category: 'Sales',
+    fails: 'category is outside the coach\'s skill categories',
+    candidate: 'Sameer Joshi', match: 69 },
+];
+
 const create = async () => {
   const now = new Date();
   let candidates = 0, entries = 0;
@@ -210,7 +229,54 @@ const create = async () => {
     entries++;
   }
 
+  // The other side of the rule: submitted against positions this coach does not
+  // qualify for, so they take the ordinary route. No bin entry, status stays
+  // 'Submitted', and the Client SPOC picks them up exactly as before.
+  let blocked = 0, controls = 0;
+  for (const b of BLOCKED) {
+    const submittedAt = ago(1.0 * H);
+    const candRef = await db.collection('candidate_db').add({
+      testFixture: MARK,
+      blockedReason: b.fails,
+      candidate: b.candidate,
+      emails: `${b.candidate.toLowerCase().replace(/\s+/g, '.')}@demo.invalid`,
+      mob: '9' + String(Math.floor(100000000 + Math.random() * 899999999)),
+      pos_id: b.pos_id, pos_name: b.position, client: b.client, clientspoc: SPOC,
+      statusa: 'Submitted',            // never held, so never 'In Review'
+      matchPercent: b.match,
+      matchSummary: `Demo score ${b.match} — synthetic fixture, not a real assessment.`,
+      curr_emp: 'Demo Technologies Pvt Ltd',
+      total_exp: '7', rel_exp: '5', current_ctc: '18,00,000', exp_ctc: '24,00,000',
+      curr_loc: 'Pune', pref_loc: 'Pune, Bengaluru', notice_period: '30 days',
+      highest_education: 'B.E. Computer Science', tech_skill: 'SQL, Python',
+      cv_data: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      addedBy: RECRUITER, datePosted: submittedAt, createdAt: now,
+    });
+    blocked++;
+
+    // One of them also gets a bin row it should never have had. Nothing in
+    // production can create this — it is here so the listing filter is tested
+    // on its own, not just the hold rule that normally stops it upstream.
+    if (b.control) {
+      await db.collection('coach_bin').add({
+        testFixture: MARK,
+        negativeControl: true,
+        candidateId: candRef.id, candidateName: b.candidate,
+        pos_id: b.pos_id, positionTitle: b.position, client: b.client,
+        skillCategory: b.skill_category, clientspoc: SPOC, recruiterEmail: RECRUITER,
+        matchPercent: b.match,
+        submittedAt, expiresAt: new Date(submittedAt.getTime() + 4 * H),
+        status: 'open', claimedBy: '', claimedAt: null, claimExpiresAt: null,
+        decision: '', reason: '', briefing: '', reviewedBy: '', reviewedAt: null,
+        createdAt: now,
+      });
+      controls++;
+    }
+  }
+
   console.log(`created ${candidates} demo candidates and ${entries} bin entries`);
+  console.log(`plus ${blocked} candidates on positions the coach does not qualify for ` +
+    `(${controls} with a negative-control bin row that must stay hidden)`);
 };
 
 const show = async () => {
@@ -246,6 +312,24 @@ const show = async () => {
   console.log('');
   console.log(`${rows.length} fixture entries. Coach ${COACH} sees the OPEN and CLAIMED-BY-YOU rows in the Bin;`);
   console.log('MISSED rows appear under Missed CVs and cannot be approved or rejected.');
+
+  // The negative side: submitted, but the coach does not qualify for the
+  // position, so these never entered the bin.
+  const cs = await db.collection('candidate_db').where('testFixture', '==', MARK).get();
+  const skipped = cs.docs.map(d => d.data()).filter(d => d.blockedReason);
+  if (skipped.length) {
+    console.log('');
+    console.log('NOT HELD — straight to the Client SPOC');
+    console.log('─'.repeat(96));
+    skipped.forEach(d => console.log(
+      String(d.candidate).padEnd(18) +
+      String(d.pos_name).slice(0, 30).padEnd(32) +
+      String(d.statusa).padEnd(12) + d.blockedReason));
+    const ctrl = rows.filter(r => r.negativeControl);
+    console.log('');
+    console.log(`${skipped.length} candidates took the ordinary route. ${ctrl.length} of them also has a bin row`);
+    console.log('planted by hand; it must NOT appear in the coach\'s Bin.');
+  }
 };
 
 const remove = async () => {
