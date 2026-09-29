@@ -20,11 +20,14 @@ const H = 3600 * 1000;
 const ago = (ms) => new Date(Date.now() - ms);
 const ahead = (ms) => new Date(Date.now() + ms);
 
-// Positions and candidates invented for the demo — prefixed so they can never
-// collide with a real pos_id.
+// Candidates are invented, but the positions are real ones the pilot coach is
+// assigned to and has a ready briefing on. Since the bin now only shows a coach
+// positions they qualify for, an invented pos_id would be filtered straight out
+// and the fixture would look empty. Nothing real is submitted against these —
+// the fixture writes its rows directly, and the hold allowlist stays empty.
 const POSITIONS = [
-  { pos_id: 'TEST-BIN-1', position: 'Senior Snowflake Data Engineer', client: 'Demo Client A', skill_category: 'Technology' },
-  { pos_id: 'TEST-BIN-2', position: 'Wealth Relationship Manager',     client: 'Demo Client B', skill_category: 'Banking' },
+  { pos_id: '2839', position: 'Data Engineer - SNP Glue + Snowflake', client: 'LTM', skill_category: 'Technology' },
+  { pos_id: '2646', position: 'Relationship Manager - Wealth Vertical', client: 'TATA Capital', skill_category: 'Banking' },
 ];
 
 // One row per state worth seeing, with the timers set so each is genuinely in

@@ -94,7 +94,56 @@ const pilotCoach = async (email) => {
   return null;
 };
 
+// Which positions is this coach actually on, with a briefing recorded?
+//
+// Assignment comes from the same two collections the briefing author list
+// reads, so "assigned" means the same thing in both places.
+const qualifiedPositionIds = async (coach) => {
+  const email = String(coach?.email || '').toLowerCase().trim();
+  if (!email) return new Set();
+
+  const [directSnap, assignSnap] = await Promise.all([
+    db.collection('coach_expert_direct_requests').where('coachExpertEmail', '==', email).get(),
+    db.collection('coach_expert_requests').where('coachExpertEmail', '==', email).get(),
+  ]);
+  const assigned = new Set();
+  directSnap.docs.forEach(d => {
+    const x = d.data();
+    if (x.status === 'approved') assigned.add(String(x.positionId));
+  });
+  assignSnap.docs.forEach(d => {
+    const x = d.data();
+    if (['accepted', 'approved'].includes(x.status)) assigned.add(String(x.positionId));
+  });
+  if (!assigned.size) return new Set();
+
+  // Being on the position is not enough on its own — the briefing has to exist
+  // and be finished. A draft briefing means the coach has not spoken yet.
+  const ids = [...assigned];
+  const briefs = await Promise.all(ids.map(id =>
+    db.collection('position_coach_briefing').doc(`${id}__${email}`).get()));
+  return new Set(ids.filter((id, n) =>
+    briefs[n].exists && (briefs[n].data().status || 'draft') === 'ready'));
+};
+
+// May this coach review candidates for this position?
+//
+// All three have to hold: the skill category matches, the coach is assigned to
+// the position, and the briefing against it is ready. A coach with no category
+// on file no longer matches everything — silently covering every category is
+// exactly what this rule exists to stop.
+const coachQualifies = async (coach, position) => {
+  if (!coach) return false;
+  const cat = String(position?.skill_category || '').toLowerCase().trim();
+  if (!cat || !coach.categories.includes(cat)) return false;
+  const ids = await qualifiedPositionIds(coach);
+  return ids.has(String(position?.pos_id || ''));
+};
+
 // Should this candidate be held for review at all? Called from the submit path.
+//
+// When nobody qualifies the candidate is not held, so they keep the ordinary
+// 'Submitted' status and go straight to the ClientSPOC as before.
 const shouldHold = async (position) => {
   const cfg = await config();
   if (cfg.enabled !== true) return false;
@@ -103,12 +152,9 @@ const shouldHold = async (position) => {
   if (!positions.length) return false;
   if (!positions.includes(String(position?.pos_id))) return false;
 
-  // And at least one pilot coach must actually cover this category, or the
-  // candidate would be held for a reviewer who can never see them.
-  const cat = String(position?.skill_category || '').toLowerCase().trim();
   for (const email of (cfg.coaches || [])) {
     const c = await pilotCoach(email);
-    if (c && (!c.categories.length || c.categories.includes(cat))) return true;
+    if (await coachQualifies(c, position)) return true;
   }
   return false;
 };
@@ -215,11 +261,18 @@ router.get('/enabled', authed, async (req, res) => {
 // GET /available — everything claimable right now, plus anything this coach holds.
 router.get('/available', coachOnly, async (req, res) => {
   try {
-    const snap = await BIN().where('status', 'in', ['open', 'claimed']).get();
+    const [snap, qualified] = await Promise.all([
+      BIN().where('status', 'in', ['open', 'claimed']).get(),
+      qualifiedPositionIds(req.coach),
+    ]);
     const rows = snap.docs.map(shape)
       .filter(r => !r.expired)
-      .filter(r => !req.coach.categories.length
-        || req.coach.categories.includes(String(r.skillCategory || '').toLowerCase().trim()))
+      // Same three conditions as the hold rule: category, assignment, briefing.
+      // Anything this coach already holds stays visible even if the assignment
+      // changed underneath them, or the claim would be stranded unreviewable.
+      .filter(r => r.claimedBy === req.coach.email || (
+        qualified.has(String(r.pos_id || ''))
+        && req.coach.categories.includes(String(r.skillCategory || '').toLowerCase().trim())))
       // A candidate another coach holds stays on the list, marked and not
       // claimable — hiding it made candidates appear to vanish and come back.
       // One already reviewed is gone from here entirely: its status is approved
@@ -906,4 +959,5 @@ module.exports = router;
 module.exports.shouldHold = shouldHold;
 module.exports.addToBin = addToBin;
 module.exports.pilotCoach = pilotCoach;
+module.exports.coachQualifies = coachQualifies;
 module.exports.pilotRoleOf = pilotRoleOf;
