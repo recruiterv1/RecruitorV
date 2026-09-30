@@ -331,7 +331,17 @@ const AllCandidates = () => {
                     <div className="flex items-center gap-3">
                       <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-400 to-orange-400 grid place-items-center text-white font-bold flex-shrink-0">{(c.candidate || 'C').charAt(0).toUpperCase()}</div>
                       <div className="min-w-0">
-                        <div className="font-semibold text-gray-900 truncate">{c.candidate || '—'}</div>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-semibold text-gray-900 truncate">{c.candidate || '—'}</span>
+                          {/* The same person uploaded more than once. The newest
+                              is shown; the older CVs are still on the record. */}
+                          {c.versions > 1 && (
+                            <span title={`${c.versions} CVs on file — showing the most recent`}
+                              className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                              {c.versions} CVs
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-gray-400">{c.total_exp ? `${c.total_exp} yrs exp` : (c.skill_type || '')}</div>
                       </div>
                     </div>

@@ -195,7 +195,34 @@ const buildIndex = async () => {
   });
 };
 
-const getIndex = () => cached('resume_bank_index', INDEX_TTL_MS, buildIndex);
+// One row per person, not one per upload.
+//
+// About a tenth of the bank is the same person more than once — the same email
+// uploaded again later, usually by a different SPOC. Nearly every one of those
+// pairs carries a *different* CV file, so they are not accidental repeats to be
+// thrown away: they are newer and older copies of the same person's resume.
+// Deleting would lose a resume, so nothing is deleted. The newest is the one
+// shown, the rest stay on the record, and the row says how many there are.
+//
+// A row with no email cannot be matched this way and is left as its own entry
+// rather than merged on a guess about the name.
+const collapseDuplicates = (rows) => {
+  const byEmail = new Map();
+  const out = [];
+  for (const r of rows) {
+    const key = lc(r.emails);
+    if (!key) { out.push(r); continue; }
+    const seen = byEmail.get(key);
+    if (!seen) { byEmail.set(key, { ...r, versions: 1 }); continue; }
+    seen.versions += 1;
+    // Keep the newer record, but carry the running count across.
+    if (r.at > seen.at) byEmail.set(key, { ...r, versions: seen.versions });
+  }
+  return out.concat([...byEmail.values()]);
+};
+
+const getIndex = () => cached('resume_bank_index', INDEX_TTL_MS,
+  async () => collapseDuplicates(await buildIndex()));
 
 const authed = async (req, res, next) => {
   const token = req.cookies?.__session;
