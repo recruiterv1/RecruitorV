@@ -1025,6 +1025,9 @@ const Ad_Candi = ({ clientSpocView = false, recruiterView = false, directOnly = 
           ? '/addit/show/recruiter/candi'
           : vendorView
             ? '/vendor/candidates'
+            // Bulk resume-bank uploads never appear in this table; the
+            // endpoint leaves them out, so they are not carried across the wire
+            // only to be dropped by the filter just below.
             : '/addit/show/all/candi';
       const res = await axios.get(url, { withCredentials: true });
       // A "self-apply" is source=direct_apply where the candidate submitted themselves

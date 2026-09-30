@@ -235,7 +235,13 @@ const ClientSpocReports = () => {
           // If still missing detailed fields, do a second-chance enrichment using all candidates
           if (!groups.length || groups.some(g => (g.candidates || []).some(c => !c.email && !c.phone && !c.currentCTC))) {
             try {
-              const allRes = await axios.get('/addit/show/all/candi');
+              // Only the selected positions are read below, so only those are
+              // asked for — this used to pull the whole collection to keep a
+              // handful of rows.
+              const allRes = await axios.get('/addit/show/all/candi', {
+                params: { posIds: selectedPositions.join(',') },
+                withCredentials: true,
+              });
               const all = Array.isArray(allRes.data) ? allRes.data : [];
               const filtered = all.filter(c => {
                 if (!selectedPositions.includes(String(c.pos_id))) return false;

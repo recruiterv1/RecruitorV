@@ -1029,24 +1029,41 @@ router.get('/show/candi',isLoggedIn,async (req,res)=>{
 
 })
 
-// Unauthenticated until now, and returning every candidate on file: names,
-// emails, phone numbers and CV links. The read never completed inside Hosting's
-// 60-second limit, so it answered 500 rather than handing the pool out — but
-// that was luck, not a control. The Resume Bank has moved to
-// /api/resume-bank/search, which is paginated; this stays for the other pages
-// still calling it, now behind a login.
+// GET /show/all/candi — the candidate tables and reports.
+//
+// This used to fetch whole documents for the entire collection and strip the
+// heavy fields afterwards, by which point the read had already been paid for
+// and had already blown past Hosting's sixty-second limit: the endpoint
+// answered 500 to every caller, and four pages were dead because of it. It now
+// reads a named set of fields from a warm cache instead.
+//
+// It was also open to anyone who knew the path — names, emails, phone numbers
+// and CV links — and only the timeout was keeping them in.
+//
+// Bulk resume-bank uploads are left out by default. They are three quarters of
+// the collection, no candidate table shows them, and including them makes a
+// 37MB reply — past what a function may return at all, so the honest default is
+// the one that works. The Resume Bank reads them through its own endpoint.
+//
+//   ?includeBulk=true   bulk uploads as well, for a caller that truly wants the
+//                       whole collection
+//   ?posIds=1,2,3       only these positions, for a report that wants a few
 router.get('/show/all/candi', isLoggedIn, async(req,res)=>{
   try{
-    const canudo= await candida.showAllCandidate()
-    // Strip very large fields (full resume text + match tokens) so the response
-    // stays within Cloud Function size/time limits. Skill fields (skills,
-    // skillsText, skillCategory) are kept so keyword search still works.
-    const slim = canudo.map(({ resumeText, matchTokens, skillsTextTokens, ...rest }) => rest);
-    return res.status(200).json(slim)
-
-  } catch(error){
-    console.log("Error while showing all candidate:",error)
-    res.status(500).json({ error: error.message });
+    const { allCandidates, workingCandidates } = require('./candidateIndex');
+    const posIds = String(req.query.posIds || '').split(',').map(s => s.trim()).filter(Boolean);
+    // A request naming its positions is already narrow, so it may have them all.
+    const wantsBulk = String(req.query.includeBulk || '') === 'true' || posIds.length > 0;
+    let rows = wantsBulk ? await allCandidates() : await workingCandidates();
+    if (posIds.length) {
+      const want = new Set(posIds.map(String));
+      rows = rows.filter(r => want.has(String(r.pos_id)));
+    }
+    return res.status(200).json(rows);
+  }
+  catch(error){
+    console.error("Error while showing all candidates:", error);
+    return res.status(500).json({ error: error.message });
   }
 })
 

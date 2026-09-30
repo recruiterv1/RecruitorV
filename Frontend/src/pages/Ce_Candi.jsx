@@ -12,6 +12,8 @@ const Ce_Candi = () => {
   const fetchCandidate = async () => {
     setLoading(true);
     try {
+      // Bulk resume-bank uploads belong to the Resume Bank, not here; the
+      // endpoint leaves them out.
       const res = await axios.get("/addit/show/all/candi", { withCredentials: true });
       setParticle(res.data);
     } catch (err) {

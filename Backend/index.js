@@ -538,8 +538,11 @@ exports.warmResumeBankIndex = onSchedule(
     timeoutSeconds: 300,
   },
   async () => {
-    const rows = await require('./router/resumeBank').warmIndex();
-    console.log('🔎 Resume Bank index warm:', rows.length, 'candidates');
+    const [bank, all] = await Promise.all([
+      require('./router/resumeBank').warmIndex(),
+      require('./router/candidateIndex').allCandidates(),
+    ]);
+    console.log('🔎 Indexes warm — resume bank:', bank.length, '| candidate tables:', all.length);
   }
 );
 
