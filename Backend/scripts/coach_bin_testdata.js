@@ -51,12 +51,14 @@ const CASES = [
   // Already decided, so the recruiter and the Reviewed tab have content.
   { name: 'Priya Deshpande', pos: 0, submittedAgo: 2.2 * H, state: 'approved',        match: 91,
     reason: 'Strong Snowflake and dbt ownership, and has run migrations at this scale before.',
+    category: 'All Good', reviewMins: 17,
     briefing: 'Push on the data-modelling half at interview — that is where the role really sits. She has led two migrations end to end.',
     suitability: 'Strong fit, can start on the modelling work immediately.',
     comments: 'Notice period is 30 days, negotiable to 20.' },
 
   { name: 'John Smith',      pos: 1, submittedAgo: 1.6 * H, state: 'rejected',        match: 48,
     reason: 'Good PHP background but not enough Laravel depth for this requirement.',
+    category: 'Skills Not Evident', reviewMins: 12,
     briefing: 'Candidate has solid general PHP experience but does not appear to have production Laravel ownership, which this role needs from day one.',
     comments: 'Worth keeping for a general backend role.' },
 
@@ -66,6 +68,7 @@ const CASES = [
     employer: 'Crestline Wealth', totalExp: '6', relExp: '3', ctc: '14,00,000', expCtc: '19,00,000',
     loc: 'Bengaluru', notice: '45 days', education: 'MBA Finance', skills: 'Portfolio advisory, HNI',
     reason: 'Wealth experience looks thin for a senior RM brief.',
+    category: 'Experience Short', reviewMins: 21,
     briefing: 'Three years is on the light side against the eight the client asked for, and the book size is not stated on the CV.',
     recruiterPoints: 'Her book was 120 crore at her last employer — it is not on the CV but I confirmed it on the call, and she handled HNI clients directly. I think the three years understates her.',
     coachFeedback: 'Fair point on the book size, I had only the CV to go on. I would still flag the tenure but I am comfortable if the client wants to meet her.' },
@@ -82,6 +85,7 @@ const CASES = [
     title: 'RM, 2 yrs' },
   { name: 'Vikram Rao',     pos: 0, submittedAgo: 6.0 * H, state: 'missed_rejected',  match: 38,
     reason: 'Does not meet the Snowflake requirement.',
+    category: 'Skills Not Evident', reviewMins: 8,
     briefing: 'Two years of general SQL, no warehouse ownership. Not close enough for this brief.' },
 ];
 
@@ -190,12 +194,17 @@ const create = async () => {
     }
     if (c.state === 'approved' || c.state === 'rejected' || c.state === 'appealed') {
       const rejected = c.state !== 'approved';
+      const reviewedAt = ago(c.submittedAgo - 0.5 * H);
       Object.assign(entry, {
         status: rejected ? 'rejected' : 'approved',
         decision: rejected ? 'reject' : 'approve',
         reason: c.reason || '', briefing: c.briefing || '',
         comments: c.comments || '', suitability: c.suitability || '',
-        reviewedBy: COACH, reviewedByName: 'Mkumar', reviewedAt: ago(c.submittedAgo - 0.5 * H),
+        // The scorecard reads the category and the claim-to-decision gap, so a
+        // decided row has to carry both or it contributes nothing.
+        [rejected ? 'rejectCategory' : 'approveCategory']: c.category || '',
+        claimedAt: new Date(reviewedAt.getTime() - (c.reviewMins || 15) * 60000),
+        reviewedBy: COACH, reviewedByName: 'Mkumar', reviewedAt,
       });
     }
     if (c.state === 'appealed') {
@@ -221,6 +230,8 @@ const create = async () => {
       Object.assign(entry, {
         status: 'rejected', decision: 'reject',
         reason: c.reason || '', briefing: c.briefing || '',
+        rejectCategory: c.category || '',
+        claimedAt: ago(4.5 * H + (c.reviewMins || 10) * 60000),
         reviewedBy: OTHER_COACH, reviewedByName: 'Another Coach', reviewedAt: ago(4.5 * H),
       });
     }

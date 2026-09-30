@@ -382,6 +382,91 @@ router.get('/briefing-gaps', coachOnly, async (req, res) => {
   }
 });
 
+// GET /my-scorecard — how this coach's reviews have held up.
+//
+// The one honest measure of review quality here is how often the client
+// disagreed with a rejection, and it is already recorded on every second
+// review. Speed sits next to it deliberately: reviewing fast is only worth
+// anything if the decisions stand.
+router.get('/my-scorecard', coachOnly, async (req, res) => {
+  try {
+    const snap = await BIN().where('reviewedBy', '==', req.coach.email).get();
+    const rows = snap.docs.map(d => d.data());
+    const ms = v => (v?._seconds ? v._seconds * 1000 : (v?.toMillis ? v.toMillis() : 0));
+
+    let approved = 0, rejected = 0, disputed = 0, overturned = 0, upheld = 0;
+    const times = [];
+    rows.forEach(r => {
+      if (r.decision === 'approve') approved++;
+      if (r.decision === 'reject') rejected++;
+      const sr = r.secondReview || {};
+      if (sr.status) {
+        disputed++;
+        if (sr.outcome === 'overturn') overturned++;
+        if (sr.outcome === 'uphold') upheld++;
+      }
+      // Claim to decision. Rows reviewed before claim times were stored, or
+      // decided by someone else, simply do not contribute.
+      const from = ms(r.claimedAt), to = ms(r.reviewedAt);
+      if (from && to && to > from) times.push(to - from);
+    });
+
+    const settled = overturned + upheld;
+    times.sort((a, b) => a - b);
+
+    res.json({
+      success: true,
+      reviewed: approved + rejected,
+      approved, rejected,
+      disputed,                       // recruiter asked for another look
+      overturned, upheld,
+      // Only counted once the client has actually ruled — an open dispute is
+      // not yet a disagreement, and scoring it as one would be unfair.
+      agreementRate: settled ? Math.round((upheld / settled) * 100) : null,
+      pendingDisputes: disputed - settled,
+      // Median, not mean: one CV left open over a weekend should not define it.
+      medianReviewMs: times.length ? times[Math.floor(times.length / 2)] : null,
+    });
+  } catch (e) {
+    console.error('coach-bin/my-scorecard error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /my-rejection-reasons — for a recruiter: why their CVs got turned down,
+// with the guidance the reasons list carries, so a rejection teaches something
+// instead of only stinging.
+router.get('/my-rejection-reasons', authed, async (req, res) => {
+  try {
+    const email = String(req.user.email || '').toLowerCase();
+    const snap = await BIN().where('recruiterEmail', '==', email).get();
+    const rows = snap.docs.map(d => d.data()).filter(r => r.decision === 'reject');
+
+    const counts = {};
+    rows.forEach(r => {
+      const label = String(r.rejectCategory || '').trim();
+      if (label) counts[label] = (counts[label] || 0) + 1;
+    });
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+    const { guidanceFor } = require('./reviewReasons');
+    const reasons = await Promise.all(top.map(async ([label, count]) => ({
+      label, count, guidance: await guidanceFor(label),
+    })));
+
+    const total = await BIN().where('recruiterEmail', '==', email).get();
+    res.json({
+      success: true,
+      reasons,
+      rejected: rows.length,
+      submitted: total.size,
+    });
+  } catch (e) {
+    console.error('coach-bin/my-rejection-reasons error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 // GET /available — everything claimable right now, plus anything this coach holds.
 router.get('/available', coachOnly, async (req, res) => {
   try {

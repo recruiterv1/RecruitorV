@@ -7,6 +7,7 @@ import Footer from '../pages/Footer';
 import axios from 'axios';
 import MyCertificate from './MyCertificate';
 import BriefingGaps from './BriefingGaps';
+import CoachScorecard from './CoachScorecard';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, ClipboardList, Users, DollarSign, TrendingUp, Briefcase, BarChart2, UserPlus, Inbox, AlertTriangle, X, Star, Zap, ArrowRight, Gift } from 'lucide-react';
 
@@ -104,6 +105,9 @@ const CoachExpertContentWrapper = ({ isSidebarOpen, setIsSidebarOpen }) => {
 
           {/* Assigned but unbriefed positions — silent unless there are some. */}
           <BriefingGaps />
+
+          {/* How their reviews have held up — silent until they have reviewed. */}
+          <CoachScorecard />
 
           {/* Welcome Banner */}
           <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl shadow-xl overflow-hidden mb-6">

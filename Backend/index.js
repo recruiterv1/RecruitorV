@@ -523,6 +523,26 @@ exports.cleanupCandidateDrafts = onSchedule(
 );
 
 // ---- Scheduled: daily 7 AM IST direct-applicant digest ----
+// The first of the month: tell each recruiter why their CVs came back, with
+// the guidance attached. Monthly on purpose — a pattern needs a month to be
+// one, and a weekly version would just be nagging.
+exports.monthlyRejectionDigest = onSchedule(
+  {
+    schedule: '0 9 1 * *',
+    timeZone: 'Asia/Kolkata',
+    region: 'us-central1',
+    memory: '512MiB',
+    timeoutSeconds: 540,
+    secrets: SECRETS.map(s => s.secret),   // Brevo key for sending
+  },
+  async () => {
+    loadSecretsIntoProcessEnv();
+    const { sendMonthlyRejectionDigest } = require('./utils/rejectionDigest');
+    const result = await sendMonthlyRejectionDigest(30);
+    console.log('📬 Rejection digest sent:', JSON.stringify(result));
+  }
+);
+
 exports.dailyDirectApplicantDigest = onSchedule(
   {
     schedule: 'every day 07:00',

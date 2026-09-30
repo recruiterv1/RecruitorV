@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { FileText, Gauge, Loader2, MessageSquare, RotateCcw, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import DashShell from '../components/DashShell';
+import MyRejectionReasons from '../components/MyRejectionReasons';
 
 // What became of the candidates this recruiter submitted, and what the coach
 // said about each one.
@@ -40,6 +41,9 @@ export default function MySubmissions() {
         <p className="text-sm text-gray-500 mb-6">
           Candidates you sent for review, what the coach decided, and why.
         </p>
+
+        {/* The patterns behind the rejections below — silent with none. */}
+        <MyRejectionReasons />
 
         {msg && <p className={`mb-4 text-sm font-semibold ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</p>}
 
