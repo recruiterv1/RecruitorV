@@ -88,6 +88,7 @@ const pilotCoach = async (email) => {
       return {
         email: e, name: d.name || '', role, id: s.docs[0].id, categories: cats,
         phone: d.phone || d.mobile || d.mob || '',
+        availability: Array.isArray(d.availability) ? d.availability : [],
       };
     }
   }
@@ -98,10 +99,9 @@ const pilotCoach = async (email) => {
 //
 // Assignment comes from the same two collections the briefing author list
 // reads, so "assigned" means the same thing in both places.
-const qualifiedPositionIds = async (coach) => {
+const assignedPositionIds = async (coach) => {
   const email = String(coach?.email || '').toLowerCase().trim();
   if (!email) return new Set();
-
   const [directSnap, assignSnap] = await Promise.all([
     db.collection('coach_expert_direct_requests').where('coachExpertEmail', '==', email).get(),
     db.collection('coach_expert_requests').where('coachExpertEmail', '==', email).get(),
@@ -115,15 +115,26 @@ const qualifiedPositionIds = async (coach) => {
     const x = d.data();
     if (['accepted', 'approved'].includes(x.status)) assigned.add(String(x.positionId));
   });
-  if (!assigned.size) return new Set();
+  return assigned;
+};
 
-  // Being on the position is not enough on its own — the briefing has to exist
-  // and be finished. A draft briefing means the coach has not spoken yet.
-  const ids = [...assigned];
-  const briefs = await Promise.all(ids.map(id =>
+// Which of those carry a finished briefing. Being on the position is not enough
+// on its own — a draft briefing means the coach has not spoken yet.
+const briefingStatuses = async (email, ids) => {
+  const docs = await Promise.all(ids.map(id =>
     db.collection('position_coach_briefing').doc(`${id}__${email}`).get()));
-  return new Set(ids.filter((id, n) =>
-    briefs[n].exists && (briefs[n].data().status || 'draft') === 'ready'));
+  const out = {};
+  ids.forEach((id, n) => { out[id] = docs[n].exists ? (docs[n].data().status || 'draft') : 'none'; });
+  return out;
+};
+
+const qualifiedPositionIds = async (coach) => {
+  const email = String(coach?.email || '').toLowerCase().trim();
+  const assigned = await assignedPositionIds(coach);
+  if (!assigned.size) return new Set();
+  const ids = [...assigned];
+  const status = await briefingStatuses(email, ids);
+  return new Set(ids.filter(id => status[id] === 'ready'));
 };
 
 // May this coach review candidates for this position?
@@ -159,6 +170,95 @@ const shouldHold = async (position) => {
   return false;
 };
 
+// The hours a coach can pick, worded exactly as the availability screen writes
+// them, so a stored slot matches by string.
+const TIME_SLOTS = [
+  '6 AM - 8 AM', '8 AM - 10 AM', '10 AM - 12 PM', '12 PM - 2 PM',
+  '2 PM - 4 PM', '4 PM - 6 PM', '6 PM - 8 PM', '8 PM - 10 PM', '10 PM - 12 AM',
+];
+
+// Which slot the clock is in right now, in IST — everyone using this runs to
+// Indian hours, and the server does not.
+//
+// Asked for by name rather than by arithmetic on the offset: the server runs
+// UTC in production and IST on a developer's laptop, and shifting by hand gets
+// one of the two wrong.
+const currentSlot = (now = new Date()) => {
+  const h = Number(now.toLocaleString('en-US', {
+    timeZone: 'Asia/Kolkata', hour: '2-digit', hour12: false,
+  }));
+  if (h < 6) return null;                       // nobody offers a slot before 6 AM
+  return TIME_SLOTS[Math.floor((h - 6) / 2)] || null;
+};
+
+// Positions this coach is on but has not briefed, so cannot receive CVs for.
+// Assignment without a briefing is capacity doing nothing, and until now there
+// was nowhere that said so.
+const briefingGaps = async (coach) => {
+  const email = String(coach?.email || '').toLowerCase().trim();
+  const assigned = [...(await assignedPositionIds(coach))];
+  if (!assigned.length) return [];
+  const status = await briefingStatuses(email, assigned);
+  const pending = assigned.filter(id => status[id] !== 'ready');
+  if (!pending.length) return [];
+
+  const docs = await Promise.all(pending.map(id =>
+    db.collection('admin_AddPos').where('pos_id', '==', id).limit(1).get()));
+  return pending.map((id, n) => {
+    if (docs[n].empty) return null;
+    const p = docs[n].docs[0].data();
+    const cat = String(p.skill_category || '').toLowerCase().trim();
+    // A position outside the coach's categories would still not send them CVs
+    // once briefed, so listing it would be a false promise.
+    if (!coach.categories.includes(cat)) return null;
+    return {
+      pos_id: id,
+      position: p.position || '',
+      client: p.client || '',
+      skillCategory: p.skill_category || '',
+      briefingStatus: status[id],            // 'none' or 'draft'
+    };
+  }).filter(Boolean);
+};
+
+// A CV has landed. Tell the coaches who can actually act on it, and only during
+// the hours they said they are around — the 4-hour window is wasted if it opens
+// while nobody is looking, and an alert at 2 AM teaches people to mute us.
+const alertAvailableCoaches = async (position, candidateName) => {
+  const cfg = await config();
+  const slot = currentSlot();
+  const targets = [];
+  for (const email of (cfg.coaches || [])) {
+    const c = await pilotCoach(email);
+    if (!c) continue;
+    if (!(await coachQualifies(c, position))) continue;
+    // No availability on file means we do not know when to reach them, so we
+    // stay quiet rather than guess. The nudge to set it lives on the dashboard.
+    if (!slot || !c.availability.includes(slot)) continue;
+    targets.push(c.email);
+  }
+  if (!targets.length) return { notified: [], slot };
+
+  const title = 'A CV is waiting for your review';
+  const body = `${candidateName || 'A candidate'} · ${position?.position || 'position ' + position?.pos_id} · ${AVAILABLE_HOURS}h to claim`;
+  try {
+    const { sendPushToEmails } = require('../utils/push');
+    await sendPushToEmails(targets, { title, body, data: { type: 'coach_bin_new' } });
+  } catch (e) { console.error('bin alert push failed:', e.message); }
+
+  try {
+    const { sendEmail } = require('../utils/email');
+    const html = `<p>Hello,</p>
+      <p>A CV has just come in for <strong>${position?.position || ''}</strong>${position?.client ? ` (${position.client})` : ''}.</p>
+      <p>It is claimable for the next ${AVAILABLE_HOURS} hours. After that it goes to the client without your review.</p>
+      <p><a href="https://www.recruiterv.com/coach-bin">Open the Review Bin</a></p>
+      <p style="color:#888;font-size:12px">You are getting this because ${slot} is one of your available hours. Change them under Availability.</p>`;
+    await Promise.all(targets.map(t => sendEmail(t, title, html)));
+  } catch (e) { console.error('bin alert email failed:', e.message); }
+
+  return { notified: targets, slot };
+};
+
 // Put a freshly submitted candidate into the pool.
 const addToBin = async ({ candidateId, candidate, position, recruiterEmail }) => {
   const now = new Date();
@@ -180,6 +280,10 @@ const addToBin = async ({ candidateId, candidate, position, recruiterEmail }) =>
     decision: '', reason: '', briefing: '', reviewedBy: '', reviewedAt: null,
     createdAt: now,
   });
+
+  // Never let a failed alert undo a submission that already succeeded.
+  try { await alertAvailableCoaches(position, candidate?.candidate); }
+  catch (e) { console.error('bin alert failed:', e.message); }
 };
 
 // The live state of an entry, with lapsed claims and expiry resolved on read.
@@ -256,6 +360,26 @@ router.get('/enabled', authed, async (req, res) => {
     pilotRole: pilotRole || '',      // coach | recruiter | clientspoc
     role: c?.role || '',             // Coach | Expert, for a reviewer
   });
+});
+
+// GET /briefing-gaps — positions this coach is on but has not briefed.
+// Each one is a position that could be sending them CVs and is not.
+router.get('/briefing-gaps', coachOnly, async (req, res) => {
+  try {
+    const gaps = await briefingGaps(req.coach);
+    const qualified = await qualifiedPositionIds(req.coach);
+    res.json({
+      success: true,
+      gaps,
+      count: gaps.length,
+      earning: qualified.size,            // positions already sending CVs
+      slot: currentSlot(),
+      availability: req.coach.availability,
+    });
+  } catch (e) {
+    console.error('coach-bin/briefing-gaps error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 // GET /available — everything claimable right now, plus anything this coach holds.
@@ -965,4 +1089,6 @@ module.exports.shouldHold = shouldHold;
 module.exports.addToBin = addToBin;
 module.exports.pilotCoach = pilotCoach;
 module.exports.coachQualifies = coachQualifies;
+module.exports.briefingGaps = briefingGaps;
+module.exports.currentSlot = currentSlot;
 module.exports.pilotRoleOf = pilotRoleOf;

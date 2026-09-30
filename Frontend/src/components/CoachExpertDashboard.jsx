@@ -6,6 +6,7 @@ import Dash_Header from '../pages/Dash_Header';
 import Footer from '../pages/Footer';
 import axios from 'axios';
 import MyCertificate from './MyCertificate';
+import BriefingGaps from './BriefingGaps';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, ClipboardList, Users, DollarSign, TrendingUp, Briefcase, BarChart2, UserPlus, Inbox, AlertTriangle, X, Star, Zap, ArrowRight, Gift } from 'lucide-react';
 
@@ -100,6 +101,9 @@ const CoachExpertContentWrapper = ({ isSidebarOpen, setIsSidebarOpen }) => {
               only on the recruiter dashboard, so a certified coach had a
               certificate issued and no way to reach it. */}
           <div className="mb-6"><MyCertificate /></div>
+
+          {/* Assigned but unbriefed positions — silent unless there are some. */}
+          <BriefingGaps />
 
           {/* Welcome Banner */}
           <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl shadow-xl overflow-hidden mb-6">
