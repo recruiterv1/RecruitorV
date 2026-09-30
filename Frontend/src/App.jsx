@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import TeamRecruiterProfile from './pages/TeamRecruiterProfile';
 import MyBriefings from './pages/MyBriefings';
 import Shortlist from './pages/Shortlist';
+import MyRejections from './pages/MyRejections';
 import DuplicateCheckQueue from './pages/DuplicateCheckQueue';
 import MyAvailability from './pages/MyAvailability';
 import CoachBin from './pages/CoachBin';
@@ -419,6 +420,7 @@ const App = () => {
             <Route path='/team-profile' element={<TeamRecruiterProfile/>}/>
             <Route path='/my-briefings' element={<MyBriefings/>}/>
             <Route path='/shortlist' element={<Shortlist/>}/>
+            <Route path='/my-rejections' element={<MyRejections/>}/>
             <Route path='/duplicate-check-queue' element={<DuplicateCheckQueue/>}/>
             <Route path='/my-availability' element={<MyAvailability/>}/>
             <Route path='/coach-bin' element={<CoachBin/>}/>

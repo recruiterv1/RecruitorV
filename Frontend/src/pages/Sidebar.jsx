@@ -36,6 +36,7 @@ import {
   Clock,
   RotateCcw,
   Bookmark,
+  TrendingDown,
 } from 'lucide-react';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import { SidebarContext } from '../context/Sidebarcontext';
@@ -72,6 +73,8 @@ const buildRecruiterMenu = ({ isVendorTeam } = {}) => [
     children: [
       { icon: Users,     label: 'My Candidates',    path: '/dash_candidate' },
       { icon: UserCheck, label: 'Direct Applicants', path: '/recruiter-direct-applicants' },
+      // Why their candidates came back, grouped, with the guidance attached.
+      { icon: TrendingDown, label: 'Rejection Summary', path: '/my-rejections' },
 
     ],
   },
