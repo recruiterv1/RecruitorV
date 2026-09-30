@@ -826,10 +826,14 @@ router.get('/spoc/second-reviews', spocOnly, async (req, res) => {
 });
 
 // POST /:id/second-review/feedback { feedback, decision }
-// Either reviewer responds. 'uphold' leaves the rejection standing; 'overturn'
-// releases the candidate to the client. Only the SPOC can overturn — the
-// position is theirs, and asking the coach to reverse themselves is what the
-// recruiter already disputed.
+// Only the Client SPOC writes here. 'uphold' leaves the rejection standing;
+// 'overturn' releases the candidate to the client.
+//
+// The coach does not get a reply. Once a second review is raised, the coach has
+// already had their say — it is recorded on the candidate and shown to the
+// client — and letting them restate it turns the dispute into an argument with
+// the recruiter. The coach follows the thread read-only and sees what the
+// client decides.
 router.post('/:id/second-review/feedback', authed, async (req, res) => {
   try {
     const feedback = String(req.body?.feedback || '').trim();
@@ -846,26 +850,28 @@ router.post('/:id/second-review/feedback', authed, async (req, res) => {
     if (!d.secondReview?.status) return res.status(409).json({ success: false, message: 'No second review was requested for this candidate.' });
 
     const email = String(req.user.email || '').toLowerCase();
-    const isCoach = email === String(d.reviewedBy || '').toLowerCase();
     const isSpoc = email === String(d.clientspoc || '').toLowerCase();
-    if (!isCoach && !isSpoc) {
-      return res.status(403).json({ success: false, message: 'Only the reviewing coach or the position\'s Client SPOC can respond.' });
+    const isCoach = email === String(d.reviewedBy || '').toLowerCase();
+    // Checked in this order, so someone who is both still writes as the client.
+    if (!isSpoc) {
+      return res.status(403).json({
+        success: false,
+        message: isCoach
+          ? 'Your review is already on record. The Client SPOC decides this one — you will see their update here.'
+          : 'Only the position\'s Client SPOC can respond to a second review.',
+      });
     }
-    if (decision === 'overturn' && !isCoach && !isSpoc) {
-      return res.status(403).json({ success: false, message: 'Not permitted.' });
-    }
+    if (!decision) return res.status(400).json({ success: false, message: 'Please uphold or overturn the rejection.' });
 
     const now = new Date();
-    const patch = isCoach
-      ? { 'secondReview.coachFeedback': feedback.slice(0, 3000),
-          'secondReview.coachDecision': decision || '',
-          'secondReview.coachRespondedAt': now }
-      : { 'secondReview.spocFeedback': feedback.slice(0, 3000),
-          'secondReview.spocDecision': decision || '',
-          'secondReview.spocRespondedAt': now };
+    const patch = {
+      'secondReview.spocFeedback': feedback.slice(0, 3000),
+      'secondReview.spocDecision': decision,
+      'secondReview.spocRespondedAt': now,
+    };
 
     // The client's word settles it: their position, their decision.
-    if (isSpoc && decision) {
+    if (decision) {
       patch['secondReview.status'] = 'resolved';
       patch['secondReview.outcome'] = decision;
       patch['secondReview.resolvedAt'] = now;
@@ -873,7 +879,7 @@ router.post('/:id/second-review/feedback', authed, async (req, res) => {
     await ref.update(patch);
 
     // Overturned by the client — the candidate goes through after all.
-    if (isSpoc && decision === 'overturn') {
+    if (decision === 'overturn') {
       try {
         await db.collection('candidate_db').doc(d.candidateId).update({
           statusa: 'Submitted',
@@ -893,9 +899,8 @@ router.post('/:id/second-review/feedback', authed, async (req, res) => {
 
     res.json({
       success: true,
-      message: isSpoc && decision === 'overturn' ? 'Rejection overturned — the candidate is now with you.'
-        : isSpoc && decision === 'uphold' ? 'Rejection upheld.'
-        : 'Feedback saved.',
+      message: decision === 'overturn' ? 'Rejection overturned — the candidate is now with you.'
+        : 'Rejection upheld.',
     });
   } catch (e) {
     console.error('second-review feedback error:', e.message);

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
-import { RotateCcw, Gauge, Loader2, CheckCircle2, XCircle, MessageSquare, User } from 'lucide-react';
+import { RotateCcw, Gauge, Loader2, CheckCircle2, XCircle, MessageSquare, User, Clock } from 'lucide-react';
 import DashShell from '../components/DashShell';
 
 // Second reviews, for the two people who have to look again: the coach who
@@ -41,7 +41,7 @@ export default function SecondReviews({ as = 'coach' }) {
         <p className="text-sm text-gray-500 mb-6">
           {isSpoc
             ? 'Candidates a recruiter has asked to be reconsidered for your positions, with the coach’s original feedback.'
-            : 'Candidates you rejected that the recruiter has asked you to look at again.'}
+            : 'Candidates you rejected that a recruiter has disputed. Your review has gone to the client with the recruiter’s case; this is where their decision lands.'}
         </p>
 
         {msg && <p className={`mb-4 text-sm font-semibold ${msg.ok ? 'text-emerald-700' : 'text-red-600'}`}>{msg.text}</p>}
@@ -76,7 +76,7 @@ export default function SecondReviews({ as = 'coach' }) {
       </div>
 
       {responding && (
-        <RespondModal entry={responding} isSpoc={isSpoc} onClose={() => setResponding(null)}
+        <RespondModal entry={responding} onClose={() => setResponding(null)}
           onDone={async (t) => { setResponding(null); setMsg({ ok: true, text: t }); await load(); }} />
       )}
     </DashShell>
@@ -137,22 +137,32 @@ function Card({ r, isSpoc, onRespond }) {
           <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 flex items-center gap-1.5">
             <MessageSquare size={11} /> Second-review feedback
           </p>
+          {/* coachFeedback only exists on rows raised before the coach became
+              read-only; kept so that history still reads correctly. */}
           {r.coachFeedback && <p className="text-[12.5px] text-gray-700"><strong>Coach:</strong> {r.coachFeedback}</p>}
           {r.spocFeedback && <p className="text-[12.5px] text-gray-700"><strong>Client:</strong> {r.spocFeedback}</p>}
         </div>
       )}
 
-      {!settled && onRespond && (
+      {/* Only the client acts. The coach's review is already on record and shown
+          above; they follow this read-only and see the outcome when it lands. */}
+      {!settled && isSpoc && onRespond && (
         <button onClick={onRespond}
           className="mt-3 px-5 py-2.5 rounded-lg bg-blue-600 text-white text-[13px] font-bold">
-          {isSpoc ? 'Decide' : 'Add your view'}
+          Decide
         </button>
+      )}
+      {!settled && !isSpoc && (
+        <p className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[12.5px] font-semibold text-amber-800">
+          <Clock size={12} /> With the client — your review has been shared. Their decision will show here.
+        </p>
       )}
     </div>
   );
 }
 
-function RespondModal({ entry, isSpoc, onClose, onDone }) {
+// The client's decision screen. The coach never opens this.
+function RespondModal({ entry, onClose, onDone }) {
   const [feedback, setFeedback] = useState('');
   const [decision, setDecision] = useState('');
   const [busy, setBusy] = useState(false);
@@ -160,7 +170,7 @@ function RespondModal({ entry, isSpoc, onClose, onDone }) {
 
   const submit = async () => {
     if (!feedback.trim()) return setErr('Feedback is required.');
-    if (isSpoc && !decision) return setErr('Please uphold or overturn the rejection.');
+    if (!decision) return setErr('Please uphold or overturn the rejection.');
     setBusy(true); setErr('');
     try {
       const r = await axios.post(`/api/coach-bin/${entry.id}/second-review/feedback`,
@@ -178,8 +188,7 @@ function RespondModal({ entry, isSpoc, onClose, onDone }) {
           <p className="text-[13px] text-gray-500">{entry.positionTitle} · {entry.client}</p>
         </div>
         <div className="p-5 space-y-3.5">
-          {isSpoc && (
-            <div className="flex gap-2">
+          <div className="flex gap-2">
               {[['overturn', 'Overturn — send through', CheckCircle2, true], ['uphold', 'Uphold the rejection', XCircle, false]].map(([v, label, Icon, good]) => (
                 <button key={v} onClick={() => setDecision(v)}
                   className={`flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[12.5px] font-bold border-2 ${
@@ -189,31 +198,22 @@ function RespondModal({ entry, isSpoc, onClose, onDone }) {
                   <Icon size={14} /> {label}
                 </button>
               ))}
-            </div>
-          )}
+          </div>
           <div>
             <label className="text-[12.5px] font-bold text-gray-700">
               Your feedback <span className="text-red-500">*</span>
             </label>
             <textarea rows={4} value={feedback} onChange={e => setFeedback(e.target.value)}
               className="w-full mt-1 px-3 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:border-blue-500 outline-none"
-              placeholder={isSpoc
-                ? 'What you make of the coach’s reasoning and the recruiter’s points'
-                : 'Your view on the points the recruiter has raised'} />
+              placeholder="What you make of the coach’s reasoning and the recruiter’s points" />
           </div>
-          {!isSpoc && (
-            <p className="text-[12px] text-gray-500">
-              The client decides the outcome for this position — your view goes to them alongside
-              the recruiter's.
-            </p>
-          )}
           {err && <p className="text-[13px] font-semibold text-red-600">{err}</p>}
         </div>
         <div className="px-5 py-4 border-t border-gray-100 flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2.5 rounded-xl border-2 border-gray-200 text-gray-700 text-[13px] font-bold">Cancel</button>
           <button onClick={submit} disabled={busy}
             className="px-6 py-2.5 rounded-xl bg-blue-600 text-white text-[13px] font-bold disabled:opacity-60">
-            {busy ? 'Saving…' : isSpoc ? 'Submit decision' : 'Submit feedback'}
+            {busy ? 'Saving…' : 'Submit decision'}
           </button>
         </div>
       </div>
