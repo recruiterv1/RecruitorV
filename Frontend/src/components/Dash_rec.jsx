@@ -147,7 +147,7 @@ const SidebarContentWrapper = ({ isSidebarOpen, setIsSidebarOpen }) => {
                         <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
                           <p className="text-xs text-white/70">Positions Used</p>
                           <p className="text-lg font-bold text-white">
-                            {planInfo?.currentPositionCount || 0} / {user?.maxPositions || 2}
+                            {planInfo?.currentPositionCount || 0} / {user?.maxPositions || planInfo?.maxPositions || 4}
                           </p>
                         </div>
                         <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
@@ -198,7 +198,7 @@ const SidebarContentWrapper = ({ isSidebarOpen, setIsSidebarOpen }) => {
                         Free Plan Active
                       </h3>
                       <p className="text-sm sm:text-base text-white/90 mb-4">
-                        You're on the Free Plan. You can work on only {user?.maxPositions || 2} position(s).
+                        You're on the Free Plan. You can work on only {user?.maxPositions || planInfo?.maxPositions || 4} position(s).
                       </p>
                       
                       {/* Stats */}
@@ -206,15 +206,22 @@ const SidebarContentWrapper = ({ isSidebarOpen, setIsSidebarOpen }) => {
                         <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
                           <p className="text-xs text-white/70">Positions Used</p>
                           <p className="text-lg font-bold text-white">
-                            {planInfo?.currentPositionCount || 0} / {user?.maxPositions || 2}
+                            {planInfo?.currentPositionCount || 0} / {user?.maxPositions || planInfo?.maxPositions || 4}
                           </p>
                         </div>
-                        <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
-                          <p className="text-xs text-white/70">Days Remaining</p>
-                          <p className="text-lg font-bold text-white">
-                            {planInfo?.daysRemaining || 0} days
-                          </p>
-                        </div>
+                        {/* There is no time limit on the free plan — checkPlanLimits
+                            says so outright and never returns daysRemaining, so this
+                            tile read "0 days" for every free recruiter and made a
+                            working account look expired. Shown only if a real
+                            countdown ever arrives. */}
+                        {planInfo?.daysRemaining > 0 && (
+                          <div className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
+                            <p className="text-xs text-white/70">Days Remaining</p>
+                            <p className="text-lg font-bold text-white">
+                              {planInfo.daysRemaining} days
+                            </p>
+                          </div>
+                        )}
                       </div>
                       
                       {/* Action Button */}
