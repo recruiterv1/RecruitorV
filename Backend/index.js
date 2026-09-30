@@ -538,11 +538,20 @@ exports.warmResumeBankIndex = onSchedule(
     timeoutSeconds: 300,
   },
   async () => {
-    const [bank, all] = await Promise.all([
+    const { db } = require('./router/firebase_ad');
+    const [bank, all, pool, rejPool] = await Promise.all([
       require('./router/resumeBank').warmIndex(),
       require('./router/candidateIndex').allCandidates(),
+      // The scoring pool behind "suggested for your positions". Reading it takes
+      // minutes, so it is never read inside a request — a page meets a warm one
+      // or it does not load at all.
+      require('./utils/resumeBankMatch').getAvailablePool(db),
+      // Behind dash_view's Matching Candidates tab — read on every open until now.
+      require('./utils/resumeBankMatch').getRejectedPool(db),
     ]);
-    console.log('🔎 Indexes warm — resume bank:', bank.length, '| candidate tables:', all.length);
+    console.log('🔎 Indexes warm — resume bank:', bank.length,
+      '| candidate tables:', all.length, '| scoring pool:', pool.length,
+      '| rejected pool:', rejPool.length);
   }
 );
 

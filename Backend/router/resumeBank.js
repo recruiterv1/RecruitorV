@@ -406,6 +406,88 @@ router.get('/filters', authed, async (req, res) => {
 });
 
 
+
+// GET /suggested — who in the bank is worth this recruiter's time right now.
+//
+// The bank opened on an empty page waiting for a search, which asks the
+// recruiter to guess what is in it. They already have positions and skill
+// categories on file, so the page can answer first and be searched second.
+//
+// Scored against their own live positions, and each candidate is kept once
+// under the position they fit best. A recruiter with no positions yet falls
+// back to their skill categories, because that is the case where an empty page
+// is least helpful of all.
+router.get('/suggested', authed, async (req, res) => {
+  try {
+    const email = lc(req.user.email);
+    const minScore = Math.min(Math.max(parseInt(req.query.minScore, 10) || 45, 1), 100);
+    // Thirty is the page, not a slice of something larger. Scoring the whole
+    // pool against every position is the expensive part and it does not get
+    // cheaper by asking for more.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 30, 1), 30);
+
+    const positions = await myActivePositions(email);
+    const { getMatchingCandidates } = require('../utils/resumeBankMatch');
+
+    // Scoring thirty thousand candidates against ten positions takes tens of
+    // seconds even with the pool warm, so a recruiter pays for it once and
+    // every reload for the next quarter hour is instant. Their positions do
+    // not change minute to minute.
+    const compute = async () => {
+    const best = new Map();
+    for (const pos of positions) {
+      // Already excludes anyone submitted to that position, so nothing is
+      // suggested that would be rejected as a duplicate on submit.
+      const hits = await getMatchingCandidates(db, pos, minScore);
+      for (const h of hits) {
+        const seen = best.get(h.id);
+        // getMatchingCandidates calls it matchPercent.
+        if (seen && seen.matchPercent >= h.matchPercent) continue;
+        best.set(h.id, {
+          ...h,
+          forPosition: { pos_id: pos.pos_id, position: pos.position, client: pos.client },
+        });
+      }
+    }
+
+    return [...best.values()].sort((a, b) => b.matchPercent - a.matchPercent).slice(0, limit);
+    };
+
+    let rows = await cached(`rb_suggested:${email}:${minScore}:${limit}`, 15 * 60 * 1000, compute);
+    let basis = 'positions';
+
+    if (!rows.length) {
+      // No positions, or nothing scored above the bar — fall back to the
+      // categories they work in, which is still better than a blank page.
+      const snap = await db.collection('recruiter_db').where('email', '==', email).limit(1).get();
+      const cats = snap.empty ? [] : (Array.isArray(snap.docs[0].data().skillCategory)
+        ? snap.docs[0].data().skillCategory : [snap.docs[0].data().skillCategory]).filter(Boolean).map(lc);
+      if (cats.length) {
+        const all = await getIndex();
+        rows = all
+          .filter(r => r.available && r.hasCv
+            && cats.includes(lc(r.tech_category || r.nontech_category || r.skillCategory)))
+          .sort((a, b) => b.at - a.at)
+          .slice(0, limit)
+          .map(({ haystack, expY, noticeD, ...rest }) => rest);
+        basis = 'categories';
+      }
+    }
+
+    res.json({
+      success: true,
+      rows,
+      basis,                      // positions | categories | none
+      count: rows.length,
+      positions: positions.map(p => ({ pos_id: p.pos_id, position: p.position, client: p.client })),
+      minScore,
+    });
+  } catch (e) {
+    console.error('resume-bank/suggested error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 /* ── Shortlist ────────────────────────────────────────────────────────────────
  *
  * A recruiter reading the bank finds someone worth keeping and has nowhere to
@@ -419,6 +501,11 @@ router.get('/filters', authed, async (req, res) => {
  */
 
 const SHORTLIST = () => db.collection('resume_bank_shortlist');
+
+// A shortlist is a working set for today, not a folder that fills up. Anything
+// kept for four hours and not acted on drops off, so the page always reads as
+// "who am I working right now" rather than a backlog nobody revisits.
+const SHORTLIST_HOURS = 4;
 const shortlistId = (email, candidateId) => `${String(email).replace(/[.]/g, '_')}__${candidateId}`;
 
 // The recruiter's own live positions, with the full record the matcher needs —
@@ -475,7 +562,11 @@ router.delete('/shortlist/:candidateId', authed, async (req, res) => {
 router.get('/shortlist/ids', authed, async (req, res) => {
   try {
     const snap = await SHORTLIST().where('recruiterEmail', '==', lc(req.user.email)).get();
-    res.json({ success: true, ids: snap.docs.map(d => d.data().candidateId) });
+    const cutoff = Date.now() - SHORTLIST_HOURS * 3600 * 1000;
+    res.json({
+      success: true,
+      ids: snap.docs.filter(d => msOf(d.data().addedAt) >= cutoff).map(d => d.data().candidateId),
+    });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }
@@ -490,10 +581,20 @@ router.get('/shortlist', authed, async (req, res) => {
       SHORTLIST().where('recruiterEmail', '==', email).get(),
       myActivePositions(email),
     ]);
-    const kept = snap.docs.map(d => d.data())
+
+    // Expired entries are cleared on the way past rather than by a sweep, so
+    // what the page shows and what the database holds never disagree.
+    const cutoff = Date.now() - SHORTLIST_HOURS * 3600 * 1000;
+    const live = snap.docs.filter(d => msOf(d.data().addedAt) >= cutoff);
+    const stale = snap.docs.filter(d => msOf(d.data().addedAt) < cutoff);
+    if (stale.length) {
+      await Promise.all(stale.map(d => d.ref.delete().catch(() => {})));
+    }
+
+    const kept = live.map(d => d.data())
       .sort((a, b) => msOf(b.addedAt) - msOf(a.addedAt));
     if (!kept.length) {
-      return res.json({ success: true, rows: [], positions: [], count: 0 });
+      return res.json({ success: true, rows: [], positions: [], count: 0, holdHours: SHORTLIST_HOURS });
     }
 
     const { buildJd, prepCandidate, scoreWithReason } = require('../utils/resumeBankMatch');
@@ -540,6 +641,8 @@ router.get('/shortlist', authed, async (req, res) => {
         cv_data: c.cv_data || '',
         note: k.note || '',
         addedAt: k.addedAt || null,
+        // What is left of the four hours, so the card can say so.
+        msLeft: Math.max(0, msOf(k.addedAt) + SHORTLIST_HOURS * 3600 * 1000 - Date.now()),
         best: matches[0] || null,
         matches: matches.slice(0, 5),
       };
@@ -550,6 +653,7 @@ router.get('/shortlist', authed, async (req, res) => {
       rows,
       count: rows.length,
       positions: positions.map(p => ({ pos_id: p.pos_id, position: p.position, client: p.client })),
+      holdHours: SHORTLIST_HOURS,
     });
   } catch (e) {
     console.error('resume-bank/shortlist error:', e.message);

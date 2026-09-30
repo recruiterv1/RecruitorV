@@ -17,6 +17,19 @@ const AllCandidates = () => {
   // the moment the list renders rather than after a second round trip.
   const [shortlisted, setShortlisted] = useState(new Set());
 
+  // Who is worth this recruiter's time before they have typed anything. Scored
+  // against their own positions, which takes a moment, so it loads beside the
+  // page rather than holding it up.
+  const [suggested, setSuggested] = useState(null);
+  const [suggesting, setSuggesting] = useState(true);
+
+  useEffect(() => {
+    axios.get('/api/resume-bank/suggested?limit=30', { withCredentials: true })
+      .then(r => { if (r.data?.success) setSuggested(r.data); })
+      .catch(() => {})
+      .finally(() => setSuggesting(false));
+  }, []);
+
   useEffect(() => {
     axios.get('/api/resume-bank/shortlist/ids', { withCredentials: true })
       .then(r => { if (r.data?.success) setShortlisted(new Set(r.data.ids || [])); })
@@ -343,12 +356,71 @@ const AllCandidates = () => {
 
         {/* Cards */}
         <div className="p-4 sm:p-6">
+          {/* Nothing asked for yet: answer first, and be searched second. A blank
+              page asks the recruiter to guess what is in a bank of 27,000. */}
           {!search.trim() ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-              <Search size={48} className="mb-4 opacity-30" />
-              <p className="text-lg font-semibold text-gray-500">Search to find candidates</p>
-              <p className="text-sm mt-1">Use multiple keywords separated by comma or space — e.g. <span className="font-medium text-gray-500">React, 7yr, Mumbai</span></p>
-            </div>
+            suggesting ? (
+              <div className="py-20 grid place-items-center text-gray-400">
+                <Loader2 size={28} className="animate-spin" />
+                <p className="text-sm mt-3">Matching the bank against your positions…</p>
+              </div>
+            ) : suggested?.rows?.length ? (
+              <>
+                <div className="mb-4">
+                  <p className="text-[15px] font-bold text-gray-900">
+                    {suggested.basis === 'positions'
+                      ? 'Best matches for your positions'
+                      : 'Recent candidates in your skill categories'}
+                  </p>
+                  <p className="text-[13px] text-gray-500">
+                    {suggested.basis === 'positions'
+                      ? `Top ${suggested.rows.length} from the bank, scored against the ${suggested.positions.length} position${suggested.positions.length === 1 ? '' : 's'} you hold. Search above to look wider.`
+                      : 'You have no live positions yet, so these are the newest candidates in the categories you work. Search above to look wider.'}
+                  </p>
+                </div>
+                <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {suggested.rows.map(c => (
+                    <div key={c.id} onClick={() => setDetail(c)}
+                      className="bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-md hover:border-blue-300 transition cursor-pointer">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 truncate">{c.candidate || '—'}</p>
+                          <p className="text-[12px] text-gray-500 truncate">{c.curr_loc || '—'}{c.total_exp ? ` · ${c.total_exp}` : ''}</p>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {c.matchPercent != null && (
+                            <span className={`text-[12px] font-bold px-2 py-0.5 rounded ${
+                              c.matchPercent >= 75 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                              {c.matchPercent}%
+                            </span>
+                          )}
+                          <button onClick={(e) => { e.stopPropagation(); toggleShortlist(c); }}
+                            title={shortlisted.has(c.id) ? 'Remove from shortlist' : 'Shortlist this candidate'}
+                            className={`p-1 rounded ${shortlisted.has(c.id) ? 'text-blue-600' : 'text-gray-300 hover:text-blue-500'}`}>
+                            <Bookmark size={14} fill={shortlisted.has(c.id) ? 'currentColor' : 'none'} />
+                          </button>
+                        </div>
+                      </div>
+                      {/* Which position, and on the strength of what. */}
+                      {c.forPosition && (
+                        <p className="mt-2 text-[12px] text-gray-600 truncate">
+                          for <span className="font-semibold">{c.forPosition.position}</span>
+                        </p>
+                      )}
+                      {c.matched?.length > 0 && (
+                        <p className="mt-1 text-[11.5px] text-gray-500 line-clamp-2">{c.matched.slice(0, 8).join(' · ')}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                <Search size={48} className="mb-4 opacity-30" />
+                <p className="text-lg font-semibold text-gray-500">Search to find candidates</p>
+                <p className="text-sm mt-1">Describe who you need — e.g. <span className="font-medium text-gray-500">Java, Mumbai, 5-10 year, 1month notice</span></p>
+              </div>
+            )
           ) : loading ? (
             <div className="py-20 grid place-items-center text-gray-400"><Loader2 size={28} className="animate-spin" /></div>
           ) : rows.length === 0 ? (

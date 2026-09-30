@@ -15,13 +15,18 @@ export default function Shortlist() {
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [open, setOpen] = useState(null);       // candidateId whose breakdown is showing
+  const [holdHours, setHoldHours] = useState(4);
   const [submitCtx, setSubmitCtx] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await axios.get('/api/resume-bank/shortlist', { withCredentials: true });
-      if (r.data?.success) { setRows(r.data.rows || []); setPositions(r.data.positions || []); }
+      if (r.data?.success) {
+        setRows(r.data.rows || []);
+        setPositions(r.data.positions || []);
+        if (r.data.holdHours) setHoldHours(r.data.holdHours);
+      }
     } catch (e) { setMsg(e?.response?.data?.message || 'Could not load your shortlist.'); }
     finally { setLoading(false); }
   }, []);
@@ -49,6 +54,7 @@ export default function Shortlist() {
         <p className="text-sm text-gray-500 mb-6">
           Candidates you kept from the Resume Bank, scored against your own live positions.
           {positions.length > 0 && ` Matching against ${positions.length} position${positions.length === 1 ? '' : 's'} assigned to you.`}
+          {' '}A shortlist is a working set for today — anything kept for {holdHours} hours drops off.
         </p>
 
         {msg && <p className="mb-4 text-sm font-semibold text-red-600">{msg}</p>}
@@ -63,7 +69,8 @@ export default function Shortlist() {
             <p className="font-semibold text-gray-700">Nothing shortlisted yet</p>
             <p className="text-[13px] text-gray-500 mt-1">
               Open the Resume Bank and use Shortlist on anyone worth keeping. They land here,
-              matched to the positions you are working on.
+              matched to the positions you are working on, and drop off after {holdHours} hours
+              so this stays a list for today rather than a backlog.
             </p>
           </div>
         ) : (
@@ -90,6 +97,14 @@ export default function Shortlist() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {r.msLeft != null && (
+                      <span title="Time left before this drops off your shortlist"
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11.5px] font-semibold ${
+                          r.msLeft < 30 * 60 * 1000 ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}`}>
+                        <Clock size={11} />
+                        {Math.floor(r.msLeft / 3600000)}h {Math.floor((r.msLeft % 3600000) / 60000)}m
+                      </span>
+                    )}
                     {r.cv_data && (
                       <a href={r.cv_data} target="_blank" rel="noreferrer"
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 text-[12px] font-semibold text-gray-700 hover:bg-gray-50">

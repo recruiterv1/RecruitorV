@@ -1373,8 +1373,30 @@ router.get('/pos/:pos_id/matching-bank', authMiddleware, async (req, res) => {
     if (posSnap.empty) return res.status(404).json({ success: false, message: 'Position not found' });
     const position = posSnap.docs[0].data();
     const threshold = Math.min(100, Math.max(0, Number(req.query.threshold) || 75));
-    const candidates = await getMatchingCandidates(db, position, threshold);
-    res.json({ success: true, candidates, threshold });
+
+    // Scoring the whole available pool against this JD is the slow part, and it
+    // ran again on every open of the tab. The result only changes when the pool
+    // or the JD does, so it is held for a few minutes and the second look is
+    // instant.
+    const { cached } = require('../utils/cache');
+    const all = await cached(`matching_bank:${pos_id}:${threshold}`, 10 * 60 * 1000,
+      () => getMatchingCandidates(db, position, threshold));
+
+    // Paginated, so a position matching hundreds of people does not send them
+    // all to the browser to render at once.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const start = (page - 1) * limit;
+
+    res.json({
+      success: true,
+      candidates: all.slice(start, start + limit),
+      total: all.length,
+      page,
+      limit,
+      pages: Math.max(1, Math.ceil(all.length / limit)),
+      threshold,
+    });
   } catch (err) {
     console.error('matching-bank error:', err.message);
     res.status(500).json({ success: false, message: err.message });
@@ -1394,8 +1416,24 @@ router.get('/pos/:pos_id/matching-rejected', authMiddleware, async (req, res) =>
     if (posSnap.empty) return res.status(404).json({ success: false, message: 'Position not found' });
     const position = posSnap.docs[0].data();
     const threshold = Math.min(100, Math.max(0, Number(req.query.threshold) || 70));
-    const candidates = await getMatchingRejectedCandidates(db, position, threshold);
-    res.json({ success: true, candidates, threshold });
+
+    const { cached } = require('../utils/cache');
+    const all = await cached(`matching_rejected:${pos_id}:${threshold}`, 10 * 60 * 1000,
+      () => getMatchingRejectedCandidates(db, position, threshold));
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const start = (page - 1) * limit;
+
+    res.json({
+      success: true,
+      candidates: all.slice(start, start + limit),
+      total: all.length,
+      page,
+      limit,
+      pages: Math.max(1, Math.ceil(all.length / limit)),
+      threshold,
+    });
   } catch (err) {
     console.error('matching-rejected error:', err.message);
     res.status(500).json({ success: false, message: err.message });

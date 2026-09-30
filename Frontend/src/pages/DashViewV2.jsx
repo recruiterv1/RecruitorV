@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useContext, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useContext, useRef, useCallback } from 'react';
 import CertifiedBadge from '../components/CertifiedBadge';
 import axios from 'axios';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
@@ -502,16 +502,33 @@ function DashViewV2Inner() {
   // ── Matching Candidates: rejected candidates in the system matching this JD ≥70 ──
   const [matchCands, setMatchCands] = useState(null);   // null = not loaded yet
   const [matchLoading, setMatchLoading] = useState(false);
+  const [matchTotal, setMatchTotal] = useState(0);
+  const [matchPage, setMatchPage] = useState(1);
+  const [matchMore, setMatchMore] = useState(false);
+
+  // A page at a time. Scoring the whole pool against this JD is cached on the
+  // server, so only the first open is slow; sending every match at once was
+  // making the browser render hundreds of cards nobody scrolls to.
+  const loadMatches = useCallback(async (page) => {
+    if (!pos_id) return;
+    page === 1 ? setMatchLoading(true) : setMatchMore(true);
+    try {
+      const r = await axios.get(`/candidate/pos/${pos_id}/matching-rejected`, {
+        params: { page, limit: 24 }, withCredentials: true,
+      });
+      const batch = r.data?.candidates || [];
+      setMatchCands(prev => (page === 1 || !prev ? batch : [...prev, ...batch]));
+      setMatchTotal(r.data?.total ?? batch.length);
+      setMatchPage(page);
+    } catch {
+      if (page === 1) setMatchCands([]);
+    } finally { setMatchLoading(false); setMatchMore(false); }
+  }, [pos_id]);
+
   useEffect(() => {
     if (view !== 'match' || matchCands !== null || !pos_id) return;
-    let live = true;
-    setMatchLoading(true);
-    axios.get(`/candidate/pos/${pos_id}/matching-rejected`, { withCredentials: true })
-      .then(r => { if (live) setMatchCands(r.data?.candidates || []); })
-      .catch(() => { if (live) setMatchCands([]); })
-      .finally(() => { if (live) setMatchLoading(false); });
-    return () => { live = false; };
-  }, [view, pos_id, matchCands]);
+    loadMatches(1);
+  }, [view, pos_id, matchCands, loadMatches]);
 
   // "Use Candidate" — load a matching candidate's full record into the submit form
   // (incl. CV + photo), switch to the form, and let the recruiter edit + submit.
@@ -1949,6 +1966,10 @@ function DashViewV2Inner() {
             ) : !matchCands || matchCands.length === 0 ? (
               <div className="side-block">No rejected candidates match this position at 70%+ yet.</div>
             ) : (
+              <>
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 8 }}>
+                Showing {matchCands.length} of {matchTotal}, best match first
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(260px,1fr))', gap: 12, marginTop: 12 }}>
                 {matchCands.map(c => (
                   <div key={c.id} style={{ border: '1px solid #e5e7eb', borderRadius: 12, padding: 14, background: '#fff' }}>
@@ -1984,6 +2005,16 @@ function DashViewV2Inner() {
                   </div>
                 ))}
               </div>
+              {matchCands.length < matchTotal && (
+                <div style={{ textAlign: 'center', marginTop: 14 }}>
+                  <button onClick={() => loadMatches(matchPage + 1)} disabled={matchMore}
+                    style={{ padding: '9px 20px', borderRadius: 9, border: '1px solid #d1d5db', background: '#fff',
+                             fontWeight: 700, fontSize: 13, cursor: matchMore ? 'default' : 'pointer', opacity: matchMore ? .6 : 1 }}>
+                    {matchMore ? 'Loading…' : `Show more (${matchTotal - matchCands.length} left)`}
+                  </button>
+                </div>
+              )}
+              </>
             )}
           </div>
         </div>

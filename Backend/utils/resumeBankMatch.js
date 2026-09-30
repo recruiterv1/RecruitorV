@@ -125,13 +125,16 @@ let _posCache = { t: 0, set: null };
 let _poolCache = { t: 0, data: null };
 let _preppedCache = { t: 0, preps: null };   // prepCandidate(pool), reused across scoring
 let _countsCache = new Map();                  // posIdsKey -> { t, counts }
-const TTL = 5 * 60 * 1000;
+// Longer than the warmer's interval, or the pool expires between runs and the
+// next request pays for a multi-minute read it cannot afford.
+const TTL = 20 * 60 * 1000;
 const COUNTS_TTL = 90 * 1000;
 
 // Force the next read to refetch — call after writes that change the pool
 // (candidate edit, submit-from-bank, bulk resume save) so counts/lists are fresh.
 function invalidateCache() {
   _poolCache = { t: 0, data: null };
+  _rejCache = { t: 0, data: null };
   _posCache = { t: 0, set: null };
   _preppedCache = { t: 0, preps: null };
   _countsCache.clear();
@@ -268,28 +271,57 @@ const isRejectedStatus = (statusa) => {
 
 // Rejected candidates (any position) that match this JD >= threshold. Deduped by
 // email/phone, keeping the highest-scoring record. Returns cards incl. statusa.
+// The rejected pool, read once and kept.
+//
+// This used to be read inside getMatchingRejectedCandidates on every single
+// call — a full-collection scan including the match blobs, about a minute and a
+// half of it, every time anyone opened the Matching Candidates tab. Nothing
+// about it changes between two clicks.
+let _rejCache = { t: 0, data: null };
+let _rejInflight = null;
+
+async function getRejectedPool(db) {
+  if (_rejCache.data && (Date.now() - _rejCache.t) < TTL) return _rejCache.data;
+  // Several people opening the tab at once must not each start their own scan.
+  if (_rejInflight) return _rejInflight;
+  _rejInflight = (async () => {
+    try {
+      const snap = await db.collection('candidate_db')
+        .select('skillsText', 'skillCategory', 'candidate', 'skills', 'statusa',
+                'pos_id', 'pos_name', 'cv_data', 'cv_url', 'emails', 'mob', 'curr_loc', 'total_exp', 'rel_exp', 'source', 'matchTokens')
+        .get();
+      const data = [];
+      snap.docs.forEach(d => {
+        const c = d.data();
+        if (c.source === 'clientspoc_bulk') return;
+        if (!(c.cv_data || c.cv_url)) return;
+        if (!isRejectedStatus(c.statusa)) return;
+        // Tokenised once here, not once per position per open.
+        data.push({ id: d.id, ...c, _prep: prepCandidate(c) });
+      });
+      _rejCache = { t: Date.now(), data };
+      return data;
+    } finally { _rejInflight = null; }
+  })();
+  return _rejInflight;
+}
+
 async function getMatchingRejectedCandidates(db, position, threshold = 70) {
   const jd = buildJd(position);
   if (jd.totalW < 6) return [];
 
-  const snap = await db.collection('candidate_db')
-    .select('skillsText', 'skillCategory', 'candidate', 'skills', 'statusa',
-            'pos_id', 'pos_name', 'cv_data', 'cv_url', 'emails', 'mob', 'curr_loc', 'total_exp', 'rel_exp', 'source', 'matchTokens')
-    .get();
+  const pool = await getRejectedPool(db);
 
   const best = new Map();   // dedupe key -> card
-  snap.docs.forEach(d => {
-    const c = d.data();
-    if (c.source === 'clientspoc_bulk') return;
-    if (!(c.cv_data || c.cv_url)) return;
-    if (!isRejectedStatus(c.statusa)) return;
-    const { score: s, matched, missing } = scoreWithReason(jd, prepCandidate(c));
+  pool.forEach(d => {
+    const c = d;
+    const { score: s, matched, missing } = scoreWithReason(jd, c._prep);
     if (s < threshold) return;
-    const key = lc(c.emails) || (c.mob || '').toString().replace(/\D/g, '') || d.id;
+    const key = lc(c.emails) || (c.mob || '').toString().replace(/\D/g, '') || c.id;
     const prev = best.get(key);
     if (prev && prev.matchPercent >= s) return;
     best.set(key, {
-      id: d.id,
+      id: c.id,
       candidate: c.candidate || '',
       emails: c.emails || '',
       mob: c.mob || '',
@@ -309,5 +341,5 @@ async function getMatchingRejectedCandidates(db, position, threshold = 70) {
 module.exports = {
   buildJd, prepCandidate, score, scoreWithReason, computeMatchTokens,
   getAvailablePool, getActivePosIds, getMatchingCandidates, getMatchingRejectedCandidates,
-  resumeBankMatchCounts, invalidateCache, TERMINAL_STATUSES, isActivePos,
+  resumeBankMatchCounts, invalidateCache, TERMINAL_STATUSES, isActivePos, getRejectedPool,
 };
