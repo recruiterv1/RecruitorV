@@ -405,5 +405,157 @@ router.get('/filters', authed, async (req, res) => {
   }
 });
 
+
+/* ── Shortlist ────────────────────────────────────────────────────────────────
+ *
+ * A recruiter reading the bank finds someone worth keeping and has nowhere to
+ * put them, so the good ones are lost between sessions. Shortlisting sets them
+ * aside; the shortlist page then does the part that is actually hard — working
+ * out which of that recruiter's own live positions each person fits, how well,
+ * and on the strength of what.
+ *
+ * Only positions approved to this recruiter and still active are considered. A
+ * score against a position they cannot work is noise.
+ */
+
+const SHORTLIST = () => db.collection('resume_bank_shortlist');
+const shortlistId = (email, candidateId) => `${String(email).replace(/[.]/g, '_')}__${candidateId}`;
+
+// The recruiter's own live positions, with the full record the matcher needs —
+// the assignment row carries a title but not the requirement text.
+const myActivePositions = async (email) => {
+  const positionAccess = require('../model_fire/positionAccessF');
+  const assignments = await positionAccess.getRecruiterAssignments(email);
+  if (!assignments.length) return [];
+
+  const ids = [...new Set(assignments.map(a => String(a.positionId)))];
+  const docs = await Promise.all(ids.map(id =>
+    db.collection('admin_AddPos').where('pos_id', '==', id).limit(1).get()));
+
+  const { isActivePos } = require('../utils/resumeBankMatch');
+  return docs.map(d => (d.empty ? null : d.docs[0].data()))
+    .filter(p => p && isActivePos(p.status));
+};
+
+// POST /shortlist/:candidateId — keep this person.
+router.post('/shortlist/:candidateId', authed, async (req, res) => {
+  try {
+    const email = lc(req.user.email);
+    const doc = await db.collection('candidate_db').doc(req.params.candidateId).get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: 'Candidate not found.' });
+    const c = doc.data();
+    await SHORTLIST().doc(shortlistId(email, req.params.candidateId)).set({
+      recruiterEmail: email,
+      candidateId: req.params.candidateId,
+      // Enough to list them if the candidate record is later archived.
+      candidateName: c.candidate || '',
+      emails: c.emails || '',
+      note: String(req.body?.note || '').slice(0, 500),
+      addedAt: new Date(),
+    }, { merge: true });
+    res.json({ success: true, message: 'Added to your shortlist.' });
+  } catch (e) {
+    console.error('resume-bank/shortlist add error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// DELETE /shortlist/:candidateId
+router.delete('/shortlist/:candidateId', authed, async (req, res) => {
+  try {
+    await SHORTLIST().doc(shortlistId(lc(req.user.email), req.params.candidateId)).delete();
+    res.json({ success: true, message: 'Removed from your shortlist.' });
+  } catch (e) {
+    console.error('resume-bank/shortlist remove error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /shortlist/ids — which of these are already kept, for the bank's buttons.
+router.get('/shortlist/ids', authed, async (req, res) => {
+  try {
+    const snap = await SHORTLIST().where('recruiterEmail', '==', lc(req.user.email)).get();
+    res.json({ success: true, ids: snap.docs.map(d => d.data().candidateId) });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// GET /shortlist — the page: everyone kept, each against the best of this
+// recruiter's live positions, with the reason for the score.
+router.get('/shortlist', authed, async (req, res) => {
+  try {
+    const email = lc(req.user.email);
+    const [snap, positions] = await Promise.all([
+      SHORTLIST().where('recruiterEmail', '==', email).get(),
+      myActivePositions(email),
+    ]);
+    const kept = snap.docs.map(d => d.data())
+      .sort((a, b) => msOf(b.addedAt) - msOf(a.addedAt));
+    if (!kept.length) {
+      return res.json({ success: true, rows: [], positions: [], count: 0 });
+    }
+
+    const { buildJd, prepCandidate, scoreWithReason } = require('../utils/resumeBankMatch');
+    // Built once per position, not once per candidate per position.
+    const jds = positions.map(p => ({ pos: p, jd: buildJd(p) })).filter(x => x.jd.totalW);
+
+    // The scorer reads the CV blob, which the search index deliberately leaves
+    // out — so the shortlist fetches it for these few, not for thirty thousand.
+    const cands = await Promise.all(kept.map(k =>
+      db.collection('candidate_db').doc(k.candidateId).get()));
+
+    const rows = kept.map((k, i) => {
+      const doc = cands[i];
+      if (!doc.exists) return { ...k, missing: true, matches: [] };
+      const c = doc.data();
+      const prep = prepCandidate(c);
+
+      const matches = jds.map(({ pos, jd }) => {
+        const r = scoreWithReason(jd, prep);
+        return {
+          pos_id: pos.pos_id,
+          position: pos.position,
+          client: pos.client,
+          // Carried so submitting from here needs no second lookup.
+          clientspoc: pos.clientspoc || '',
+          hr_name: pos.hr_name || '',
+          score: r.score,
+          // The words that earned the score, and the ones that did not — a
+          // number on its own tells a recruiter nothing they can act on.
+          matched: r.matched.slice(0, 12),
+          missing: r.missing.slice(0, 8),
+        };
+      }).sort((a, b) => b.score - a.score);
+
+      return {
+        candidateId: k.candidateId,
+        candidate: c.candidate || k.candidateName || '',
+        emails: c.emails || k.emails || '',
+        mob: c.mob || '',
+        curr_loc: c.curr_loc || '',
+        total_exp: c.total_exp || '',
+        notice_period: c.notice_period || '',
+        skillsText: c.skillsText || '',
+        cv_data: c.cv_data || '',
+        note: k.note || '',
+        addedAt: k.addedAt || null,
+        best: matches[0] || null,
+        matches: matches.slice(0, 5),
+      };
+    });
+
+    res.json({
+      success: true,
+      rows,
+      count: rows.length,
+      positions: positions.map(p => ({ pos_id: p.pos_id, position: p.position, client: p.client })),
+    });
+  } catch (e) {
+    console.error('resume-bank/shortlist error:', e.message);
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
 module.exports = router;
 module.exports.warmIndex = getIndex;

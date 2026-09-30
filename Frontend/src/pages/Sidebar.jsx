@@ -35,6 +35,7 @@ import {
   Bell,
   Clock,
   RotateCcw,
+  Bookmark,
 } from 'lucide-react';
 import { UserStateContext, UserDispatchContext } from '../context/AuthPro';
 import { SidebarContext } from '../context/Sidebarcontext';
@@ -54,7 +55,17 @@ const buildRecruiterMenu = ({ isVendorTeam } = {}) => [
       { icon: Lock,        label: 'Release Position',   path: '/my-access-requests' },
     ],
   },
-  { icon: BookOpen, label: 'Resume Bank', path: '/all-candidates' },
+  {
+    icon: BookOpen,
+    label: 'Resume Bank',
+    path: '/all-candidates',
+    children: [
+      { icon: BookOpen, label: 'Search the bank', path: '/all-candidates' },
+      // Candidates kept from the bank, scored against this recruiter's own
+      // live positions — so it sits under the bank rather than on its own.
+      { icon: Bookmark, label: 'My Shortlist',    path: '/shortlist' },
+    ],
+  },
   {
     icon: Users,
     label: 'Candidates',

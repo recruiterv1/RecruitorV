@@ -1,6 +1,6 @@
 import axios from 'axios';
 import React, { useState, useEffect, useMemo } from 'react';
-import { Users, TrendingUp, Eye, Phone, MapPin, Calendar, Filter, X, RotateCcw, Search, Mail, FileText, ChevronLeft, ChevronRight, Loader2, Briefcase, CheckCircle } from 'lucide-react';
+import { Users, TrendingUp, Eye, Phone, MapPin, Calendar, Filter, X, RotateCcw, Search, Mail, FileText, ChevronLeft, ChevronRight, Loader2, Briefcase, CheckCircle, Bookmark } from 'lucide-react';
 import SubmitCandidateTabs from '../components/SubmitCandidateTabs';
 
 const AllCandidates = () => {
@@ -13,6 +13,37 @@ const AllCandidates = () => {
   const [understood, setUnderstood] = useState(null);
   const [narrow, setNarrow] = useState({ expBand: '', noticeBand: '' });
   const [reloadKey, setReloadKey] = useState(0);
+  // Which candidates this recruiter has already kept, so the button reads right
+  // the moment the list renders rather than after a second round trip.
+  const [shortlisted, setShortlisted] = useState(new Set());
+
+  useEffect(() => {
+    axios.get('/api/resume-bank/shortlist/ids', { withCredentials: true })
+      .then(r => { if (r.data?.success) setShortlisted(new Set(r.data.ids || [])); })
+      .catch(() => {});
+  }, []);
+
+  const toggleShortlist = async (c) => {
+    const on = shortlisted.has(c.id);
+    // Moved straight away; put back if the write fails, so the button never
+    // shows a state the server does not hold.
+    setShortlisted(prev => {
+      const next = new Set(prev);
+      if (on) next.delete(c.id); else next.add(c.id);
+      return next;
+    });
+    try {
+      if (on) await axios.delete(`/api/resume-bank/shortlist/${c.id}`, { withCredentials: true });
+      else await axios.post(`/api/resume-bank/shortlist/${c.id}`, {}, { withCredentials: true });
+    } catch {
+      setShortlisted(prev => {
+        const next = new Set(prev);
+        if (on) next.add(c.id); else next.delete(c.id);
+        return next;
+      });
+    }
+  };
+
   const [loading, setLoading] = useState(false);
 
   const [filters, setFilters] = useState({
@@ -335,6 +366,15 @@ const AllCandidates = () => {
                           <span className="font-semibold text-gray-900 truncate">{c.candidate || '—'}</span>
                           {/* The same person uploaded more than once. The newest
                               is shown; the older CVs are still on the record. */}
+                          {/* Kept for later, and matched to this recruiter's own
+                              positions on the Shortlist page. */}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleShortlist(c); }}
+                            title={shortlisted.has(c.id) ? 'Remove from shortlist' : 'Shortlist this candidate'}
+                            className={`flex-shrink-0 p-1 rounded ${shortlisted.has(c.id)
+                              ? 'text-blue-600' : 'text-gray-300 hover:text-blue-500'}`}>
+                            <Bookmark size={14} fill={shortlisted.has(c.id) ? 'currentColor' : 'none'} />
+                          </button>
                           {c.versions > 1 && (
                             <span title={`${c.versions} CVs on file — showing the most recent`}
                               className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
