@@ -225,15 +225,13 @@ router.get('/my-referrals', isLoggedIn, async (req, res) => {
       .where('referredBy', '==', referrerEmail)
       .get();
 
-    // Everyone this person brought in, however they arrived: someone they
-    // submitted themselves, someone who came through their share link, or
-    // someone another recruiter later picked up. The page used to show only
-    // that last group, so a referrer who worked their own referral saw nothing
-    // for it and could not tell an unused referral from one that was never
-    // recorded.
+    // Only candidates another recruiter has picked up onto a position. That is
+    // what a referral is worth here: one the referrer works themselves is their
+    // own submission, and one nobody has taken is not yet a referral at all.
     //
-    // Which of them are *earning* is a separate question, answered per row
-    // rather than by leaving the rest out.
+    // How the person first arrived — share link, marketplace, or the referrer's
+    // own upload — is still reported per row, because the referrer knows them
+    // by how they came in.
     const { REJECTION_STATUSES } = require('../model_fire/adminF');
     const rejected = new Set(REJECTION_STATUSES.map(s => s.toLowerCase()));
     const isActive = (st) => {
@@ -243,9 +241,9 @@ router.get('/my-referrals', isLoggedIn, async (req, res) => {
     const usedByAnother = (d) =>
       !!d.pos_id && (d.recEmail || '').toLowerCase() !== referrerEmail;
 
-    const referrals = snap.docs.map(doc => {
+    const referrals = snap.docs.filter(doc => usedByAnother(doc.data())).map(doc => {
       const d = doc.data();
-      const byAnother = usedByAnother(d);
+      const byAnother = true;
       const mine = !!d.pos_id && (d.recEmail || '').toLowerCase() === referrerEmail;
       // How this person reached the platform, so the row can say so plainly.
       const origin = d.referredViaDirectApply || d.source === 'direct_apply'
@@ -325,15 +323,13 @@ router.get('/my-referrals', isLoggedIn, async (req, res) => {
     const placedStates = ['selected', 'offered', 'offer accepted', 'joining', 'joined'];
     const summary = {
       total:        referrals.length,
+      // Still live in that recruiter's pipeline, as against picked up and since
+      // closed — both are shown, but only one is still worth something.
       earning:      referrals.filter(r => r.earning).length,
-      usedByOthers: referrals.filter(r => r.usedByAnother).length,
-      submittedByMe: referrals.filter(r => r.submittedByMe).length,
       directApplicants: referrals.filter(r => r.origin === 'direct_apply').length,
-      unused:       referrals.filter(r => !r.onPosition).length,
       shortlisted:  referrals.filter(r => stOf(r).includes('shortlist')).length,
       placed:       referrals.filter(r => placedStates.some(p => stOf(r).includes(p))).length,
-      recruiters:   new Set(referrals.filter(r => r.usedByAnother)
-                      .map(r => (r.usedByEmail || '').toLowerCase()).filter(Boolean)).size,
+      recruiters:   new Set(referrals.map(r => (r.usedByEmail || '').toLowerCase()).filter(Boolean)).size,
     };
 
     return res.json({ success: true, referrals, summary });

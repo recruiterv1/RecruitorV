@@ -267,7 +267,7 @@ export default function ReferralHub({ view = 'dashboard' }) {
   const heading = {
     dashboard:     ['Referral Dashboard', 'Overview of your referral activity and pipeline performance'],
     marketplace:   ['My Resume Bank', 'Referred resumes available in the pool'],
-    'my-referrals':['My Referrals', 'Everyone you brought in — uploaded, submitted yourself, or arrived through your share link'],
+    'my-referrals':['My Referrals', 'Candidates you referred that another recruiter is working on a position'],
     earnings:      ['Earnings', 'Referral rewards and payment history'],
     notifications: ['Notifications', 'Updates on your referred candidates'],
   }[view] || ['Refer & Earn', ''];
@@ -284,10 +284,10 @@ export default function ReferralHub({ view = 'dashboard' }) {
       const s = (r.statusa || '').toLowerCase();
       // 'Earning' is the one that pays: picked up by another recruiter and
       // still live in their pipeline.
-      if (filter === 'Earning') return !!r.earning;
-      if (filter === 'Used by others') return !!r.usedByAnother;
-      if (filter === 'From my link') return r.origin === 'direct_apply';
-      if (filter === 'Not used') return !r.onPosition;
+      // Every row here is already someone another recruiter picked up, so the
+      // only split left is whether that pipeline is still running.
+      if (filter === 'Still live') return !!r.earning;
+      if (filter === 'Closed') return !r.earning;
       return s.includes(filter.toLowerCase());
     });
   }, [refs, filter]);
@@ -501,16 +501,21 @@ export default function ReferralHub({ view = 'dashboard' }) {
                 {view === 'my-referrals' && (
                   <>
                     <div className="rne-tabs">
-                      {['All', 'Earning', 'Used by others', 'From my link', 'Not used'].map(f => (
+                      {['All', 'Still live', 'Closed'].map(f => (
                         <button key={f} className={`rne-tab${filter === f ? ' on' : ''}`} onClick={() => setFilter(f)}>{f}</button>
                       ))}
                     </div>
                     <div className="rne-count">{filtered.length} record{filtered.length !== 1 ? 's' : ''}</div>
                     <div className="rne-tblwrap">
                       {filtered.length === 0 ? (
-                        <Empty title="No referrals yet">
-                          Resumes you refer appear here with their live pipeline stage.
-                          Use <b>Upload Resume</b> to refer your first candidate.
+                        <Empty title="Nothing here yet">
+                          This page shows candidates you referred that <b>another recruiter</b>
+                          has taken onto a position. Someone who came through your share link and
+                          stayed with you is your own submission, so it is not listed here —
+                          you will find them under Candidates.
+                          <br /><br />
+                          To be picked up by someone else, a candidate has to sit in the
+                          marketplace. Use <b>Upload Resume</b> to put one there.
                         </Empty>
                       ) : (
                         <div className="rne-scroll">
@@ -539,7 +544,7 @@ export default function ReferralHub({ view = 'dashboard' }) {
                                     <td>{stage}</td>
                                     <td>
                                       {r.earning
-                                        ? <span className="rne-pill gr">Earning</span>
+                                        ? <span className="rne-pill gr">Still live</span>
                                         : <span className={`rne-pill ${STAGE_PILL[key]}`}>{r.pos_id ? 'Active' : STAGE_LABEL[key]}</span>}
                                     </td>
                                   </tr>
@@ -552,9 +557,9 @@ export default function ReferralHub({ view = 'dashboard' }) {
                     </div>
                     <Pager page={page} totalPages={Math.max(1, Math.ceil(filtered.length / MR_PAGE))} total={filtered.length} pageSize={MR_PAGE} onChange={setPage} />
                     <div className="rne-note">
-                      <b>Earning</b> means another recruiter is working that candidate on a live
-                      position. Someone you submitted yourself is still your referral and still
-                      listed here, but it does not earn a referral reward.
+                      Every row is a candidate you referred that another recruiter has taken onto
+                      a position. <b>Still live</b> means that pipeline is running; <b>Closed</b>
+                      means it ended.
                     </div>
                   </>
                 )}
