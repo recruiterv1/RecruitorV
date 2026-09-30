@@ -267,7 +267,7 @@ export default function ReferralHub({ view = 'dashboard' }) {
   const heading = {
     dashboard:     ['Referral Dashboard', 'Overview of your referral activity and pipeline performance'],
     marketplace:   ['My Resume Bank', 'Referred resumes available in the pool'],
-    'my-referrals':['My Referrals', 'Track all resumes you have uploaded to the marketplace'],
+    'my-referrals':['My Referrals', 'Everyone you brought in — uploaded, submitted yourself, or arrived through your share link'],
     earnings:      ['Earnings', 'Referral rewards and payment history'],
     notifications: ['Notifications', 'Updates on your referred candidates'],
   }[view] || ['Refer & Earn', ''];
@@ -282,8 +282,12 @@ export default function ReferralHub({ view = 'dashboard' }) {
     if (filter === 'All') return refs;
     return refs.filter(r => {
       const s = (r.statusa || '').toLowerCase();
-      if (filter === 'Available') return !r.pos_id;
-      if (filter === 'Active') return !!r.pos_id;
+      // 'Earning' is the one that pays: picked up by another recruiter and
+      // still live in their pipeline.
+      if (filter === 'Earning') return !!r.earning;
+      if (filter === 'Used by others') return !!r.usedByAnother;
+      if (filter === 'From my link') return r.origin === 'direct_apply';
+      if (filter === 'Not used') return !r.onPosition;
       return s.includes(filter.toLowerCase());
     });
   }, [refs, filter]);
@@ -497,7 +501,7 @@ export default function ReferralHub({ view = 'dashboard' }) {
                 {view === 'my-referrals' && (
                   <>
                     <div className="rne-tabs">
-                      {['All', 'Available', 'Active'].map(f => (
+                      {['All', 'Earning', 'Used by others', 'From my link', 'Not used'].map(f => (
                         <button key={f} className={`rne-tab${filter === f ? ' on' : ''}`} onClick={() => setFilter(f)}>{f}</button>
                       ))}
                     </div>
@@ -512,23 +516,32 @@ export default function ReferralHub({ view = 'dashboard' }) {
                         <div className="rne-scroll">
                           <table className="rne-tbl">
                             <thead><tr>
-                              <th>RESUME ID</th><th>CANDIDATE</th><th>UPLOADED</th><th>POSITION</th>
-                              <th>USED BY</th><th>STAGE</th><th>REWARD</th><th>STATUS</th>
+                              <th>RESUME ID</th><th>CANDIDATE</th><th>CAME IN AS</th><th>UPLOADED</th>
+                              <th>POSITION</th><th>USED BY</th><th>STAGE</th><th>STATUS</th>
                             </tr></thead>
                             <tbody>
                               {filtered.slice((page - 1) * MR_PAGE, page * MR_PAGE).map(r => {
                                 const stage = (r.statusa || 'Available');
                                 const key = stage.toLowerCase() === 'available' ? 'available' : 'submitted';
+                                const came = r.origin === 'direct_apply' ? 'My share link'
+                                  : r.origin === 'submitted_by_me' ? 'I submitted'
+                                  : 'Marketplace';
                                 return (
                                   <tr key={r.id}>
                                     <td className="rne-mono">{r.id.slice(0, 8).toUpperCase()}</td>
                                     <td style={{ fontWeight: 600 }}>{r.candidate || '—'}</td>
+                                    <td style={{ color: 'var(--ink-faint)' }}>{came}</td>
                                     <td className="rne-mono">{fmtDate(r.referredAt)}</td>
                                     <td>{r.pos_name || '—'}</td>
-                                    <td>{r.usedByName || '—'}</td>
+                                    {/* Blank when it is the referrer's own submission — naming
+                                        them as the other recruiter reads as someone else. */}
+                                    <td>{r.usedByAnother ? (r.usedByName || r.usedByEmail || '—') : '—'}</td>
                                     <td>{stage}</td>
-                                    <td style={{ color: 'var(--ink-faint)' }}>—</td>
-                                    <td><span className={`rne-pill ${STAGE_PILL[key]}`}>{r.pos_id ? 'Active' : STAGE_LABEL[key]}</span></td>
+                                    <td>
+                                      {r.earning
+                                        ? <span className="rne-pill gr">Earning</span>
+                                        : <span className={`rne-pill ${STAGE_PILL[key]}`}>{r.pos_id ? 'Active' : STAGE_LABEL[key]}</span>}
+                                    </td>
                                   </tr>
                                 );
                               })}
@@ -539,8 +552,9 @@ export default function ReferralHub({ view = 'dashboard' }) {
                     </div>
                     <Pager page={page} totalPages={Math.max(1, Math.ceil(filtered.length / MR_PAGE))} total={filtered.length} pageSize={MR_PAGE} onChange={setPage} />
                     <div className="rne-note">
-                      Reward amounts show <b>—</b> because the rewards ledger isn't built yet.
-                      Once referral payouts are configured, potential and actual earnings appear in this column.
+                      <b>Earning</b> means another recruiter is working that candidate on a live
+                      position. Someone you submitted yourself is still your referral and still
+                      listed here, but it does not earn a referral reward.
                     </div>
                   </>
                 )}

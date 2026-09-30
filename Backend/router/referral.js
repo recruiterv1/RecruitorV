@@ -225,12 +225,15 @@ router.get('/my-referrals', isLoggedIn, async (req, res) => {
       .where('referredBy', '==', referrerEmail)
       .get();
 
-    // Only referrals that are actually earning: the candidate has been picked up
-    // onto a position by a recruiter other than the referrer, and is still live
-    // in that pipeline. A referral sitting unused, or one the referrer submitted
-    // themselves, is not a Refer & Earn opportunity — those are shown elsewhere.
-    // "Active" reuses the platform's own rejection list so this page and the
-    // reports agree on what counts.
+    // Everyone this person brought in, however they arrived: someone they
+    // submitted themselves, someone who came through their share link, or
+    // someone another recruiter later picked up. The page used to show only
+    // that last group, so a referrer who worked their own referral saw nothing
+    // for it and could not tell an unused referral from one that was never
+    // recorded.
+    //
+    // Which of them are *earning* is a separate question, answered per row
+    // rather than by leaving the rest out.
     const { REJECTION_STATUSES } = require('../model_fire/adminF');
     const rejected = new Set(REJECTION_STATUSES.map(s => s.toLowerCase()));
     const isActive = (st) => {
@@ -240,11 +243,14 @@ router.get('/my-referrals', isLoggedIn, async (req, res) => {
     const usedByAnother = (d) =>
       !!d.pos_id && (d.recEmail || '').toLowerCase() !== referrerEmail;
 
-    const referrals = snap.docs.filter(doc => {
+    const referrals = snap.docs.map(doc => {
       const d = doc.data();
-      return usedByAnother(d) && isActive(d.statusa);
-    }).map(doc => {
-      const d = doc.data();
+      const byAnother = usedByAnother(d);
+      const mine = !!d.pos_id && (d.recEmail || '').toLowerCase() === referrerEmail;
+      // How this person reached the platform, so the row can say so plainly.
+      const origin = d.referredViaDirectApply || d.source === 'direct_apply'
+        ? 'direct_apply'
+        : (mine ? 'submitted_by_me' : 'marketplace');
       const referredAt = d.referredAt?._seconds
         ? new Date(d.referredAt._seconds * 1000).toISOString()
         : (d.datePosted?._seconds ? new Date(d.datePosted._seconds * 1000).toISOString() : null);
@@ -297,23 +303,40 @@ router.get('/my-referrals', isLoggedIn, async (req, res) => {
         referredViaDirectApply: d.referredViaDirectApply || false,
         referredAt,
         updatedAt,
+        // How they arrived, and whether this row is earning anything.
+        origin,                                   // direct_apply | submitted_by_me | marketplace
+        usedByAnother: byAnother,
+        submittedByMe: mine,
+        onPosition: !!d.pos_id,
+        earning: byAnother && isActive(d.statusa),
       };
     });
 
-    // Sort newest first
-    referrals.sort((a, b) => (b.referredAt || '') > (a.referredAt || '') ? 1 : -1);
+    // Earning rows first, then whatever is still live, then the rest — newest
+    // within each. A referrer opening this page should not have to hunt for the
+    // ones that are actually worth something.
+    const rank = (r) => (r.earning ? 0 : isActive(r.statusa) ? 1 : 2);
+    referrals.sort((a, b) =>
+      (rank(a) - rank(b)) || ((b.referredAt || '') > (a.referredAt || '') ? 1 : -1));
 
-    // Summary reflects what this view now holds: live referrals another
-    // recruiter is working. Counts of unused or rejected referrals would always
-    // read zero here, so they are not reported.
+    // The summary now covers the whole page rather than one slice of it, and
+    // says how many are earning instead of implying every row is.
     const stOf = (r) => String(r.statusa || '').toLowerCase();
     const placedStates = ['selected', 'offered', 'offer accepted', 'joining', 'joined'];
-    const total       = referrals.length;
-    const shortlisted = referrals.filter(r => stOf(r).includes('shortlist')).length;
-    const placed      = referrals.filter(r => placedStates.some(p => stOf(r).includes(p))).length;
-    const recruiters  = new Set(referrals.map(r => (r.usedByEmail || '').toLowerCase()).filter(Boolean)).size;
+    const summary = {
+      total:        referrals.length,
+      earning:      referrals.filter(r => r.earning).length,
+      usedByOthers: referrals.filter(r => r.usedByAnother).length,
+      submittedByMe: referrals.filter(r => r.submittedByMe).length,
+      directApplicants: referrals.filter(r => r.origin === 'direct_apply').length,
+      unused:       referrals.filter(r => !r.onPosition).length,
+      shortlisted:  referrals.filter(r => stOf(r).includes('shortlist')).length,
+      placed:       referrals.filter(r => placedStates.some(p => stOf(r).includes(p))).length,
+      recruiters:   new Set(referrals.filter(r => r.usedByAnother)
+                      .map(r => (r.usedByEmail || '').toLowerCase()).filter(Boolean)).size,
+    };
 
-    return res.json({ success: true, referrals, summary: { total, shortlisted, placed, recruiters } });
+    return res.json({ success: true, referrals, summary });
   } catch (err) {
     console.error('referral/my-referrals error:', err.message);
     return res.status(500).json({ success: false, message: err.message });
