@@ -450,7 +450,34 @@ router.get('/suggested', authed, async (req, res) => {
       }
     }
 
-    return [...best.values()].sort((a, b) => b.matchPercent - a.matchPercent).slice(0, limit);
+    // Spread the thirty across the positions instead of handing them all to
+    // whichever one happens to score highest. One position full of 90% matches
+    // would otherwise fill the page and the other six would look as though they
+    // had nobody — the recruiter is working all of them, so all of them should
+    // appear.
+    const byPosition = new Map();
+    for (const c of best.values()) {
+      const k = String(c.forPosition?.pos_id || '');
+      if (!byPosition.has(k)) byPosition.set(k, []);
+      byPosition.get(k).push(c);
+    }
+    // Strongest position first, so the best match overall still leads.
+    const queues = [...byPosition.values()]
+      .map(q => q.sort((a, b) => b.matchPercent - a.matchPercent))
+      .sort((a, b) => b[0].matchPercent - a[0].matchPercent);
+
+    const out = [];
+    for (let round = 0; out.length < limit; round++) {
+      let placed = false;
+      for (const q of queues) {
+        if (round >= q.length) continue;
+        out.push(q[round]);
+        placed = true;
+        if (out.length >= limit) break;
+      }
+      if (!placed) break;          // every queue exhausted
+    }
+    return out;
     };
 
     let rows = await cached(`rb_suggested:${email}:${minScore}:${limit}`, 15 * 60 * 1000, compute);
