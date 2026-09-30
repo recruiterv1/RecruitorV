@@ -130,6 +130,7 @@ app.use("/admin", admin);
 app.use("/admin-fix-email", adminFixEmail);
 app.use("/candidate", position);
 app.use("/addit", candi);
+app.use("/api/resume-bank", require("./router/resumeBank"));
 app.use("/download", download);
 app.use("/api/linkedin", authLink);
 app.use("/api/googla", authGoogla);
@@ -523,6 +524,25 @@ exports.cleanupCandidateDrafts = onSchedule(
 );
 
 // ---- Scheduled: daily 7 AM IST direct-applicant digest ----
+// Keep the Resume Bank index hot.
+//
+// Building it reads the whole candidate pool, which takes about half a minute.
+// That is survivable but it is not something a person should ever sit through,
+// so it is rebuilt on a timer and a search always meets a warm one.
+exports.warmResumeBankIndex = onSchedule(
+  {
+    schedule: 'every 10 minutes',
+    timeZone: 'Asia/Kolkata',
+    region: 'us-central1',
+    memory: '1GiB',
+    timeoutSeconds: 300,
+  },
+  async () => {
+    const rows = await require('./router/resumeBank').warmIndex();
+    console.log('🔎 Resume Bank index warm:', rows.length, 'candidates');
+  }
+);
+
 // The first of the month: tell each recruiter why their CVs came back, with
 // the guidance attached. Monthly on purpose — a pattern needs a month to be
 // one, and a weekly version would just be nagging.

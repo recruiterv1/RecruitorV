@@ -1029,7 +1029,13 @@ router.get('/show/candi',isLoggedIn,async (req,res)=>{
 
 })
 
-router.get('/show/all/candi', async(req,res)=>{
+// Unauthenticated until now, and returning every candidate on file: names,
+// emails, phone numbers and CV links. The read never completed inside Hosting's
+// 60-second limit, so it answered 500 rather than handing the pool out — but
+// that was luck, not a control. The Resume Bank has moved to
+// /api/resume-bank/search, which is paginated; this stays for the other pages
+// still calling it, now behind a login.
+router.get('/show/all/candi', isLoggedIn, async(req,res)=>{
   try{
     const canudo= await candida.showAllCandidate()
     // Strip very large fields (full resume text + match tokens) so the response

@@ -4,8 +4,15 @@ import { Users, TrendingUp, Eye, Phone, MapPin, Calendar, Filter, X, RotateCcw, 
 import SubmitCandidateTabs from '../components/SubmitCandidateTabs';
 
 const AllCandidates = () => {
-  const [particle, setParticle] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [poolSize, setPoolSize] = useState(0);
+  const [options, setOptions] = useState({ locations: [], categories: [], skillTypes: [] });
+  const [facets, setFacets] = useState(null);
+  const [understood, setUnderstood] = useState(null);
+  const [narrow, setNarrow] = useState({ expBand: '', noticeBand: '', status: '' });
+  const [loading, setLoading] = useState(false);
 
   const [filters, setFilters] = useState({
     date: null,
@@ -14,99 +21,74 @@ const AllCandidates = () => {
     skill_type: '',
   });
 
-  // Free-text search across skill/tech/exp fields
+  // Free-text search across name, skills, location and employer
   const [search, setSearch] = useState('');
+  const [availableOnly, setAvailableOnly] = useState(true);
 
-  const fetchCandidate = async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get('/addit/show/all/candi', { withCredentials: true });
-      setParticle(res.data || []);
-    } catch (err) {
-      console.error('Error fetching candidates:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const PER_PAGE = 20;
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [search, filters, availableOnly, narrow]);
 
-  useEffect(() => { fetchCandidate(); }, []);
+  // The dropdowns offer what the pool actually contains, so a filter can never
+  // be set to something that returns nothing.
+  useEffect(() => {
+    axios.get('/api/resume-bank/filters', { withCredentials: true })
+      .then(r => {
+        if (!r.data?.success) return;
+        setOptions({
+          locations: r.data.locations || [],
+          categories: r.data.categories || [],
+          skillTypes: r.data.skillTypes || [],
+        });
+        setPoolSize(r.data.poolSize || 0);
+      })
+      .catch(() => {});
+  }, []);
 
-  const fmtDate = (ts) => {
-    if (!ts) return '';
-    const sec = ts._seconds ?? ts.seconds ?? null;
-    if (!sec) return '';
-    return new Date(sec * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
+  // Searching happens on the server now. Thirty thousand candidates were never
+  // going to arrive in the browser — the request that tried timed out and the
+  // page showed nothing at all.
+  useEffect(() => {
+    const params = new URLSearchParams({ page: String(page), limit: String(PER_PAGE) });
+    if (search.trim()) params.set('q', search.trim());
+    if (filters.location) params.set('location', filters.location);
+    if (filters.tech_category) params.set('category', filters.tech_category);
+    if (filters.skill_type) params.set('skillType', filters.skill_type);
+    if (availableOnly) params.set('availableOnly', 'true');
+    if (narrow.expBand) params.set('expBand', narrow.expBand);
+    if (narrow.noticeBand) params.set('noticeBand', narrow.noticeBand);
+    if (narrow.status) params.set('status', narrow.status);
 
-  const getUniqueValues = (field) => {
-    const values = particle.map(item => item[field]).filter(Boolean);
-    return [...new Set(values)].sort();
-  };
+    // Waiting out the typing keeps one request per phrase instead of one per key.
+    const timer = setTimeout(() => {
+      setLoading(true);
+      axios.get(`/api/resume-bank/search?${params.toString()}`, { withCredentials: true })
+        .then(r => {
+          if (!r.data?.success) return;
+          setRows(r.data.rows || []);
+          setTotal(r.data.total || 0);
+          setPages(r.data.pages || 1);
+          setFacets(r.data.facets || null);
+          setUnderstood(r.data.understood || null);
+          if (r.data.poolSize) setPoolSize(r.data.poolSize);
+        })
+        .catch(err => { console.error('Resume Bank search failed:', err); setRows([]); setTotal(0); })
+        .finally(() => setLoading(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search, filters, availableOnly, narrow, page]);
 
-  // Explicit whitelist of statuses treated as "rejected/dropped"
-  const REJECTED_STATUSES = new Set([
-    'screen reject', 'l1 reject', 'l2 reject', 'l3 reject', 'hr reject',
-    'background verification reject', 'negotiation reject', 'test reject',
-    'rejected', 'client drop', 'candidate drop', 'duplicate', 'offer declined',
-    'position on hold',
-  ]);
-
-  const filteredData = useMemo(() => {
-    const raw = search.trim().toLowerCase();
-
-    // Show nothing until the user types something in the search box
-    if (!raw) return [];
-
-    // Split by comma or whitespace, drop empty tokens — all tokens must match
-    const keywords = raw.split(/[,\s]+/).map(k => k.trim()).filter(Boolean);
-
-    return particle.filter(c => {
-      const s = (c.statusa || '').toLowerCase().trim();
-      const isRejected = REJECTED_STATUSES.has(s);
-      const isReferred = c.source === 'referred' || c.source === 'referer_submitted';
-      // Bulk-uploaded / resume-bank candidates also belong in the resume bank.
-      const isResumeBank = s === 'resume bank' || c.source === 'clientspoc_bulk';
-      if (!isRejected && !isReferred && !isResumeBank) return false;
-
-      // Dropdown filters
-      if (filters.date) {
-        const cDate = new Date((c.datePosted?._seconds || 0) * 1000);
-        if (cDate.toDateString() !== new Date(filters.date).toDateString()) return false;
-      }
-      if (filters.location && c.curr_loc !== filters.location) return false;
-      if (filters.tech_category && (c.tech_category || '').toLowerCase() !== filters.tech_category.toLowerCase()) return false;
-      if (filters.skill_type    && (c.skill_type    || '').toLowerCase() !== filters.skill_type.toLowerCase()) return false;
-
-      // All keywords must appear somewhere in the candidate's searchable fields.
-      // Include bulk / resume-bank fields (skills, skillsText, skillCategory,
-      // resumeText) so skill searches like "java" match those candidates too.
-      const haystack = [
-        c.skill_type, c.tech_category, c.tech_subcategory, c.tech_skill,
-        c.tech_exp, c.total_exp, c.rel_exp, c.statusa,
-        c.candidate, c.emails, c.curr_loc, c.notice_period,
-        Array.isArray(c.skills) ? c.skills.join(' ') : c.skills,
-        c.skillsText, c.skillCategory, c.skill_category, c.resumeText,
-        Array.isArray(c.nontech_skill) ? c.nontech_skill.join(' ') : c.nontech_skill,
-      ].map(v => String(v == null ? '' : v).toLowerCase()).join(' ');
-
-      return keywords.every(kw => haystack.includes(kw));
-    });
-  }, [particle, filters, search]);
 
   const resetFilters = () => {
     setFilters({ date: null, location: '', tech_category: '', skill_type: '' });
     setSearch('');
+    setAvailableOnly(true);
+    setNarrow({ expBand: '', noticeBand: '', status: '' });
   };
 
   const handleFilterChange = (key, value) => setFilters(prev => ({ ...prev, [key]: value }));
 
-  // ── Cards / pagination / modals ────────────────────────────────────────────
-  const PER_PAGE = 20;
-  const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [search, filters]);
-  const totalPages = Math.max(1, Math.ceil(filteredData.length / PER_PAGE));
-  const pageData = useMemo(() => filteredData.slice((page - 1) * PER_PAGE, page * PER_PAGE), [filteredData, page]);
-
+  // ── Cards / modals ────────────────────────────────────────────────────────
   const [detail, setDetail] = useState(null);            // candidate for the details modal
   const [resumeFor, setResumeFor] = useState(null);      // candidate for the "Use Resume" modal
   const [assignments, setAssignments] = useState(null);  // recruiter's assigned positions
@@ -145,7 +127,7 @@ const AllCandidates = () => {
             </div>
             <div>
               <h3 className="text-2xl font-bold text-white">All Candidates</h3>
-              <p className="text-blue-100 text-sm">{search.trim() ? `${filteredData.length} candidates found` : 'Type in the search box to find candidates'}</p>
+              <p className="text-blue-100 text-sm">{loading ? 'Searching…' : `${total.toLocaleString('en-IN')} of ${poolSize.toLocaleString('en-IN')} candidates`}</p>
             </div>
           </div>
         </div>
@@ -172,7 +154,7 @@ const AllCandidates = () => {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by multiple keywords e.g. React, 7yr, Mumbai — separate with comma or space"
+              placeholder="Describe who you need — e.g. Java, Mumbai, 5-10 year, 1month notice"
               className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
             />
             {search && (
@@ -181,6 +163,67 @@ const AllCandidates = () => {
               </button>
             )}
           </div>
+
+          {/* What the phrase was taken to mean. Shown back so nobody has to guess
+              why they got these people — and so a misread is obvious. */}
+          {understood && (understood.skills?.length || understood.locations?.length
+            || understood.expMin != null || understood.maxNotice != null || understood.position) && (
+            <div className="flex flex-wrap items-center gap-1.5 mb-4 text-[12px]">
+              <span className="text-gray-500 font-medium">Looking for:</span>
+              {understood.position && (
+                <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-800 font-semibold">
+                  position · {understood.position.position}
+                </span>
+              )}
+              {understood.skills?.map(k => (
+                <span key={k} className="px-2 py-1 rounded-lg bg-blue-100 text-blue-800 font-semibold">{k}</span>
+              ))}
+              {understood.locations?.map(l => (
+                <span key={l} className="px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800 font-semibold capitalize">{l}</span>
+              ))}
+              {understood.expMin != null && (
+                <span className="px-2 py-1 rounded-lg bg-amber-100 text-amber-800 font-semibold">
+                  {understood.expMax != null ? `${understood.expMin}-${understood.expMax}` : `${understood.expMin}+`} yrs
+                </span>
+              )}
+              {understood.maxNotice != null && (
+                <span className="px-2 py-1 rounded-lg bg-amber-100 text-amber-800 font-semibold">
+                  {understood.maxNotice === 0 ? 'immediate' : `notice ≤ ${understood.maxNotice}d`}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Narrowing filters, counted from the results actually found — so no
+              option ever leads to an empty page, and each says how far it goes. */}
+          {facets && total > 0 && (
+            <div className="mb-4 space-y-2">
+              {[['experience', 'expBand', 'Experience'], ['notice', 'noticeBand', 'Notice'], ['status', 'status', 'Status']]
+                .map(([key, param, label]) => {
+                  const list = (facets[key] || []).filter(f => f.value !== 'Not stated');
+                  if (!list.length) return null;
+                  return (
+                    <div key={key} className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400 w-20">{label}</span>
+                      {list.slice(0, 6).map(f => (
+                        <button key={f.value}
+                          onClick={() => setNarrow(n => ({ ...n, [param]: n[param] === f.value ? '' : f.value }))}
+                          className={`px-2.5 py-1 rounded-full text-[12px] font-medium border ${
+                            narrow[param] === f.value
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}`}>
+                          {f.value} <span className="opacity-60">{f.count}</span>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
+              <label className="flex items-center gap-2 text-[12.5px] text-gray-700 pt-1">
+                <input type="checkbox" checked={availableOnly} onChange={e => setAvailableOnly(e.target.checked)} />
+                Only candidates not already in a live pipeline
+              </label>
+            </div>
+          )}
 
           {/* Dropdown filters */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -198,7 +241,7 @@ const AllCandidates = () => {
               <select value={filters.skill_type} onChange={e => handleFilterChange('skill_type', e.target.value)}
                 className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500">
                 <option value="">All Skill Types</option>
-                {getUniqueValues('skill_type').map(v => <option key={v} value={v}>{v}</option>)}
+                {options.skillTypes.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="space-y-1">
@@ -206,7 +249,7 @@ const AllCandidates = () => {
               <select value={filters.tech_category} onChange={e => handleFilterChange('tech_category', e.target.value)}
                 className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500">
                 <option value="">All Categories</option>
-                {getUniqueValues('tech_category').map(v => <option key={v} value={v}>{v}</option>)}
+                {options.categories.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="space-y-1">
@@ -214,7 +257,7 @@ const AllCandidates = () => {
               <select value={filters.location} onChange={e => handleFilterChange('location', e.target.value)}
                 className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500">
                 <option value="">All Locations</option>
-                {getUniqueValues('curr_loc').map(l => <option key={l} value={l}>{l}</option>)}
+                {options.locations.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
             </div>
           </div>
@@ -266,12 +309,12 @@ const AllCandidates = () => {
             </div>
           ) : loading ? (
             <div className="py-20 grid place-items-center text-gray-400"><Loader2 size={28} className="animate-spin" /></div>
-          ) : filteredData.length === 0 ? (
+          ) : rows.length === 0 ? (
             <div className="py-20 text-center text-gray-400"><p className="text-lg font-semibold text-gray-500">No candidates found</p><p className="text-sm mt-1">Try different keywords.</p></div>
           ) : (
             <>
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {pageData.map((c) => (
+                {rows.map((c) => (
                   <div key={c.id || c.candidate + c.emails} onClick={() => setDetail(c)}
                     className="bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-md hover:border-blue-300 transition cursor-pointer">
                     <div className="flex items-center gap-3">
@@ -301,19 +344,19 @@ const AllCandidates = () => {
               </div>
 
               {/* Pagination */}
-              {totalPages > 1 && (
+              {pages > 1 && (
                 <div className="flex items-center justify-center gap-1 mt-6">
                   <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="p-2 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40"><ChevronLeft size={16} /></button>
-                  {Array.from({ length: totalPages }).map((_, i) => i + 1).filter(n => n === 1 || n === totalPages || Math.abs(n - page) <= 2).map((n, idx, arr) => (
+                  {Array.from({ length: pages }).map((_, i) => i + 1).filter(n => n === 1 || n === pages || Math.abs(n - page) <= 2).map((n, idx, arr) => (
                     <React.Fragment key={n}>
                       {idx > 0 && arr[idx - 1] !== n - 1 && <span className="px-1 text-gray-400">…</span>}
                       <button onClick={() => setPage(n)} className={`w-9 h-9 rounded-lg text-sm font-medium ${page === n ? 'bg-blue-600 text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>{n}</button>
                     </React.Fragment>
                   ))}
-                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-2 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40"><ChevronRight size={16} /></button>
+                  <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="p-2 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40"><ChevronRight size={16} /></button>
                 </div>
               )}
-              <p className="text-center text-xs text-gray-400 mt-3">Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filteredData.length)} of {filteredData.length}</p>
+              <p className="text-center text-xs text-gray-400 mt-3">Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, total)} of {total.toLocaleString('en-IN')}</p>
             </>
           )}
         </div>
