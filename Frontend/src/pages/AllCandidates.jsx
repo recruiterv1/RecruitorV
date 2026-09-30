@@ -11,7 +11,8 @@ const AllCandidates = () => {
   const [options, setOptions] = useState({ locations: [], categories: [], skillTypes: [] });
   const [facets, setFacets] = useState(null);
   const [understood, setUnderstood] = useState(null);
-  const [narrow, setNarrow] = useState({ expBand: '', noticeBand: '', status: '' });
+  const [narrow, setNarrow] = useState({ expBand: '', noticeBand: '' });
+  const [reloadKey, setReloadKey] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const [filters, setFilters] = useState({
@@ -57,7 +58,6 @@ const AllCandidates = () => {
     if (availableOnly) params.set('availableOnly', 'true');
     if (narrow.expBand) params.set('expBand', narrow.expBand);
     if (narrow.noticeBand) params.set('noticeBand', narrow.noticeBand);
-    if (narrow.status) params.set('status', narrow.status);
 
     // Waiting out the typing keeps one request per phrase instead of one per key.
     const timer = setTimeout(() => {
@@ -76,14 +76,25 @@ const AllCandidates = () => {
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, filters, availableOnly, narrow, page]);
+  }, [search, filters, availableOnly, narrow, page, reloadKey]);
 
+
+  // Re-runs the current search. Used after a candidate is submitted from here,
+  // so the row leaves the bank list without a manual reload.
+  const refresh = () => setReloadKey(k => k + 1);
+
+  const fmtDate = (ts) => {
+    if (!ts) return '';
+    const sec = ts._seconds ?? ts.seconds ?? null;
+    if (!sec) return '';
+    return new Date(sec * 1000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
 
   const resetFilters = () => {
     setFilters({ date: null, location: '', tech_category: '', skill_type: '' });
     setSearch('');
     setAvailableOnly(true);
-    setNarrow({ expBand: '', noticeBand: '', status: '' });
+    setNarrow({ expBand: '', noticeBand: '' });
   };
 
   const handleFilterChange = (key, value) => setFilters(prev => ({ ...prev, [key]: value }));
@@ -198,7 +209,7 @@ const AllCandidates = () => {
               option ever leads to an empty page, and each says how far it goes. */}
           {facets && total > 0 && (
             <div className="mb-4 space-y-2">
-              {[['experience', 'expBand', 'Experience'], ['notice', 'noticeBand', 'Notice'], ['status', 'status', 'Status']]
+              {[['experience', 'expBand', 'Experience'], ['notice', 'noticeBand', 'Notice']]
                 .map(([key, param, label]) => {
                   const list = (facets[key] || []).filter(f => f.value !== 'Not stated');
                   if (!list.length) return null;
@@ -414,7 +425,7 @@ const AllCandidates = () => {
               pos_id={submitCtx.pos_id} client={submitCtx.client} clientspoc={submitCtx.clientspoc}
               pos_name={submitCtx.pos_name} hr_name={submitCtx.hr_name} prefill={submitCtx.prefill}
               onClose={() => setSubmitCtx(null)}
-              onSubmitted={() => { setSubmitCtx(null); fetchCandidate(); }}
+              onSubmitted={() => { setSubmitCtx(null); refresh(); }}
             />
           </div>
         </div>
