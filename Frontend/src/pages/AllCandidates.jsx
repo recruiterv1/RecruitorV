@@ -480,7 +480,15 @@ const AllCandidates = () => {
       </div>
 
       {/* ── Candidate details modal ── */}
-      {detail && <CandidateDetailModal c={detail} onClose={() => setDetail(null)} onUseResume={() => { const c = detail; setDetail(null); openResume(c); }} />}
+      {detail && (
+        <CandidateDetailModal
+          c={detail}
+          isShortlisted={shortlisted.has(detail.id)}
+          onToggleShortlist={() => toggleShortlist(detail)}
+          onClose={() => setDetail(null)}
+          onUseResume={() => { const c = detail; setDetail(null); openResume(c); }}
+        />
+      )}
 
       {/* ── Use Resume: pick an assigned position ── */}
       {resumeFor && (
@@ -541,14 +549,23 @@ const AllCandidates = () => {
 };
 
 // ── Candidate details modal — all fields available in the database ───────────
+// Status and Source are pipeline bookkeeping — where a record came from and
+// where it got to. Someone deciding whether this person is worth approaching
+// wants none of that; they want the skills, how fresh the CV is, and whether
+// the candidate is already holding an offer.
 const DETAIL_FIELDS = [
-  ['emails', 'Email'], ['mob', 'Phone'], ['curr_loc', 'Current location'], ['pref_loc', 'Preferred location'],
+  ['emails', 'Email'], ['mob', 'Phone'], ['curr_loc', 'Current location'], ['curr_state', 'State'],
+  ['pref_loc', 'Preferred location'],
   ['total_exp', 'Total experience'], ['rel_exp', 'Relevant experience'], ['current_ctc', 'Current CTC'], ['exp_ctc', 'Expected CTC'],
-  ['notice_period', 'Notice period'], ['curr_emp', 'Current employer'], ['highest_education', 'Highest education'],
+  ['notice_period', 'Notice period'], ['last_day', 'Last working day'], ['offer_hand', 'Offer in hand'], ['offer_amt', 'Offer amount'],
+  ['curr_emp', 'Current employer'], ['highest_education', 'Highest education'],
+  ['skillsText', 'Skills'],
   ['skill_type', 'Skill type'], ['tech_category', 'Tech category'], ['tech_subcategory', 'Sub-category'], ['tech_skill', 'Tech skill'],
   ['tech_exp', 'Tech experience'], ['nontech_category', 'Non-tech category'], ['nontech_skill', 'Non-tech skill'],
-  ['skill_category', 'Skill category'], ['statusa', 'Status'], ['pos_name', 'Submitted for'], ['client', 'Client'],
-  ['recName', 'Submitted by'], ['source', 'Source'], ['rh_id', 'RH ID'], ['jr_number', 'JR number'],
+  ['skill_category', 'Skill category'],
+  ['pos_name', 'Submitted for'], ['client', 'Client'], ['recName', 'Submitted by'],
+  ['updatedAt', 'CV last updated'], ['datePosted', 'Added to bank'],
+  ['rh_id', 'RH ID'], ['jr_number', 'JR number'],
 ];
 const fmtVal = (v) => {
   if (v == null || v === '') return '';
@@ -556,7 +573,7 @@ const fmtVal = (v) => {
   if (typeof v === 'object') { const sec = v._seconds ?? v.seconds; return sec ? new Date(sec * 1000).toLocaleDateString('en-GB') : ''; }
   return String(v);
 };
-function CandidateDetailModal({ c, onClose, onUseResume }) {
+function CandidateDetailModal({ c, onClose, onUseResume, isShortlisted, onToggleShortlist }) {
   useEffect(() => { const h = e => e.key === 'Escape' && onClose(); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
   const rows = DETAIL_FIELDS.map(([k, label]) => [label, fmtVal(c[k])]).filter(([, v]) => v);
   return (
@@ -568,7 +585,20 @@ function CandidateDetailModal({ c, onClose, onUseResume }) {
             <div className="w-11 h-11 rounded-full bg-gradient-to-br from-blue-400 to-orange-400 grid place-items-center text-white font-bold flex-shrink-0">{(c.candidate || 'C').charAt(0).toUpperCase()}</div>
             <div className="min-w-0"><h3 className="font-bold text-gray-900 truncate">{c.candidate || '—'}</h3><div className="text-xs text-gray-500 truncate">{c.emails}</div></div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 flex-shrink-0"><X size={20} /></button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Same toggle as the card, so a decision taken while reading the
+                detail does not mean closing this and hunting for the card. */}
+            <button onClick={onToggleShortlist}
+              title={isShortlisted ? 'Remove from shortlist' : 'Add to shortlist'}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12.5px] font-semibold border ${
+                isShortlisted
+                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                  : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'}`}>
+              <Bookmark size={13} fill={isShortlisted ? 'currentColor' : 'none'} />
+              {isShortlisted ? 'Shortlisted' : 'Shortlist'}
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
+          </div>
         </div>
         <div className="p-5 overflow-y-auto">
           <div className="grid sm:grid-cols-2 gap-x-6">

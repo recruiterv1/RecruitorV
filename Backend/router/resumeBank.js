@@ -25,6 +25,10 @@ const FIELDS = [
   'skillsText', 'tech_skill', 'nontech_skill', 'total_exp', 'rel_exp',
   'statusa', 'datePosted', 'updatedAt', 'cv_data', 'pos_name', 'client',
   'notice_period', 'curr_emp', 'highest_education', 'source',
+  // Shown in the details modal in place of the pipeline bookkeeping that used
+  // to sit there. Whether someone already holds an offer, and when they are
+  // free, decide whether they are worth approaching at all.
+  'offer_hand', 'offer_amt', 'last_day', 'recName', 'tech_subcategory', 'tech_exp',
 ];
 
 const INDEX_TTL_MS = 15 * 60 * 1000;
@@ -279,6 +283,13 @@ const buildIndex = async () => {
       source: c.source || '',
       cv_data: c.cv_data || '',
       datePosted: c.datePosted || null,
+      updatedAt: c.updatedAt || null,
+      offer_hand: c.offer_hand || '',
+      offer_amt: c.offer_amt || '',
+      last_day: c.last_day || '',
+      recName: c.recName || '',
+      tech_subcategory: c.tech_subcategory || '',
+      tech_exp: c.tech_exp || [],
       hasCv: !!c.cv_data,
       available: isAvailable(c),
       // Parsed once here rather than on every row of every search.
