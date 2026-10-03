@@ -45,9 +45,25 @@ const findExpertByEmail = async (email) => {
  * Get all experts
  * @returns {Array} List of all experts
  */
+// The fields a listing shows. Named explicitly so the heavy ones — the inline
+// CV above all — are never fetched, and so the password hash and OTP cannot
+// reach a list endpoint by accident.
+const LIST_FIELDS = [
+  'name', 'email', 'mobile', 'phone', 'specialization', 'skillCategory', 'userType',
+  'accountStatus', 'isActive', 'agreementSigned', 'agreementVersion', 'agreementAcceptedAt',
+  'positionExperience', 'selectedPositions', 'availability', 'availabilityUpdatedAt',
+  'eligibilityTier', 'eligibilityPercent', 'eligibilityPassedAt', 'certificateId', 'certificateUrl',
+  'resumeUrl', 'bio', 'experience', 'linkedin', 'city', 'state', 'country',
+  'createdAt', 'updatedAt', 'suspendedAt', 'suspendedReason', 'lastLoginAt', 'photoUrl',
+];
+
 const getAllExperts = async () => {
   try {
-    const snap = await expertDb.orderBy("createdAt", "desc").get();
+    // The stored CV sits inline on each record at tens of kilobytes a head,
+    // and a listing never shows it — asking Firestore not to send it turns a
+    // 35MB read into a manageable one. resumeUrl points at the actual file.
+    const snap = await expertDb.orderBy("createdAt", "desc")
+      .select(...LIST_FIELDS).get();
     return snap.docs.map(doc => ({
       id: doc.id,
       ...doc.data()

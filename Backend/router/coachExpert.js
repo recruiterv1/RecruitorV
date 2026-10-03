@@ -176,6 +176,22 @@ router.post('/coach/add', async (req, res) => {
  * GET /coach/all
  * Get all coaches
  */
+
+// Never send these out of a list endpoint.
+//
+// The coach and expert listings were returning the whole stored record, which
+// includes the bcrypt password hash and the current OTP — to an endpoint with
+// no login on it. It also includes `resume`, the CV held inline at about 68KB
+// a head: 434 coaches came to 35MB, past what a function may return at all, so
+// the page had simply been answering 500. `resumeUrl` is the file itself and is
+// kept.
+const LIST_OMIT = ['password', 'otp', 'otpExpires', 'resume', 'resetToken', 'resetTokenExpires'];
+const forList = (row) => {
+  const out = { ...row };
+  LIST_OMIT.forEach(k => delete out[k]);
+  return out;
+};
+
 router.get('/coach/all', async (req, res) => {
   try {
     const { specialization, userType } = req.query;
@@ -217,7 +233,7 @@ router.get('/coach/all', async (req, res) => {
       };
     });
 
-    res.json({ success: true, count: enriched.length, data: enriched });
+    res.json({ success: true, count: enriched.length, data: enriched.map(forList) });
 
   } catch (error) {
     console.error("Error getting coaches:", error);
@@ -454,7 +470,7 @@ router.get('/expert/all', async (req, res) => {
       };
     });
 
-    res.json({ success: true, count: enriched.length, data: enriched });
+    res.json({ success: true, count: enriched.length, data: enriched.map(forList) });
 
   } catch (error) {
     console.error("Error getting experts:", error);

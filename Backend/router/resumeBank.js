@@ -143,6 +143,100 @@ const parseQuery = (raw, knownLocations) => {
   return out;
 };
 
+
+/* ── Boolean search ───────────────────────────────────────────────────────────
+ *
+ * The other mode reads a phrase and guesses at it, which is right for most
+ * people and wrong for a recruiter who knows exactly what they want. This one
+ * does no guessing at all: AND, OR, NOT, quoted phrases and brackets mean what
+ * they say.
+ *
+ *   java AND (mumbai OR pune) NOT fresher
+ *   "data engineer" AND (snowflake OR databricks)
+ *
+ * Adjacent terms are an implicit AND, so `java mumbai` narrows, matching what
+ * people expect from a search box.
+ */
+const boolTokens = (q) => {
+  const out = [];
+  const re = /\s*(\(|\)|"[^"]*"|[^\s()]+)/g;
+  let m;
+  while ((m = re.exec(q)) !== null) out.push(m[1]);
+  return out;
+};
+
+// Recursive descent: or := and ('OR' and)* ; and := not (('AND')? not)* ;
+// not := 'NOT' not | '(' or ')' | term
+const parseBool = (tokens) => {
+  let i = 0;
+  const peek = () => tokens[i];
+  const isOp = (t, op) => String(t || '').toUpperCase() === op;
+
+  const parseNot = () => {
+    const t = peek();
+    if (isOp(t, 'NOT') || t === '-' || t === '!') { i++; const inner = parseNot(); return { op: 'not', a: inner }; }
+    if (t === '(') {
+      i++;
+      const inner = parseOr();
+      if (peek() === ')') i++;          // a missing bracket should not throw
+      return inner;
+    }
+    i++;
+    if (t === undefined) return null;
+    const word = t.startsWith('"') && t.endsWith('"') ? t.slice(1, -1) : t;
+    return { op: 'term', value: lc(word) };
+  };
+
+  const parseAnd = () => {
+    let left = parseNot();
+    for (;;) {
+      const t = peek();
+      if (t === undefined || t === ')' || isOp(t, 'OR')) break;
+      if (isOp(t, 'AND') || t === '&&') i++;          // explicit, else implicit
+      const right = parseNot();
+      if (!right) break;
+      left = left ? { op: 'and', a: left, b: right } : right;
+    }
+    return left;
+  };
+
+  const parseOr = () => {
+    let left = parseAnd();
+    for (;;) {
+      const t = peek();
+      if (!isOp(t, 'OR') && t !== '||') break;
+      i++;
+      const right = parseAnd();
+      if (!right) break;
+      left = { op: 'or', a: left, b: right };
+    }
+    return left;
+  };
+
+  const tree = parseOr();
+  return tree;
+};
+
+const evalBool = (node, hay) => {
+  if (!node) return true;
+  switch (node.op) {
+    case 'term': return !node.value || hay.includes(node.value);
+    case 'not':  return !evalBool(node.a, hay);
+    case 'and':  return evalBool(node.a, hay) && evalBool(node.b, hay);
+    case 'or':   return evalBool(node.a, hay) || evalBool(node.b, hay);
+    default:     return true;
+  }
+};
+
+// Just the words, for showing back what is being searched for.
+const boolTerms = (node, acc = []) => {
+  if (!node) return acc;
+  if (node.op === 'term') { if (node.value) acc.push(node.value); return acc; }
+  if (node.op === 'not') return boolTerms(node.a, acc);
+  boolTerms(node.a, acc); boolTerms(node.b, acc);
+  return acc;
+};
+
 const buildIndex = async () => {
   const snap = await db.collection('candidate_db').select(...FIELDS).get();
   return snap.docs.map((d) => {
@@ -273,11 +367,21 @@ router.get('/search', authed, async (req, res) => {
   try {
     const rows = await getIndex();
     const knownLocations = [...new Set(rows.map(r => r.curr_loc).filter(Boolean))];
-    const parsed = parseQuery(req.query.q, knownLocations);
+
+    // Two ways of asking. Keyword reads the phrase and lifts out what looks
+    // like a place, an experience range or a notice period. Boolean takes the
+    // expression literally and does none of that — someone writing AND and OR
+    // means them, and second-guessing it would be worse than useless.
+    const mode = lc(req.query.mode) === 'boolean' ? 'boolean' : 'keyword';
+    const rawQ = String(req.query.q || '').trim();
+    const tree = mode === 'boolean' && rawQ ? parseBool(boolTokens(rawQ)) : null;
+    const parsed = mode === 'boolean'
+      ? { terms: [], locations: [], expMin: null, expMax: null, maxNotice: null, phrase: lc(rawQ) }
+      : parseQuery(rawQ, knownLocations);
 
     // "…matching to <position>" — find the position and use its own skills.
     let matchedPosition = null;
-    if (parsed.phrase && /match|for the|for position|similar/.test(parsed.phrase)) {
+    if (mode === 'keyword' && parsed.phrase && /match|for the|for position|similar/.test(parsed.phrase)) {
       const titles = await positionTitles();
       const hit = titles
         .filter(p => parsed.phrase.includes(String(p.position).toLowerCase().trim()))
@@ -311,8 +415,13 @@ router.get('/search', authed, async (req, res) => {
       if (expBandPick && expBand(r.expY) !== expBandPick) return false;
       if (noticePick && noticeBand(r.noticeD) !== noticePick) return false;
 
-      // Every skill term must appear. Two words should narrow, not widen.
-      for (const t of parsed.terms) if (!r.haystack.includes(t)) return false;
+      if (tree) {
+        // The expression decides on its own; nothing else is inferred from it.
+        if (!evalBool(tree, r.haystack)) return false;
+      } else {
+        // Every skill term must appear. Two words should narrow, not widen.
+        for (const t of parsed.terms) if (!r.haystack.includes(t)) return false;
+      }
 
       // Place, experience and notice are only recorded on about a quarter of
       // this pool — the rest arrived as bulk CV uploads carrying little more
@@ -367,8 +476,9 @@ router.get('/search', authed, async (req, res) => {
       poolSize: rows.length,
       // What the phrase was taken to mean, so the page can show it back and the
       // person can see why they got these people rather than guessing.
+      mode,
       understood: {
-        skills: parsed.terms,
+        skills: tree ? boolTerms(tree) : parsed.terms,
         locations: parsed.locations,
         expMin: parsed.expMin, expMax: parsed.expMax,
         maxNotice: parsed.maxNotice,

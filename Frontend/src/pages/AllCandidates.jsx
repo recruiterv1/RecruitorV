@@ -8,7 +8,8 @@ const AllCandidates = () => {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [poolSize, setPoolSize] = useState(0);
-  const [options, setOptions] = useState({ locations: [], categories: [], skillTypes: [] });
+  // The pool size, for the header. The filter lists this call also returns were
+  // only ever read by the four dropdowns, which are gone.
   const [facets, setFacets] = useState(null);
   const [understood, setUnderstood] = useState(null);
   const [narrow, setNarrow] = useState({ expBand: '', noticeBand: '' });
@@ -68,25 +69,18 @@ const AllCandidates = () => {
 
   // Free-text search across name, skills, location and employer
   const [search, setSearch] = useState('');
+  const [mode, setMode] = useState('keyword');   // keyword | boolean
   const [availableOnly, setAvailableOnly] = useState(true);
 
   const PER_PAGE = 20;
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [search, filters, availableOnly, narrow]);
+  useEffect(() => { setPage(1); }, [search, filters, availableOnly, narrow, mode]);
 
   // The dropdowns offer what the pool actually contains, so a filter can never
   // be set to something that returns nothing.
   useEffect(() => {
     axios.get('/api/resume-bank/filters', { withCredentials: true })
-      .then(r => {
-        if (!r.data?.success) return;
-        setOptions({
-          locations: r.data.locations || [],
-          categories: r.data.categories || [],
-          skillTypes: r.data.skillTypes || [],
-        });
-        setPoolSize(r.data.poolSize || 0);
-      })
+      .then(r => { if (r.data?.success) setPoolSize(r.data.poolSize || 0); })
       .catch(() => {});
   }, []);
 
@@ -95,7 +89,7 @@ const AllCandidates = () => {
   // page showed nothing at all.
   useEffect(() => {
     const params = new URLSearchParams({ page: String(page), limit: String(PER_PAGE) });
-    if (search.trim()) params.set('q', search.trim());
+    if (search.trim()) { params.set('q', search.trim()); params.set('mode', mode); }
     if (filters.location) params.set('location', filters.location);
     if (filters.tech_category) params.set('category', filters.tech_category);
     if (filters.skill_type) params.set('skillType', filters.skill_type);
@@ -120,7 +114,7 @@ const AllCandidates = () => {
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, filters, availableOnly, narrow, page, reloadKey]);
+  }, [search, filters, availableOnly, narrow, page, reloadKey, mode]);
 
 
   // Re-runs the current search. Used after a candidate is submitted from here,
@@ -202,6 +196,24 @@ const AllCandidates = () => {
             </button>
           </div>
 
+          {/* Two ways of asking, chosen before typing. Keyword reads the phrase
+              and infers a place or an experience range from it; boolean takes
+              the expression literally, for someone who means AND and OR. */}
+          <div className="flex items-center gap-1 mb-2.5">
+            {[['keyword', 'Keyword'], ['boolean', 'Boolean']].map(([v, label]) => (
+              <button key={v} onClick={() => setMode(v)}
+                className={`px-3 py-1.5 rounded-lg text-[12.5px] font-semibold border transition ${
+                  mode === v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'}`}>
+                {label}
+              </button>
+            ))}
+            <span className="text-[11.5px] text-gray-400 ml-1.5">
+              {mode === 'boolean'
+                ? 'AND · OR · NOT · "exact phrase" · ( brackets )'
+                : 'describe who you need in plain words'}
+            </span>
+          </div>
+
           {/* Free-text search bar */}
           <div className="relative mb-4">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -209,7 +221,9 @@ const AllCandidates = () => {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Describe who you need — e.g. Java, Mumbai, 5-10 year, 1month notice"
+              placeholder={mode === 'boolean'
+                ? 'java AND (mumbai OR pune) NOT fresher'
+                : 'Describe who you need — e.g. Java, Mumbai, 5-10 year, 1month notice'}
               className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
             />
             {search && (
@@ -273,49 +287,12 @@ const AllCandidates = () => {
                     </div>
                   );
                 })}
-              <label className="flex items-center gap-2 text-[12.5px] text-gray-700 pt-1">
-                <input type="checkbox" checked={availableOnly} onChange={e => setAvailableOnly(e.target.checked)} />
-                Only candidates not already in a live pipeline
-              </label>
             </div>
           )}
 
-          {/* Dropdown filters */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">Date</label>
-              <input
-                type="date"
-                value={filters.date ? new Date(filters.date).toISOString().split('T')[0] : ''}
-                onChange={e => handleFilterChange('date', e.target.value ? new Date(e.target.value) : null)}
-                className="w-full px-2 py-1 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">Skill Type</label>
-              <select value={filters.skill_type} onChange={e => handleFilterChange('skill_type', e.target.value)}
-                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500">
-                <option value="">All Skill Types</option>
-                {options.skillTypes.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">Tech Category</label>
-              <select value={filters.tech_category} onChange={e => handleFilterChange('tech_category', e.target.value)}
-                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500">
-                <option value="">All Categories</option>
-                {options.categories.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-gray-700">Location</label>
-              <select value={filters.location} onChange={e => handleFilterChange('location', e.target.value)}
-                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500">
-                <option value="">All Locations</option>
-                {options.locations.map(l => <option key={l} value={l}>{l}</option>)}
-              </select>
-            </div>
-          </div>
+          {/* The four dropdowns that sat here — Date, Skill Type, Tech Category,
+              Location — duplicated the narrowing chips above, which do the same
+              job and say how many each choice leads to. */}
 
           {/* Active filter pills */}
           {activeFilterCount > 0 && (
@@ -324,30 +301,6 @@ const AllCandidates = () => {
                 <span className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-sm">
                   Search: "{search}"
                   <button onClick={() => setSearch('')}><X size={14} /></button>
-                </span>
-              )}
-              {filters.date && (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
-                  Date: {new Date(filters.date).toLocaleDateString()}
-                  <button onClick={() => handleFilterChange('date', null)}><X size={14} /></button>
-                </span>
-              )}
-              {filters.skill_type && (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-sm">
-                  Skill: {filters.skill_type}
-                  <button onClick={() => handleFilterChange('skill_type', '')}><X size={14} /></button>
-                </span>
-              )}
-              {filters.tech_category && (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
-                  Category: {filters.tech_category}
-                  <button onClick={() => handleFilterChange('tech_category', '')}><X size={14} /></button>
-                </span>
-              )}
-              {filters.location && (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm">
-                  Location: {filters.location}
-                  <button onClick={() => handleFilterChange('location', '')}><X size={14} /></button>
                 </span>
               )}
             </div>
