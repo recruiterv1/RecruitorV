@@ -263,6 +263,27 @@ const AllCandidates = () => {
             </div>
           )}
 
+          {/* Asked for and matched nobody, so it was set aside rather than
+              emptying the page. Named, because "no results" does not tell you
+              which word was at fault. */}
+          {understood?.notFound?.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 mb-4 text-[12px]">
+              <span className="text-gray-500 font-medium">Not found:</span>
+              {understood.notFound.map(n => (
+                <span key={n.kind + n.value}
+                  title={n.relaxed
+                    ? 'Nobody matched everything at once, so this was dropped'
+                    : 'Nobody in the bank matches this'}
+                  className="px-2 py-1 rounded-lg bg-red-50 text-red-700 font-semibold line-through capitalize">
+                  {n.value}
+                </span>
+              ))}
+              <span className="text-gray-400">
+                — results below ignore {understood.notFound.length === 1 ? 'this' : 'these'}
+              </span>
+            </div>
+          )}
+
           {/* Narrowing filters, counted from the results actually found — so no
               option ever leads to an empty page, and each says how far it goes. */}
           {facets && total > 0 && (
@@ -363,6 +384,16 @@ const AllCandidates = () => {
                       {c.matched?.length > 0 && (
                         <p className="mt-1 text-[11.5px] text-gray-500 line-clamp-2">{c.matched.slice(0, 8).join(' · ')}</p>
                       )}
+                      <div className="mt-2.5 flex items-center gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (c.cv_data) window.open(c.cv_data, '_blank'); }}
+                          disabled={!c.cv_data}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-gray-200 text-[12px] font-semibold text-gray-700 disabled:opacity-40 hover:bg-gray-50">
+                          <FileText size={12} /> View CV
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setDetail(c); }}
+                          className="text-[12px] font-semibold text-blue-600">Details</button>
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -67,6 +67,7 @@ const FILLER = new Set((
   'position positions role roles job jobs opening openings requirement requirements ' +
   'exp experience experienced yr yrs year years notice period np joining ' +
   'immediate immediately joiner joiners joinee month months day days min max around about approx ' +
+  'less than under over below above upto up atleast least most within only ' +
   'any all some good strong'
 ).split(/\s+/));
 
@@ -373,6 +374,8 @@ router.get('/search', authed, async (req, res) => {
     // expression literally and does none of that — someone writing AND and OR
     // means them, and second-guessing it would be worse than useless.
     const mode = lc(req.query.mode) === 'boolean' ? 'boolean' : 'keyword';
+    const availableOnly = String(req.query.availableOnly || '') === 'true';
+    const availableOnlyDefault = availableOnly;
     const rawQ = String(req.query.q || '').trim();
     const tree = mode === 'boolean' && rawQ ? parseBool(boolTokens(rawQ)) : null;
     const parsed = mode === 'boolean'
@@ -394,6 +397,57 @@ router.get('/search', authed, async (req, res) => {
       }
     }
 
+    // A phrase is a list of wishes, not a contract. If one of them matches
+    // nobody — a city with no candidates in it, a skill nobody has — applying it
+    // returns an empty page and says nothing about which word was at fault. So
+    // each is checked on its own first, and the ones that match nothing are set
+    // aside and reported rather than silently emptying the result.
+    //
+    // Only in keyword mode: a boolean expression is meant literally, and
+    // quietly dropping a term from it would be answering a different question.
+    const notFound = [];
+    if (!tree) {
+      const base = rows.filter(r => r.available || !availableOnlyDefault);
+
+      const stillThere = (test) => base.some(test);
+
+      parsed.terms = parsed.terms.filter(t => {
+        if (stillThere(r => r.haystack.includes(t))) return true;
+        notFound.push({ value: t, kind: 'skill' });
+        return false;
+      });
+
+      parsed.locations = parsed.locations.filter(l => {
+        if (stillThere(r => (lc(r.curr_loc) + ' ' + lc(r.pref_loc)).includes(l))) return true;
+        notFound.push({ value: l, kind: 'location' });
+        return false;
+      });
+
+      if (parsed.expMin != null || parsed.expMax != null) {
+        const ok = stillThere(r => r.expY != null
+          && (parsed.expMin == null || r.expY >= parsed.expMin)
+          && (parsed.expMax == null || r.expY <= parsed.expMax));
+        if (!ok) {
+          notFound.push({
+            value: parsed.expMax != null ? `${parsed.expMin}-${parsed.expMax} yrs` : `${parsed.expMin}+ yrs`,
+            kind: 'experience',
+          });
+          parsed.expMin = null; parsed.expMax = null;
+        }
+      }
+
+      if (parsed.maxNotice != null) {
+        const ok = stillThere(r => r.noticeD != null && r.noticeD <= parsed.maxNotice);
+        if (!ok) {
+          notFound.push({
+            value: parsed.maxNotice === 0 ? 'immediate' : `notice ≤ ${parsed.maxNotice}d`,
+            kind: 'notice',
+          });
+          parsed.maxNotice = null;
+        }
+      }
+    }
+
     // Explicit dropdown choices sit on top of whatever the phrase said.
     const location = lc(req.query.location);
     const category = lc(req.query.category);
@@ -401,10 +455,9 @@ router.get('/search', authed, async (req, res) => {
     const status = lc(req.query.status);
     const expBandPick = String(req.query.expBand || '');
     const noticePick = String(req.query.noticeBand || '');
-    const availableOnly = String(req.query.availableOnly || '') === 'true';
     const withCvOnly = String(req.query.withCv || '') === 'true';
 
-    const filtered = rows.filter((r) => {
+    const apply = () => rows.filter((r) => {
       if (availableOnly && !r.available) return false;
       if (withCvOnly && !r.hasCv) return false;
       if (location && !lc(r.curr_loc).includes(location) && !lc(r.pref_loc).includes(location)) return false;
@@ -455,6 +508,40 @@ router.get('/search', authed, async (req, res) => {
     });
 
     // Confirmed matches first, then the unstated ones, newest within each.
+    // Each wish matched somebody, but together they match nobody. Rather than
+    // an empty page, the least important is dropped and the search run again,
+    // until something comes back — and every drop is reported, so the recruiter
+    // sees exactly which part was given up and can put it back.
+    //
+    // Notice and experience go first because they are the easiest to be
+    // slightly wrong about; the skills they typed are given up last.
+    let filtered = apply();
+    if (!filtered.length && !tree) {
+      const relaxations = [
+        () => (parsed.maxNotice != null
+          ? { label: parsed.maxNotice === 0 ? 'immediate' : `notice ≤ ${parsed.maxNotice}d`, kind: 'notice',
+              undo: () => { parsed.maxNotice = null; } } : null),
+        () => ((parsed.expMin != null || parsed.expMax != null)
+          ? { label: parsed.expMax != null ? `${parsed.expMin}-${parsed.expMax} yrs` : `${parsed.expMin}+ yrs`,
+              kind: 'experience', undo: () => { parsed.expMin = null; parsed.expMax = null; } } : null),
+        () => (parsed.locations.length
+          ? { label: parsed.locations[parsed.locations.length - 1], kind: 'location',
+              undo: () => { parsed.locations = parsed.locations.slice(0, -1); } } : null),
+        () => (parsed.terms.length > 1
+          ? { label: parsed.terms[parsed.terms.length - 1], kind: 'skill',
+              undo: () => { parsed.terms = parsed.terms.slice(0, -1); } } : null),
+      ];
+      for (const next of relaxations) {
+        if (filtered.length) break;
+        let step;
+        while (!filtered.length && (step = next())) {
+          step.undo();
+          notFound.push({ value: step.label, kind: step.kind, relaxed: true });
+          filtered = apply();
+        }
+      }
+    }
+
     filtered.sort((a, b) => (req.query.sort === 'oldest' ? a.at - b.at
       : (b._score - a._score) || (b.at - a.at)));
 
@@ -483,6 +570,8 @@ router.get('/search', authed, async (req, res) => {
         expMin: parsed.expMin, expMax: parsed.expMax,
         maxNotice: parsed.maxNotice,
         position: matchedPosition,
+        // Asked for, matched nobody, and therefore not applied.
+        notFound,
       },
       facets: facetsOf(filtered),
     });
