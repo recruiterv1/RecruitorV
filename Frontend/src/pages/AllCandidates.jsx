@@ -564,7 +564,9 @@ const DETAIL_FIELDS = [
   ['tech_exp', 'Tech experience'], ['nontech_category', 'Non-tech category'], ['nontech_skill', 'Non-tech skill'],
   ['skill_category', 'Skill category'],
   ['pos_name', 'Submitted for'], ['client', 'Client'], ['recName', 'Submitted by'],
-  ['updatedAt', 'CV last updated'], ['datePosted', 'Added to bank'],
+  // "Added to bank" said when the record was created, which tells a recruiter
+  // nothing about the candidate. How fresh the CV is does, so that stays.
+  ['updatedAt', 'CV last updated'],
   ['rh_id', 'RH ID'], ['jr_number', 'JR number'],
 ];
 const fmtVal = (v) => {
