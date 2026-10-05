@@ -26,7 +26,7 @@ const sendMonthlyRejectionDigest = async (days = 30) => {
     byRecruiter[e][label] = (byRecruiter[e][label] || 0) + 1;
   });
 
-  const { sendEmail } = require('./email');
+  const { sendEmail, renderEmail } = require('./email');
   const { guidanceFor } = require('../router/reviewReasons');
   const sent = [];
 
@@ -54,7 +54,13 @@ const sendMonthlyRejectionDigest = async (days = 30) => {
       <p><a href="https://www.recruiterv.com/my-submissions">See your submissions</a></p>`;
 
     try {
-      await sendEmail(email, 'Why your CVs came back this month', html);
+      // Rendered through the designer so it can be reworded or paused; the
+      // wording built above is what sends until someone writes a template.
+      const _r = await renderEmail('rejectionDigest',
+        { userName: '', total: String(total), days: String(days), dashboardUrl: 'https://www.recruiterv.com/my-submissions' },
+        { subject: 'Why your CVs came back this month', htmlContent: html });
+      if (!_r.htmlContent) continue;           // paused
+      await sendEmail(email, _r.subject, _r.htmlContent);
       sent.push(email);
     } catch (e) {
       // One bad address must not stop the rest of the run.

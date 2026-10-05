@@ -19,7 +19,7 @@ const { db } = require('./firebase_ad');
 const { resumeBankMatchCounts, getMatchingCandidates, getMatchingRejectedCandidates } = require('../utils/resumeBankMatch');
 const notificationModel = require('../model_fire/notificationF');
 const positionAccess = require('../model_fire/positionAccessF');
-const { sendEmail } = require('../utils/email');
+const { SENDER, renderEmail, sendEmail } = require('../utils/email');
 // Use db directly to get the positions collection
 const positionsCollection = db.collection("admin_AddPos");
 
@@ -2166,13 +2166,14 @@ router.post('/pos/pause/:id', authMiddleware, async (req, res) => {
 
       for (const email of notifiedEmails) {
         try {
-          await sendEmail(
-            email,
-            `Position Reactivated: ${positionTitle}${clientName ? ` — ${clientName}` : ''}`,
-            emailHtml(email),
-            'noreply@recruiterv.com',
-            'RecruiterV'
-          );
+          const _pp = await renderEmail('positionPaused',
+            { userName: '', positionTitle, clientName: clientName ? ` — ${clientName}` : '',
+              dashboardUrl: 'https://www.recruiterv.com' },
+            { subject: `Position Reactivated: ${positionTitle}${clientName ? ` — ${clientName}` : ''}`,
+              htmlContent: emailHtml(email) });
+          if (_pp.htmlContent) {
+            await sendEmail(email, _pp.subject, _pp.htmlContent, SENDER.email, SENDER.name);
+          }
         } catch (e) {
           console.error(`Failed to send reactivation email to ${email}:`, e.message);
         }

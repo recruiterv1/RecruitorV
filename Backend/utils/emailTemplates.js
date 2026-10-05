@@ -443,6 +443,92 @@ const TEMPLATES = [
       <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Open the Review Bin</a></p>
       <p style="color:#888;font-size:12px">You are getting this because {{slot}} is one of your available hours.</p>`),
   },
+
+  // The two scheduled digests. They sent with wording fixed in the code, which
+  // also meant they could not be paused — "stop all email" would have left them
+  // going out on a timer with nobody able to switch them off.
+  {
+    key: 'directApplicantDigest', name: 'Daily direct-applicant digest', recipient: 'Recruiter / ClientSPOC',
+    subject: 'Your direct applicants — {{count}} today',
+    variables: ['userName', 'count', 'dashboardUrl'],
+    sample: { userName: 'Aisha', count: '3', dashboardUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p>You received <b>{{count}}</b> direct application(s) today.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">View them</a></p>`),
+  },
+  {
+    key: 'rejectionDigest', name: 'Monthly rejection digest', recipient: 'Recruiter',
+    subject: 'Why your CVs came back this month',
+    variables: ['userName', 'total', 'days', 'dashboardUrl'],
+    sample: { userName: 'Aisha', total: '7', days: '30', dashboardUrl: 'https://www.recruiterv.com/my-submissions' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p>Over the last {{days}} days, {{total}} of your candidates were turned down at review.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">See your submissions</a></p>`),
+  },
+
+  // The last of the emails whose wording lived in the code. Each send keeps its
+  // original body as the fallback, so adding them here changes nothing until
+  // somebody edits one — but they can now be reworded or paused like the rest.
+  {
+    key: 'accountReassigned', name: 'Account reassigned to another role', recipient: 'Any user',
+    subject: 'Your RecruiterV account has been reassigned to {{toLabel}}',
+    variables: ['userName', 'toLabel', 'dashboardUrl'],
+    sample: { userName: 'Aisha', toLabel: 'Coach', dashboardUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p>Your RecruiterV account has been reassigned to <b>{{toLabel}}</b>.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Open your dashboard</a></p>`),
+  },
+  {
+    key: 'referrerInvite', name: 'Invitation to earn as a referrer', recipient: 'Any user',
+    subject: 'Your RecruiterV path — a new earning opportunity',
+    variables: ['userName', 'dashboardUrl'],
+    sample: { userName: 'Aisha', dashboardUrl: 'https://www.recruiterv.com/refer-and-earn' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p>You can now refer candidates on RecruiterV and earn when another recruiter places them.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">See Refer &amp; Earn</a></p>`),
+  },
+  {
+    key: 'companyHrAccount', name: 'Company HR account created', recipient: 'Company HR',
+    subject: 'Your RecruiterV HR account for {{companyName}}',
+    variables: ['userName', 'companyName', 'dashboardUrl'],
+    sample: { userName: 'Aisha', companyName: 'Acme Corp', dashboardUrl: 'https://www.recruiterv.com/company' },
+    body: brandWrap(`
+      <p>Hi {{userName}},</p>
+      <p>An HR account has been created for you on RecruiterV for <b>{{companyName}}</b>.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Sign in</a></p>`),
+  },
+  {
+    key: 'portalAccountDecision', name: 'Portal account approved / declined', recipient: 'Company / Vendor / Consulting',
+    subject: '{{decisionSubject}}',
+    variables: ['userName', 'applicantName', 'decisionSubject', 'dashboardUrl'],
+    sample: { userName: 'Aisha', applicantName: 'Rahul', decisionSubject: 'Your RecruiterV account is approved', dashboardUrl: 'https://www.recruiterv.com/company' },
+    body: brandWrap(`
+      <p>Hi {{userName}},</p>
+      <p>{{applicantName}} — there is an update on this RecruiterV account.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Open RecruiterV</a></p>`),
+  },
+  {
+    key: 'positionPaused', name: 'Position paused', recipient: 'Recruiter',
+    subject: 'Position paused — {{positionTitle}}',
+    variables: ['userName', 'positionTitle', 'clientName', 'dashboardUrl'],
+    sample: { userName: 'Aisha', positionTitle: 'Java Developer', clientName: 'Acme Corp', dashboardUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p><b>{{positionTitle}}</b>{{clientName}} has been paused. Please hold further submissions for now.</p>`),
+  },
+  {
+    key: 'coachSelfAssigned', name: 'Coach/Expert self-assigned to a position', recipient: 'ClientSPOC',
+    subject: '{{roleCategory}} self-assigned — {{positionTitle}}',
+    variables: ['roleCategory', 'positionTitle', 'userName', 'dashboardUrl'],
+    sample: { roleCategory: 'Coach', positionTitle: 'Java Developer', userName: 'Rahul', dashboardUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p><b>{{userName}}</b> ({{roleCategory}}) has self-assigned to <b>{{positionTitle}}</b>.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Review it</a></p>`),
+  },
 ];
 
 const TEMPLATE_MAP = Object.fromEntries(TEMPLATES.map(t => [t.key, t]));

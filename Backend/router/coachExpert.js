@@ -1634,10 +1634,7 @@ router.post('/send-help-email', async (req, res) => {
       });
     }
     
-    await sendEmail(
-      coachExpertEmail,
-      `New Help Request - ${positionTitle}`,
-      `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+    const _hr2Html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
         <h2 style="color:#2563eb;">New Help Request</h2>
         <p>Dear <strong>${coachExpertName || coachExpertType}</strong>,</p>
         <p>A recruiter needs your assistance. Here are the details:</p>
@@ -1649,9 +1646,16 @@ router.post('/send-help-email', async (req, res) => {
         </div>
         <p>Please log in to RecruiterV to respond to this request.</p>
         <p style="color:#6b7280;font-size:12px;">© ${new Date().getFullYear()} RecruiterV</p>
-      </div>`,
-      SENDER.email, SENDER.name
-    );
+      </div>`;
+
+    const _hr2 = await renderEmail('coachHelpRequestRaised',
+      { userName: coachExpertName || coachExpertType, positionTitle: positionTitle || '',
+        clientName: '', recruiterName: recruiterName || 'A recruiter',
+        dashboardUrl: 'https://www.recruiterv.com' },
+      { subject: `New Help Request - ${positionTitle}`, htmlContent: _hr2Html });
+    if (_hr2.htmlContent) {
+      await sendEmail(coachExpertEmail, _hr2.subject, _hr2.htmlContent, SENDER.email, SENDER.name);
+    }
     console.log("✅ Help request email sent to:", coachExpertEmail);
 
     res.json({

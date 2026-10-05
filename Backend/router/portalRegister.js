@@ -220,17 +220,15 @@ router.post('/pending/:id/decision', managerAuth, async (req, res) => {
 
     // Tell them either way — an approval is useless if they never learn of it.
     try {
-      const { sendEmailFull } = require('../utils/email');
+      const { sendEmailFull, renderEmail } = require('../utils/email');
       const who = a.contactName || a.name || 'there';
       const loginUrl = source === 'consulting_firms'
         ? 'https://www.recruiterv.com/consulting'
         : (lc(a.roleCategory || a.role) === 'vendor'
             ? 'https://www.recruiterv.com/vendor'
             : 'https://www.recruiterv.com/company');
-      await sendEmailFull({
-        to: a.email,
-        subject: approve ? 'Your RecruiterV account is approved' : 'Update on your RecruiterV registration',
-        htmlContent: approve
+      const _pdSubject = approve ? 'Your RecruiterV account is approved' : 'Update on your RecruiterV registration';
+      const _pdHtml = approve
           ? `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111">
                <p>Hi ${who},</p>
                <p>Good news — <b>${a.name || ''}</b> has been approved on RecruiterV.</p>
@@ -250,8 +248,13 @@ router.post('/pending/:id/decision', managerAuth, async (req, res) => {
                <b>${a.name || 'your account'}</b> at this time.</p>
                ${req.body?.reason ? `<p><b>Note from our team:</b> ${String(req.body.reason).trim()}</p>` : ''}
                <p>You are welcome to get in touch if you would like to discuss it.</p>
-               <p>Regards,<br/>Team RecruiterV</p></div>`,
-      });
+               <p>Regards,<br/>Team RecruiterV</p></div>`;
+
+      const _pd = await renderEmail('portalAccountDecision',
+        { userName: who, applicantName: a.name || '', decisionSubject: _pdSubject,
+          dashboardUrl: 'https://www.recruiterv.com/company' },
+        { subject: _pdSubject, htmlContent: _pdHtml });
+      await sendEmailFull({ to: a.email, subject: _pd.subject, htmlContent: _pd.htmlContent });
     } catch (e) { console.error('portal decision email failed:', e.message); }
 
     res.json({ success: true, message: approve ? 'Account approved — they can sign in now.' : 'Account rejected.' });

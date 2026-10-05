@@ -996,7 +996,7 @@ router.post('/bulk-approve-existing-users', adminAuthMiddleware, async (req, res
 router.post('/reassign-user', adminAuthMiddleware, async (req, res) => {
   try {
     const { db } = require('./firebase_ad');
-    const { sendEmailFull } = require('../utils/email');
+    const { sendEmailFull, renderEmail } = require('../utils/email');
     const { userId, fromType, toType } = req.body;
 
     const collectionMap = { recruiter: 'recruiter_db', coach: 'coach_db', expert: 'expert_db' };
@@ -1060,11 +1060,10 @@ router.post('/reassign-user', adminAuthMiddleware, async (req, res) => {
   </table>
 </body></html>`;
       try {
-        await sendEmailFull({
-          to: userData.email,
-          subject: `Your RecruiterV Account Has Been Reassigned to ${toLabel}`,
-          htmlContent,
-        });
+        const _ra = await renderEmail('accountReassigned',
+          { userName: userData.name || '', toLabel, dashboardUrl: 'https://www.recruiterv.com' },
+          { subject: `Your RecruiterV Account Has Been Reassigned to ${toLabel}`, htmlContent });
+        await sendEmailFull({ to: userData.email, subject: _ra.subject, htmlContent: _ra.htmlContent });
       } catch (emailErr) { console.error('Reassign email failed:', emailErr.message); }
     }
 
@@ -1080,7 +1079,7 @@ router.post('/reassign-user', adminAuthMiddleware, async (req, res) => {
 router.post('/make-referrer', adminAuthMiddleware, async (req, res) => {
   try {
     const { db } = require('./firebase_ad');
-    const { sendEmailFull } = require('../utils/email');
+    const { sendEmailFull, renderEmail } = require('../utils/email');
     const { userId, fromType } = req.body;
 
     const collectionMap = { recruiter: 'recruiter_db', coach: 'coach_db', expert: 'expert_db' };
@@ -1218,11 +1217,10 @@ router.post('/make-referrer', adminAuthMiddleware, async (req, res) => {
   </table>
 </body></html>`;
       try {
-        await sendEmailFull({
-          to: userData.email,
-          subject: `Your RecruiterV Path — A New Earning Opportunity Awaits You 🌟`,
-          htmlContent,
-        });
+        const _ri = await renderEmail('referrerInvite',
+          { userName: userData.name || '', dashboardUrl: 'https://www.recruiterv.com/refer-and-earn' },
+          { subject: `Your RecruiterV Path — A New Earning Opportunity Awaits You 🌟`, htmlContent });
+        await sendEmailFull({ to: userData.email, subject: _ri.subject, htmlContent: _ri.htmlContent });
       } catch (emailErr) { console.error('make-referrer email failed:', emailErr.message); }
     }
 

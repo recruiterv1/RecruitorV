@@ -1415,14 +1415,15 @@ router.post('/forgot-password', async (req, res) => {
         // Build reset link
         const resetLink = `${process.env.FRONTURL || 'https://www.recruiterv.com'}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
 
+        // The one email that must never be paused, but it should still be
+        // editable like the rest — it was the only template whose own key was
+        // never rendered.
         const { templates: emailTemplates } = require('../utils/email');
-        await sendEmail(
-            user.email,
-            'Password Reset — RecruiterV',
-            emailTemplates.forgotPassword(resetLink, user.name),
-            'noreply@recruiterv.com',
-            'RecruiterV'
-        );
+        const _fp = await renderEmail('forgotPassword',
+          { userName: user.name || '', resetLink },
+          { subject: 'Password Reset — RecruiterV',
+            htmlContent: emailTemplates.forgotPassword(resetLink, user.name) });
+        await sendEmail(user.email, _fp.subject, _fp.htmlContent, SENDER.email, SENDER.name);
 
         console.log(`✅ Password reset email sent to ${user.email}`);
 

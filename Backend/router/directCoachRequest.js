@@ -179,7 +179,13 @@ router.post('/', authMiddleware, async (req, res) => {
           </table>
           <p style="color:#6b7280;font-size:14px;">— RecruiterV Team</p>
         </div>`;
-      try { await sendEmail(clientspocEmail, subject, html); }
+      try {
+        const _sa = await renderEmail('coachSelfAssigned',
+          { roleCategory, positionTitle: requestData.positionTitle || '',
+            userName: requestData.coachExpertName || '', dashboardUrl: 'https://www.recruiterv.com' },
+          { subject, htmlContent: html });
+        if (_sa.htmlContent) await sendEmail(clientspocEmail, _sa.subject, _sa.htmlContent);
+      }
       catch (e) { console.error('ClientSPOC FYI email failed:', e.message); }
     }
 

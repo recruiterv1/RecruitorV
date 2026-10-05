@@ -10,7 +10,7 @@
 // The email is a table: Name · Phone · Email · Position.
 // ─────────────────────────────────────────────────────────────────────────────
 const { db } = require('../router/firebase_ad');
-const { sendEmailFull } = require('./email');
+const { sendEmailFull, renderEmail } = require('./email');
 
 const esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -112,11 +112,11 @@ async function sendDailyDirectApplicantDigest(windowHours = 24) {
     // Newest first
     g.rows.reverse();
     try {
-      await sendEmailFull({
-        to: email,
-        subject: `Your direct applicants — ${g.rows.length} today`,
-        htmlContent: buildHtml(g.name, g.rows),
-      });
+      const _r = await renderEmail('directApplicantDigest',
+        { userName: g.name || '', count: String(g.rows.length), dashboardUrl: 'https://www.recruiterv.com' },
+        { subject: `Your direct applicants — ${g.rows.length} today`, htmlContent: buildHtml(g.name, g.rows) });
+      if (!_r.htmlContent) continue;          // paused in the designer
+      await sendEmailFull({ to: email, subject: _r.subject, htmlContent: _r.htmlContent });
       sent++;
     } catch (e) {
       console.error(`digest email failed for ${email}:`, e.message);

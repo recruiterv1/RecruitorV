@@ -676,11 +676,8 @@ router.post('/hrs', companyAuth, async (req, res) => {
     });
 
     try {
-      const { sendEmailFull } = require('../utils/email');
-      await sendEmailFull({
-        to: email,
-        subject: `Your RecruiterV HR account for ${req.company.name || 'your company'}`,
-        htmlContent: `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111">
+      const { sendEmailFull, renderEmail } = require('../utils/email');
+      const _hrHtml = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#111">
           <p>Hi ${name},</p>
           <p>An HR account has been created for you on RecruiterV for
           <b>${req.company.name || 'your company'}</b>.</p>
@@ -689,8 +686,13 @@ router.post('/hrs', companyAuth, async (req, res) => {
           <p>You'll see the positions and candidates in your skill areas:
           <b>${skillCategories.join(', ')}</b>.</p>
           <p>Please change your password after your first sign-in.</p>
-          <p>Regards,<br/>Team RecruiterV</p></div>`,
-      });
+          <p>Regards,<br/>Team RecruiterV</p></div>`;
+
+      const _hr = await renderEmail('companyHrAccount',
+        { userName: name, companyName: req.company.name || 'your company',
+          dashboardUrl: 'https://www.recruiterv.com/company' },
+        { subject: `Your RecruiterV HR account for ${req.company.name || 'your company'}`, htmlContent: _hrHtml });
+      await sendEmailFull({ to: email, subject: _hr.subject, htmlContent: _hr.htmlContent });
     } catch (e) { console.error('HR welcome email failed:', e.message); }
 
     res.json({ success: true, id: ref.id, message: 'HR added. Their sign-in details have been emailed.' });
