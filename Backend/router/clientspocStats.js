@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getClientSpocStats, getClientSpocDetailedStats } = require('../model_fire/clientspocStatsF');
-const { sendEmail } = require('../utils/email');
+const { SENDER, sendEmail } = require('../utils/email');
 
 /**
  * GET /clientspocstats/all
@@ -90,7 +90,7 @@ router.post('/send-email', async (req, res) => {
       });
     }
 
-    await sendEmail(to, subject, body.replace(/\n/g, '<br>'), 'admin@recruiterv.com', 'RecruiterV Admin');
+    await sendEmail(to, subject, body.replace(/\n/g, '<br>'), SENDER.email, SENDER.name);
 
     return res.status(200).json({
       success: true,

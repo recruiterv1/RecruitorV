@@ -66,7 +66,7 @@ router.get('/list', managerAuth, async (req, res) => {
       return {
         key: t.key, name: t.name, recipient: t.recipient,
         subject: o.subject || t.subject, variables: t.variables,
-        enabled: !!o.enabled, customized: !!overrides[t.key], custom: false,
+        enabled: !!o.enabled, paused: !!o.paused, customized: !!overrides[t.key], custom: false,
         updatedAt: o.updatedAt || null,
       };
     });
@@ -76,7 +76,7 @@ router.get('/list', managerAuth, async (req, res) => {
         list.push({
           key: o.key, name: o.name || o.key, recipient: o.recipient || 'Custom',
           subject: o.subject || '', variables: o.variables || detectVars(o.subject, o.htmlBody),
-          enabled: !!o.enabled, customized: true, custom: true, updatedAt: o.updatedAt || null,
+          enabled: !!o.enabled, paused: !!o.paused, customized: true, custom: true, updatedAt: o.updatedAt || null,
         });
       }
     });
@@ -95,7 +95,7 @@ router.get('/:key', managerAuth, async (req, res) => {
       return res.json({ success: true, template: {
         key: def.key, name: def.name, recipient: def.recipient, custom: false,
         subject: o.subject || def.subject, htmlBody: o.htmlBody || def.body,
-        variables: def.variables, sample: def.sample || {}, enabled: !!o.enabled,
+        variables: def.variables, sample: def.sample || {}, enabled: !!o.enabled, paused: !!o.paused,
         customized: doc.exists, defaultSubject: def.subject, defaultBody: def.body,
       } });
     }
@@ -104,7 +104,7 @@ router.get('/:key', managerAuth, async (req, res) => {
       key: o.key, name: o.name || o.key, recipient: o.recipient || 'Custom', custom: true,
       subject: o.subject || '', htmlBody: o.htmlBody || '',
       variables: o.variables || detectVars(o.subject, o.htmlBody), sample: o.sample || {},
-      enabled: !!o.enabled, customized: true,
+      enabled: !!o.enabled, paused: !!o.paused, customized: true,
     } });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -133,7 +133,7 @@ router.put('/:key', managerAuth, async (req, res) => {
     const def = TEMPLATE_MAP[req.params.key];
     const doc = await db.collection('email_templates').doc(req.params.key).get();
     if (!def && !doc.exists) return res.status(404).json({ success: false, message: 'Unknown template' });
-    const { subject, htmlBody, enabled, name, recipient } = req.body || {};
+    const { subject, htmlBody, enabled, paused, name, recipient } = req.body || {};
     if (enabled && !(htmlBody || '').trim()) {
       return res.status(400).json({ success: false, message: 'Body is required to enable a template.' });
     }
@@ -143,6 +143,8 @@ router.put('/:key', managerAuth, async (req, res) => {
       subject: (subject || '').toString(),
       htmlBody: (htmlBody || '').toString(),
       enabled: !!enabled,
+      // Stops the email entirely, whatever the wording says.
+      paused: !!paused,
       updatedAt: new Date(), updatedBy: req.managerEmail,
     };
     if (isCustom) {

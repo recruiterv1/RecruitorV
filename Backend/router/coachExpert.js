@@ -5,7 +5,7 @@ const coach = require('../model_fire/coachF');
 const expert = require('../model_fire/expertF');
 const { db } = require('./firebase_ad');
 const jwt = require('jsonwebtoken');
-const { sendEmail } = require('../utils/email');
+const { sendEmail, renderEmail, SENDER } = require('../utils/email');
 const { sendPushToEmails } = require('../utils/push');
 
 // Collection reference for coach/expert requests
@@ -1567,10 +1567,7 @@ router.post('/request/:id/send-email', async (req, res) => {
     
     const requestData = doc.data();
 
-    await sendEmail(
-      requestData.coachExpertEmail,
-      `New Help Request for ${requestData.positionTitle}`,
-      `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+    const _hrFallback = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
         <h2 style="color:#2563eb;">New Help Request</h2>
         <p>Dear <strong>${requestData.coachExpertName || 'Coach/Expert'}</strong>,</p>
         <p>A recruiter has requested your assistance for the following position:</p>
@@ -1581,9 +1578,17 @@ router.post('/request/:id/send-email', async (req, res) => {
         </div>
         <p>Please log in to RecruiterV to respond to this request.</p>
         <p style="color:#6b7280;font-size:12px;">© ${new Date().getFullYear()} RecruiterV</p>
-      </div>`,
-      'admin@recruiterv.com', 'RecruiterV'
-    );
+      </div>`;
+
+    const _hr = await renderEmail('coachHelpRequestRaised', {
+      userName: requestData.coachExpertName || 'Coach/Expert',
+      positionTitle: requestData.positionTitle || '',
+      clientName: requestData.client ? ` (${requestData.client})` : '',
+      recruiterName: requestData.recruiterName || 'A recruiter',
+      dashboardUrl: 'https://www.recruiterv.com',
+    }, { subject: `New Help Request for ${requestData.positionTitle}`, htmlContent: _hrFallback });
+
+    await sendEmail(requestData.coachExpertEmail, _hr.subject, _hr.htmlContent, SENDER.email, SENDER.name);
     console.log("✅ Email sent to coach/expert:", requestData.coachExpertEmail);
 
     res.json({
@@ -1645,7 +1650,7 @@ router.post('/send-help-email', async (req, res) => {
         <p>Please log in to RecruiterV to respond to this request.</p>
         <p style="color:#6b7280;font-size:12px;">© ${new Date().getFullYear()} RecruiterV</p>
       </div>`,
-      'admin@recruiterv.com', 'RecruiterV'
+      SENDER.email, SENDER.name
     );
     console.log("✅ Help request email sent to:", coachExpertEmail);
 
@@ -2220,7 +2225,7 @@ router.post('/vendor-upgrade-request', authMiddleware, async (req, res) => {
   try {
     const coachEmail = req.user.email;
     const { FieldValue } = require('firebase-admin/firestore');
-    const { sendEmailFull } = require('../utils/email');
+    const { sendEmailFull, renderEmail } = require('../utils/email');
 
     const coachSnap = await db.collection('coach_db').where('email', '==', coachEmail.toLowerCase()).limit(1).get();
     if (coachSnap.empty) return res.status(404).json({ success: false, message: 'Coach not found' });
@@ -2273,7 +2278,13 @@ router.post('/vendor-upgrade-request', authMiddleware, async (req, res) => {
       </div>`;
 
     try {
-      await sendEmailFull({ to: adminEmails, subject: `Vendor Upgrade Request — ${coachData.name || coachEmail}`, htmlContent: html });
+      const _v = await renderEmail('vendorUpgradeRequest', {
+        userName: coachData.name || coachEmail,
+        userEmail: coachEmail,
+        companyName: coachData.companyName ? ` — ${coachData.companyName}` : '',
+        dashboardUrl: 'https://www.recruiterv.com',
+      }, { subject: `Vendor Upgrade Request — ${coachData.name || coachEmail}`, htmlContent: html });
+      await sendEmailFull({ to: adminEmails, subject: _v.subject, htmlContent: _v.htmlContent });
     } catch (emailErr) {
       console.error('vendor-upgrade email error:', emailErr.message);
     }

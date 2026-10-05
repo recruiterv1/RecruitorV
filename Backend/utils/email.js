@@ -14,16 +14,30 @@ const BREVO_API = 'https://api.brevo.com/v3/smtp/email';
  * @param {string}          [opts.replyTo]     reply-to email address
  * @param {Array}           [opts.attachment]  array of {content (base64), name} objects
  */
+// One sender for everything the system sends.
+//
+// The same product had been writing as "RecruiterV", "RecruiterV Team" and
+// "RecruiterV Admin", from both admin@ and noreply@, depending on which call
+// site happened to run. To a recipient that reads as three different senders
+// and gives spam filters three reputations to judge instead of one.
+const SENDER = { email: 'noreply@recruiterv.com', name: 'RecruiterV' };
+
 const sendEmailFull = async ({
   to,
   subject,
   htmlContent,
-  fromEmail = 'noreply@recruiterv.com',
-  fromName = 'RecruiterV',
+  fromEmail = SENDER.email,
+  fromName = SENDER.name,
   cc,
   replyTo,
   attachment,
 }) => {
+  // An email with no body is either a paused template or a bug; neither should
+  // reach a recipient. This is the one gate every send passes through.
+  if (!String(htmlContent || '').trim()) {
+    console.log('email suppressed (no body — paused template or empty render):', subject || '(no subject)');
+    return { skipped: true };
+  }
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) throw new Error('BREVO_API_KEY is not set');
 
@@ -904,6 +918,12 @@ const renderEmail = async (key, vars = {}, fallback = {}) => {
     const doc = await db.collection('email_templates').doc(key).get();
     if (doc.exists) {
       const t = doc.data();
+      // Paused means do not send this email at all — a different thing from
+      // `enabled: false`, which only means "use the wording in the code".
+      // Returning an empty body is what stops it: sendEmailFull refuses to
+      // send one, so a pause is enforced in one place rather than at every
+      // call site remembering to check.
+      if (t && t.paused === true) return { paused: true, subject: '', htmlContent: '' };
       if (t && t.enabled && t.htmlBody) {
         return {
           subject: substitute(t.subject || fallback.subject || '', vars),
@@ -918,6 +938,7 @@ const renderEmail = async (key, vars = {}, fallback = {}) => {
 };
 
 module.exports = {
+  SENDER,
   sendEmail,
   sendEmailFull,
   templates,

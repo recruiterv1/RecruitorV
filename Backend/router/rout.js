@@ -9,7 +9,7 @@ const { v4: uuidv4 }=require('uuid');
 const { admin }=require('./firebase_ad');
 
 const recruiter=require('../model_fire/recruiterF')
-const { sendEmail, sendEmailFull, templates, renderEmail } = require('../utils/email');
+const { SENDER, sendEmail, sendEmailFull, templates, renderEmail } = require('../utils/email');
 
 // Accept all file types here; validate extension server-side so browser MIME quirks don't break the upload
 const resumeUpload = multer({
@@ -65,13 +65,13 @@ async function sendOtp(email, otp) {
 
   const _r = await renderEmail('otpCode', { otp }, { subject: 'Your RecruiterV OTP Code', htmlContent: html });
   try {
-    await sendEmail(email, _r.subject, _r.htmlContent, 'noreply@recruiterv.com', 'RecruiterV');
+    await sendEmail(email, _r.subject, _r.htmlContent, SENDER.email, SENDER.name);
     console.log(`✅ OTP sent to ${email}`);
   } catch (firstErr) {
     console.error(`❌ OTP Email Error (attempt 1) to ${email}:`, firstErr.message);
     try {
       await new Promise(r => setTimeout(r, 1500));
-      await sendEmail(email, _r.subject, _r.htmlContent, 'noreply@recruiterv.com', 'RecruiterV');
+      await sendEmail(email, _r.subject, _r.htmlContent, SENDER.email, SENDER.name);
       console.log(`✅ OTP sent to ${email} (retry)`);
     } catch (retryErr) {
       console.error(`❌ OTP Email Error (attempt 2) to ${email}:`, retryErr.message);
@@ -1244,7 +1244,7 @@ router.post('/send-recruiter-email', async (req, res) => {
             });
         }
 
-        await sendEmail(to, subject, body.replace(/\n/g, '<br>'), 'admin@recruiterv.com', 'RecruiterV Admin');
+        await sendEmail(to, subject, body.replace(/\n/g, '<br>'), SENDER.email, SENDER.name);
 
         res.status(200).json({
             success: true,

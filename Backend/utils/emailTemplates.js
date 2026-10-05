@@ -382,6 +382,67 @@ const TEMPLATES = [
       </table>
       <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
   },
+
+  // ── Previously hardcoded in the source ──────────────────────────────────────
+  // These seven were written in the code that sends them, so nobody could
+  // reword them or switch them off. Each send site now asks for a template and
+  // keeps its original wording as the fallback, so adding them here changes
+  // nothing until somebody edits one.
+  {
+    key: 'certificateIssued', name: 'Certification issued', recipient: 'Recruiter / Coach / Expert',
+    subject: "You're Certified — your RecruiterV certificate ({{certificateId}})",
+    variables: ['userName', 'certificateId', 'tier', 'percent', 'certificateUrl'],
+    sample: { userName: 'Aisha', certificateId: 'RV-2026-0IS8QI', tier: 'Certified', percent: '92', certificateUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p>You have passed the eligibility assessment with <b>{{percent}}%</b> and are now a <b>{{tier}}</b> member.</p>
+      <p>Your certificate number is <b>{{certificateId}}</b>.</p>
+      <p><a href="{{certificateUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">View your certificate</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'agreementSubmitted', name: 'Agreement submitted', recipient: 'Any user',
+    subject: 'Agreement submitted — {{role}}',
+    variables: ['userName', 'role', 'agreementVersion', 'dashboardUrl'],
+    sample: { userName: 'Aisha', role: 'Recruiter', agreementVersion: 'v1.0', dashboardUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p>We have received your signed {{role}} agreement ({{agreementVersion}}). Nothing further is needed from you.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Go to your dashboard</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'vendorUpgradeRequest', name: 'Vendor upgrade requested', recipient: 'Admin',
+    subject: 'Vendor upgrade request — {{userName}}',
+    variables: ['userName', 'userEmail', 'companyName', 'dashboardUrl'],
+    sample: { userName: 'Aisha Khan', userEmail: 'aisha@example.com', companyName: 'Acme Staffing', dashboardUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p>A vendor upgrade has been requested.</p>
+      <p><b>{{userName}}</b> ({{userEmail}}){{companyName}}</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Review the request</a></p>`),
+  },
+  {
+    key: 'coachHelpRequestRaised', name: 'Help request raised on a position', recipient: 'Coach / Expert',
+    subject: 'New help request — {{positionTitle}}',
+    variables: ['userName', 'positionTitle', 'clientName', 'recruiterName', 'dashboardUrl'],
+    sample: { userName: 'Rahul', positionTitle: 'Java Developer', clientName: 'Acme Corp', recruiterName: 'Aisha', dashboardUrl: 'https://www.recruiterv.com' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p><b>{{recruiterName}}</b> has asked for help on <b>{{positionTitle}}</b>{{clientName}}.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Open the request</a></p>
+      <p style="margin-top:18px;">Warm regards,<br/>Team RecruiterV</p>`),
+  },
+  {
+    key: 'binCvWaiting', name: 'Review Bin — a CV is waiting', recipient: 'Coach / Expert',
+    subject: 'A CV is waiting for your review',
+    variables: ['userName', 'positionTitle', 'clientName', 'hours', 'slot', 'dashboardUrl'],
+    sample: { userName: 'Rahul', positionTitle: 'Java Developer', clientName: 'Acme Corp', hours: '4', slot: '6 PM - 8 PM', dashboardUrl: 'https://www.recruiterv.com/coach-bin' },
+    body: brandWrap(`
+      <p>Dear {{userName}},</p>
+      <p>A CV has come in for <b>{{positionTitle}}</b>{{clientName}}. It is claimable for the next {{hours}} hours; after that it goes to the client without your review.</p>
+      <p><a href="{{dashboardUrl}}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:700;">Open the Review Bin</a></p>
+      <p style="color:#888;font-size:12px">You are getting this because {{slot}} is one of your available hours.</p>`),
+  },
 ];
 
 const TEMPLATE_MAP = Object.fromEntries(TEMPLATES.map(t => [t.key, t]));

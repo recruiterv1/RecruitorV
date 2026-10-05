@@ -15,7 +15,7 @@ const positionAccess = require('../model_fire/positionAccessF')
 const notificationModel = require('../model_fire/notificationF')
 const clientspocModel = require('../model_fire/clientspocF')
 const emailModel = require('../model_fire/recruiterEmailF')
-const { sendEmail, sendEmailFull, renderEmail } = require('../utils/email');
+const { SENDER, sendEmail, sendEmailFull, renderEmail } = require('../utils/email');
 const { sendPushToEmails } = require('../utils/push');
 const { TEMPLATE_MAP, substitute } = require('../utils/emailTemplates');
 
@@ -199,7 +199,7 @@ const sendClientSpocEmailForNewCandidate = async (data) => {
     const _r = await renderEmail('candidateSubmitted',
       { candidateName, positionName: positionTitle, dashboardUrl: 'https://www.recruiterv.com/ad_panel#candidates' },
       { subject: `New Candidate Submitted — ${positionTitle} | ${candidateName}`, htmlContent });
-    const result = await sendEmail(clientspocEmail, _r.subject, _r.htmlContent, 'admin@recruiterv.com', 'RecruiterV');
+    const result = await sendEmail(clientspocEmail, _r.subject, _r.htmlContent, SENDER.email, SENDER.name);
     console.log(`✅ ClientSPOC email sent to ${clientspocEmail} — messageId: ${result?.messageId}`);
     return true;
   } catch (error) {
@@ -2004,7 +2004,7 @@ router.post('/send/bulk-email', async (req, res) => {
           </html>
         `;
 
-        const response = await sendEmail(recipient.email, subject, htmlContent, 'admin@recruiterv.com', 'RecruiterV Team');
+        const response = await sendEmail(recipient.email, subject, htmlContent, SENDER.email, SENDER.name);
         results.push({
           email: recipient.email,
           name: recipient.name,
@@ -2166,7 +2166,7 @@ router.post('/send/status-update', async (req, res) => {
     const _r = await renderEmail('applicationStatusUpdate',
       { candidateName: name || 'Candidate', position, client: client || '', oldStatus: oldStatus || '', newStatus },
       { subject: `Application Status Update - ${position}`, htmlContent });
-    const response = await sendEmail(email, _r.subject, _r.htmlContent, 'admin@recruiterv.com', 'RecruiterV Team');
+    const response = await sendEmail(email, _r.subject, _r.htmlContent, SENDER.email, SENDER.name);
 
     console.log('✅ Status update email sent:', response.messageId);
 

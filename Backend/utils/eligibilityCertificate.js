@@ -260,11 +260,11 @@ const issueCertificate = async ({ attemptId, name, email, role, skillCategory, p
 
   let emailed = false;
   try {
-    const { sendEmailFull } = require('./email');
-    await sendEmailFull({
-      to: email,
-      subject: `You're Certified — your RecruiterV certificate (${certificateId})`,
-      htmlContent: `
+    const { sendEmailFull, renderEmail } = require('./email');
+    // Editable in the designer now; the wording below is what sends until
+    // someone writes a template, so listing it there changes nothing.
+    const _fbSubject = `You're Certified — your RecruiterV certificate (${certificateId})`;
+    const _fbHtml = `
         <div style="font-family:Arial,sans-serif;line-height:1.6;color:#334155;max-width:600px;margin:0 auto;padding:24px">
           <h2 style="color:#0F1D3C;margin:0 0 4px">Congratulations, ${name || 'there'}.</h2>
           <p style="margin:0 0 18px;color:#64748B">You scored <strong style="color:#0F1D3C">${percent}%</strong> and are now a
@@ -281,7 +281,22 @@ const issueCertificate = async ({ attemptId, name, email, role, skillCategory, p
             Complete your registration
           </a>
           <p style="margin:24px 0 0;color:#94A3B8;font-size:12px">RecruiterV — a product of Changeleaders Consulting Private Limited</p>
-        </div>`,
+        </div>`;
+
+    const _r = await renderEmail('certificateIssued', {
+      userName: name || 'there',
+      certificateId,
+      tier: ROLE_TITLE[role] || role,
+      percent: String(percent),
+      certificateUrl: url || 'https://www.recruiterv.com',
+    }, { subject: _fbSubject, htmlContent: _fbHtml });
+
+    await sendEmailFull({
+      to: email,
+      subject: _r.subject,
+      htmlContent: _r.htmlContent,
+      // The PDF goes out either way — a reworded template must not cost the
+      // recipient the certificate itself.
       attachment: [{ name: `RecruiterV_Certificate_${certificateId}.pdf`, content: pdf.toString('base64') }],
     });
     emailed = true;

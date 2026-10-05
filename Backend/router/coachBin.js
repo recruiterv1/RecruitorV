@@ -247,13 +247,21 @@ const alertAvailableCoaches = async (position, candidateName) => {
   } catch (e) { console.error('bin alert push failed:', e.message); }
 
   try {
-    const { sendEmail } = require('../utils/email');
+    const { sendEmail, renderEmail, SENDER } = require('../utils/email');
     const html = `<p>Hello,</p>
       <p>A CV has just come in for <strong>${position?.position || ''}</strong>${position?.client ? ` (${position.client})` : ''}.</p>
       <p>It is claimable for the next ${AVAILABLE_HOURS} hours. After that it goes to the client without your review.</p>
       <p><a href="https://www.recruiterv.com/coach-bin">Open the Review Bin</a></p>
       <p style="color:#888;font-size:12px">You are getting this because ${slot} is one of your available hours. Change them under Availability.</p>`;
-    await Promise.all(targets.map(t => sendEmail(t, title, html)));
+    const _b = await renderEmail('binCvWaiting', {
+      userName: '',
+      positionTitle: position?.position || '',
+      clientName: position?.client ? ` (${position.client})` : '',
+      hours: String(AVAILABLE_HOURS),
+      slot: slot || '',
+      dashboardUrl: 'https://www.recruiterv.com/coach-bin',
+    }, { subject: title, htmlContent: html });
+    await Promise.all(targets.map(t => sendEmail(t, _b.subject, _b.htmlContent, SENDER.email, SENDER.name)));
   } catch (e) { console.error('bin alert email failed:', e.message); }
 
   return { notified: targets, slot };

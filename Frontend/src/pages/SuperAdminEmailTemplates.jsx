@@ -151,7 +151,7 @@ const SuperAdminEmailTemplates = () => {
         openTpl(r.data.key);
       } else {
         await axios.put(`/api/email-templates/${tpl.key}`,
-          { name: tpl.name, recipient: tpl.recipient, subject: tpl.subject, htmlBody: tpl.htmlBody, enabled: tpl.enabled },
+          { name: tpl.name, recipient: tpl.recipient, subject: tpl.subject, htmlBody: tpl.htmlBody, enabled: tpl.enabled, paused: tpl.paused },
           { withCredentials: true });
         setMsg({ type: 'ok', text: 'Saved.' });
         fetchList();
@@ -220,7 +220,11 @@ const SuperAdminEmailTemplates = () => {
                     </span>
                     <span className="block text-[11px] text-gray-400">To: {t.recipient}</span>
                   </span>
-                  {t.enabled ? <CheckCircle2 size={15} className="text-green-600 flex-shrink-0" /> : <Circle size={15} className="text-gray-300 flex-shrink-0" />}
+                  {t.paused
+                    ? <span title="Paused — this email is not being sent"
+                        className="text-[10px] font-bold bg-red-100 text-red-700 rounded px-1.5 py-0.5 flex-shrink-0">PAUSED</span>
+                    : t.enabled ? <CheckCircle2 size={15} className="text-green-600 flex-shrink-0" />
+                    : <Circle size={15} className="text-gray-300 flex-shrink-0" />}
                 </button>
               ))}
               {!filtered.length && <div className="p-6 text-center text-gray-400 text-sm">No templates.</div>}
@@ -241,14 +245,29 @@ const SuperAdminEmailTemplates = () => {
                   <div className="font-bold text-gray-900 truncate">{mode === 'create' ? 'New template' : tpl.name}</div>
                   {mode === 'edit' && <div className="text-[11px] text-gray-400">To: {tpl.recipient} · {tpl.custom ? 'custom' : 'system'} · key: {tpl.key}</div>}
                 </div>
-                {mode === 'edit' && !tpl.custom && (
-                  <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer flex-shrink-0">
-                    <input type="checkbox" checked={!!tpl.enabled} onChange={e => setField('enabled', e.target.checked)} /> Use custom template
-                  </label>
-                )}
+                <div className="flex items-center gap-4 flex-shrink-0">
+                  {mode === 'edit' && !tpl.custom && (
+                    <label className="flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer">
+                      <input type="checkbox" checked={!!tpl.enabled} onChange={e => setField('enabled', e.target.checked)} /> Use custom template
+                    </label>
+                  )}
+                  {/* Separate from the wording toggle on purpose: one chooses
+                      which words go out, this one decides whether anything does. */}
+                  {mode === 'edit' && (
+                    <label className="flex items-center gap-2 text-xs font-semibold text-red-700 cursor-pointer">
+                      <input type="checkbox" checked={!!tpl.paused} onChange={e => setField('paused', e.target.checked)} /> Pause this email
+                    </label>
+                  )}
+                </div>
               </div>
 
-              {mode === 'edit' && !tpl.custom && !tpl.enabled && (
+              {mode === 'edit' && tpl.paused && (
+                <div className="mb-3 text-[12px] bg-red-50 border border-red-200 text-red-800 rounded-lg px-3 py-2">
+                  <b>Paused.</b> Nobody receives this email at all — neither your wording nor the
+                  system default. Untick and Save to start sending it again.
+                </div>
+              )}
+              {mode === 'edit' && !tpl.custom && !tpl.enabled && !tpl.paused && (
                 <div className="mb-3 text-[12px] bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2">
                   Not active — the system default design is being sent. Tick "Use custom template" and Save to switch.
                 </div>

@@ -4,7 +4,7 @@ const coachF = require('../model_fire/coachF');
 const expertF = require('../model_fire/expertF');
 const { db, admin } = require('./firebase_ad');
 const router = express.Router();
-const { sendEmailFull } = require('../utils/email');
+const { sendEmailFull, renderEmail } = require('../utils/email');
 
 /**
  * POST /submit
@@ -120,10 +120,17 @@ router.post('/submit', async (req, res) => {
     let emailSent = true;
     try {
       console.log(`📧 Sending agreement email to ${recipients.length} recipients...`);
+      const _r = await renderEmail('agreementSubmitted', {
+        userName: user?.name || 'there',
+        role: role || 'RecruiterV',
+        agreementVersion: meta?.version || 'v1.0',
+        dashboardUrl: 'https://www.recruiterv.com',
+      }, { subject: `Agreement Submitted - ${role || 'RecruiterV'}`, htmlContent });
+
       await sendEmailFull({
         to: recipients,
-        subject: `Agreement Submitted - ${role || 'RecruiterV'}`,
-        htmlContent,
+        subject: _r.subject,
+        htmlContent: _r.htmlContent,
         fromEmail: 'noreply@recruiterv.com',
         fromName: 'RecruiterV Agreements',
         attachment: [{ content: normalizedBase64, name: fileName || `Agreement_${(user?.name || 'User').replace(/\s+/g, '_')}.pdf` }],
