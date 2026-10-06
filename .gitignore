@@ -74,3 +74,6 @@ node_modules/
 
 # Backups of deleted user records — personal data, keep out of the repo
 Backend/scripts/deleted_*.json
+
+# Firestore export — real candidate data, never committed
+Backend/scripts/migrate/dump/
