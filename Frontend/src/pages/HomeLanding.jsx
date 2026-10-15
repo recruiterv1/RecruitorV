@@ -177,6 +177,15 @@ function Hero() {
 }
 
 /* ─────────────────────────  SHARED REWARDS  ───────────────────────── */
+// A four-column grid leaves two cards hugging the left edge once a role is
+// withdrawn. The track count follows the number of cards, and the row is capped
+// and centred so a short row reads as deliberate rather than as something
+// missing.
+const rowClass = (n) =>
+  n >= 4 ? 'sm:grid-cols-2 lg:grid-cols-4'
+  : n === 3 ? 'sm:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto'
+  : 'sm:grid-cols-2 max-w-3xl mx-auto';
+
 function SharedRewards() {
   const coachExpertOpen = useFeatures().coachExpert;
   // Roles that are not open to join should not be advertised on the way in.
@@ -231,7 +240,7 @@ function SharedRewards() {
             </div>
           </div>
         </div>
-        <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className={`mt-12 grid gap-5 ${rowClass(roles.length)}`}>
           {roles.map(({ icon: Icon, label, color, note }) => (
             <div key={label} className="rounded-2xl bg-white ring-1 ring-slate-100 shadow-sm p-6">
               <div className="grid place-items-center w-11 h-11 rounded-xl" style={{ backgroundColor: `${color}1a` }}>
@@ -398,7 +407,7 @@ function WhoWeServe() {
             Whatever your role in hiring, Recruiterv gives you a fair, transparent way to collaborate and earn.
           </p>
         </div>
-        <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className={`mt-12 grid gap-6 ${rowClass(roles.length)}`}>
           {roles.map(({ icon: Icon, title, text, to, grad, soft }) => (
             <Link
               key={title}
