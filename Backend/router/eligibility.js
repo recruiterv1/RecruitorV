@@ -16,6 +16,7 @@ const adminVerify = require('../model_fire/adminCF');
 // The correct answer NEVER leaves the server for a candidate-facing route.
 // Grading happens here, against the stored question, on submit.
 
+const { openRoles } = require('../utils/featureFlags');
 const ROLES = ['Coach', 'Expert', 'Recruiter'];
 const isRole = (r) => ROLES.includes(String(r || '').trim());
 
@@ -147,7 +148,7 @@ router.get('/public/config', async (req, res) => {
         ready: asked > 0,
       };
     }
-    res.json({ success: true, roles: ROLES, config: out });
+    res.json({ success: true, roles: await openRoles(ROLES), config: out });
   } catch (e) {
     console.error('eligibility/public/config error:', e.message);
     res.status(500).json({ success: false, message: e.message });
@@ -819,7 +820,7 @@ router.get('/admin/config', adminAuth, async (req, res) => {
       const active = snap.docs.filter(d => d.data().active !== false).length;
       out[role] = { ...c, totalQuestions: snap.size, activeQuestions: active };
     }
-    res.json({ success: true, roles: ROLES, config: out });
+    res.json({ success: true, roles: await openRoles(ROLES), config: out });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
   }

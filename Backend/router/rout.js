@@ -157,6 +157,20 @@ router.post('/register',async (req,res)=>{
 
     let {name,email,mobile,experienceCategory,password,roleCategory,planType,specialization,skillCategory,userType,resumeUrl,agreementAccepted,positionExperience,availability,selectedPositions}=req.body;
 
+    // Coach and Expert are switched off at app_config/features.coachExpert.
+    // Refused here as well as hidden in the form, because a form is only a
+    // suggestion — the role arrives in the request body and can be anything.
+    try {
+      const { openRoles } = require('../utils/featureFlags');
+      const allowed = await openRoles();
+      if (roleCategory && !allowed.includes(roleCategory) && ['Coach','Expert'].includes(roleCategory)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Coach and Expert registration is closed at the moment. You can register as a Recruiter.',
+        });
+      }
+    } catch (e) { console.error('role gate check failed:', e.message); }
+
     // The user ticks "I agree to the Terms & Conditions" on the registration
     // form, so the account is created already marked as having signed the
     // agreement for their role. Set here (rather than only in /agreement/submit)

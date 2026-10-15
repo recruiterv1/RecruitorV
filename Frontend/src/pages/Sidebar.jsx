@@ -1,4 +1,5 @@
 
+import useFeatures from '../hooks/useFeatures';
 import React, { useState, useContext, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useChatNotify } from '../context/ChatNotify';
@@ -44,7 +45,7 @@ import axios from 'axios';
 
 // ── Recruiter menu definition ─────────────────────────────────────────────────
 // Items with `children` render as accordion groups.
-const buildRecruiterMenu = ({ isVendorTeam } = {}) => [
+const buildRecruiterMenu = ({ isVendorTeam, coachExpert = true } = {}) => [
   { icon: LayoutDashboard, label: 'Dashboard',       path: '/dash_rec' },
   { icon: Briefcase,       label: 'Open Positions',  path: '/dash_position' },
   {
@@ -52,7 +53,9 @@ const buildRecruiterMenu = ({ isVendorTeam } = {}) => [
     label: 'Your Positions',
     children: [
       { icon: Briefcase,   label: 'Assigned Position',  path: '/assigned-positions' },
-      { icon: UserCheck,   label: 'Coach Assigned',     path: '/coach-assigned-positions' },
+      // Only when the Coach/Expert side is open — a recruiter has no use for
+      // positions assigned by coaches when there are no coaches.
+      ...(coachExpert ? [{ icon: UserCheck, label: 'Coach Assigned', path: '/coach-assigned-positions' }] : []),
       { icon: Lock,        label: 'Release Position',   path: '/my-access-requests' },
     ],
   },
@@ -79,7 +82,7 @@ const buildRecruiterMenu = ({ isVendorTeam } = {}) => [
     ],
   },
   { icon: BarChart3, label: 'My Report',  path: '/recruiter-reports' },
-  { icon: Users,     label: 'Join Team',  path: '/recruiter-join-team' },
+  ...(coachExpert ? [{ icon: Users, label: 'Join Team', path: '/recruiter-join-team' }] : []),
   {
     icon: Gift,
     label: 'Refer & Earn',
@@ -172,6 +175,8 @@ const expertMenuItems = [
 ];
 
 const Sidebar = () => {
+  // Which parts of the product are currently open; the server decides.
+  const features = useFeatures();
   const location = useLocation();
   const { total: chatUnread } = useChatNotify();
   const { user } = useContext(UserStateContext);
@@ -406,7 +411,7 @@ const Sidebar = () => {
     ];
   } else {
     // Recruiter
-    menuItems = buildRecruiterMenu({ isVendorTeam });
+    menuItems = buildRecruiterMenu({ isVendorTeam, coachExpert: features.coachExpert });
   }
 
   // Managers (employees with the "Manager" designation) get a Manager Panel.

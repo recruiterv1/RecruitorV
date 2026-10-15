@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useContext, useRef, useCallback } from 'react';
 import CertifiedBadge from '../components/CertifiedBadge';
 import axios from 'axios';
+import useFeatures from '../hooks/useFeatures';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { SidebarProvider, SidebarContext } from '../context/Sidebarcontext';
 import { UserStateContext } from '../context/AuthPro';
@@ -446,6 +447,7 @@ function DashViewV2Inner() {
   // so reading `type` first made every vendor look like an admin here.
   const roleSlug = (teamUser?.roleCategory || teamUser?.type || teamUser?.role || '')
     .toString().toLowerCase().replace(/\s/g, '');
+  const features = useFeatures();
   const isCoachExpert = ['coach', 'expert'].includes(roleSlug);
   const isVendor = roleSlug === 'vendor';
   // The Coach/Expert panel is about joining a coach's team — irrelevant to a
@@ -617,6 +619,7 @@ function DashViewV2Inner() {
     const recCats = (Array.isArray(teamUser.skillCategory) ? teamUser.skillCategory : (teamUser.skillCategory ? [teamUser.skillCategory] : []))
       .map(c => String(c).toLowerCase().trim());
     const FORTY_EIGHT = 48 * 60 * 60 * 1000, now = Date.now();
+    if (!features.coachExpert) return;
     axios.get(`/api/coach-expert/team/available-coaches?scope=all&pos_id=${encodeURIComponent(pos_id || '')}`, { withCredentials: true })
       .then(r => {
         const all = r.data?.coaches || [];
@@ -1717,7 +1720,8 @@ function DashViewV2Inner() {
                 )}
               </div>
 
-              {!isVendorSide && (
+              {/* Also withdrawn entirely while the Coach/Expert side is closed. */}
+              {!isVendorSide && features.coachExpert && (
               <div className="card">
                 <h2>Coach / Expert</h2>
                 <p className="card-sub">Coaches & Experts in your skill category, active in the last 48 hours. Send a request to join their team.</p>

@@ -83,7 +83,9 @@ export default function CheckEligibility() {
 
     axios.get('/api/eligibility/public/config')
       .then(r => setCfg(r.data))
-      .catch(() => setCfg({ roles: ['Coach', 'Expert', 'Recruiter'], config: {} }));
+      // Fall back to the role that is always open rather than to the full
+      // list — a failed config call must not re-offer a closed role.
+      .catch(() => setCfg({ roles: ['Recruiter'], config: {} }));
 
     // Registration sends people here with their role and email already known,
     // so they do not retype them — and so the pass is recorded against the
@@ -94,7 +96,7 @@ export default function CheckEligibility() {
     if (role || email) {
       setForm(f => ({
         ...f,
-        role: ['Coach', 'Expert', 'Recruiter'].includes(role) ? role : f.role,
+        role: (cfg?.roles || ['Recruiter']).includes(role) ? role : f.role,
         email: email || f.email,
       }));
     }
@@ -153,7 +155,7 @@ export default function CheckEligibility() {
   };
 
   const field = 'w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:border-orange-400 outline-none';
-  const roles = cfg?.roles || ['Coach', 'Expert', 'Recruiter'];
+  const roles = cfg?.roles || ['Recruiter'];
 
   return (
     <div className="min-h-screen bg-white flex flex-col">

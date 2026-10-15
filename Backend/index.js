@@ -132,6 +132,7 @@ app.use("/candidate", position);
 app.use("/addit", candi);
 app.use("/api/resume-bank", require("./router/resumeBank"));
 app.use("/api/my-rejections", require("./router/rejectionSummary"));
+app.use("/api/features", require("./router/features"));
 app.use("/download", download);
 app.use("/api/linkedin", authLink);
 app.use("/api/googla", authGoogla);
