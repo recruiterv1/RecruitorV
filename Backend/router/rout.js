@@ -718,20 +718,46 @@ router.post('/rec_verify',async (req,res)=>{
         console.log(`🔍 Searching recruiter collection for: ${email}`);
         user = await recruiter.findRecruiterByEmail(email);
 
-        // 2. If not found, check coach collection
-        if (!user) {
-            console.log(`🔍 Recruiter not found, searching coach collection...`);
-            const coach = require('../model_fire/coachF');
-            user = await coach.findCoachByEmail(email);
-            userCollection = 'coach';
-        }
+        // While the Coach/Expert side is closed, nobody signs in as one.
+        //
+        // Recruiter is checked first either way, so the 194 who were converted
+        // land on their recruiter account regardless. This is about the rest:
+        // without it they would still be handed a coach session and arrive on a
+        // dashboard whose menus have been taken away.
+        const { coachExpertEnabled } = require('../utils/featureFlags');
+        const coachSideOpen = await coachExpertEnabled();
 
-        // 3. If not found, check expert collection
-        if (!user) {
-            console.log(`🔍 Coach not found, searching expert collection...`);
-            const expert = require('../model_fire/expertF');
-            user = await expert.findExpertByEmail(email);
-            userCollection = 'expert';
+        if (coachSideOpen) {
+            // 2. If not found, check coach collection
+            if (!user) {
+                console.log(`🔍 Recruiter not found, searching coach collection...`);
+                const coach = require('../model_fire/coachF');
+                user = await coach.findCoachByEmail(email);
+                userCollection = 'coach';
+            }
+
+            // 3. If not found, check expert collection
+            if (!user) {
+                console.log(`🔍 Coach not found, searching expert collection...`);
+                const expert = require('../model_fire/expertF');
+                user = await expert.findExpertByEmail(email);
+                userCollection = 'expert';
+            }
+        } else if (!user) {
+            // Say what has actually happened rather than "no account found",
+            // which would read as though their account had been deleted.
+            try {
+                const coach = require('../model_fire/coachF');
+                const expert = require('../model_fire/expertF');
+                const asCoach = (await coach.findCoachByEmail(email)) || (await expert.findExpertByEmail(email));
+                if (asCoach) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Coach and Expert sign-in is closed at the moment. If you also work as a recruiter, '
+                               + 'please sign in with your recruiter account, or contact support@recruiterv.com.',
+                    });
+                }
+            } catch (e) { console.error('coach lookup during closed sign-in:', e.message); }
         }
 
         // 4. If not found, check referer collection
