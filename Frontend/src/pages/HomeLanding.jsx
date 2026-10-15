@@ -122,7 +122,8 @@ function DashboardMockup() {
 
 /* ─────────────────────────  HERO  ───────────────────────── */
 function Hero() {
-  const coachExpertOpen = useFeatures().coachExpert;
+  const f = useFeatures();
+  const coachExpertOpen = f.ready && f.coachExpert;
   const features = [
     [ShieldCheck, "Transparent Commission"],
     [BadgeCheck, "Verified Candidates"],
@@ -187,7 +188,8 @@ const rowClass = (n) =>
   : 'sm:grid-cols-2 max-w-3xl mx-auto';
 
 function SharedRewards() {
-  const coachExpertOpen = useFeatures().coachExpert;
+  const f = useFeatures();
+  const coachExpertOpen = f.ready && f.coachExpert;
   // Roles that are not open to join should not be advertised on the way in.
   const roles = [
     { icon: UserSearch, label: "Recruiter", color: "#10b981", note: "Owns the position and drives it to a successful closure." },
@@ -258,7 +260,8 @@ function SharedRewards() {
 
 /* ─────────────────────────  HOW IT WORKS  ───────────────────────── */
 function HowItWorks() {
-  const coachExpertOpen = useFeatures().coachExpert;
+  const f = useFeatures();
+  const coachExpertOpen = f.ready && f.coachExpert;
   const steps = [
     [Briefcase, "Post a Position", "Share job details and requirements", "bg-violet-100 text-violet-600"],
     [Search, "Find Candidates", "Search our DB or get applications", "bg-emerald-100 text-emerald-600"],
@@ -373,7 +376,8 @@ function CandidateDatabase() {
 
 /* ─────────────────────────  WHO WE SERVE  ───────────────────────── */
 function WhoWeServe() {
-  const coachExpertOpen = useFeatures().coachExpert;
+  const f = useFeatures();
+  const coachExpertOpen = f.ready && f.coachExpert;
   const roles = [
     {
       icon: UserSearch, title: "Recruiter", to: "/recruiter",
@@ -498,9 +502,14 @@ function StatsBar() {
 
 /* ─────────────────────────  TESTIMONIALS  ───────────────────────── */
 function Testimonials() {
+  // Placeholder copy, not real customers — see the note where this is rendered.
   const items = [
     { text: "Recruiterv has completely changed how we hire. We close positions faster and the reward distribution is always transparent.", name: "Neha Singh", role: "Talent Acquisition Lead, Deloitte", g: "from-violet-400 to-indigo-500" },
     { text: "The candidate database quality is outstanding. We always find the right fit in less time.", name: "Ravi Kumar", role: "HR Manager, Tata Consultancy Services", g: "from-emerald-400 to-teal-500" },
+    { text: "Positions reach me the same day they open, and I always know what the client actually wants before I start sourcing.", name: "Priya Nair", role: "Independent Recruiter", g: "from-amber-400 to-orange-500" },
+    { text: "What I value most is knowing my commission before I submit anyone. No negotiation after the fact, no surprises.", name: "Arun Sharma", role: "Freelance Technical Recruiter", g: "from-rose-400 to-pink-500" },
+    { text: "We filled three specialist roles in a month that had been open since the previous quarter.", name: "Meera Iyer", role: "Head of Talent, SaaS Company", g: "from-sky-400 to-blue-500" },
+    { text: "The referral side pays for itself. I send people I know are good and get rewarded when they are placed.", name: "Vikram Desai", role: "Referrer", g: "from-teal-400 to-cyan-500" },
   ];
   return (
     <section className="py-20 bg-violet-50">
@@ -509,9 +518,16 @@ function Testimonials() {
           <span className="text-xs font-bold tracking-[0.2em] text-violet-500 uppercase">Trusted by Professionals</span>
           <h2 className="mt-3 text-4xl font-black text-slate-900">Loved by Recruiters &amp; Partners</h2>
         </div>
-        <div className="mt-12 grid md:grid-cols-3 gap-6">
+        {/* A scroller rather than a grid, so more can be added without the row
+            reflowing. Snap points mean a phone lands on one card at a time
+            instead of stopping halfway between two. */}
+        <div className="mt-12 flex gap-6 overflow-x-auto snap-x snap-mandatory pb-4
+                        -mx-4 px-4 sm:mx-0 sm:px-0
+                        [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {items.map(t => (
-            <div key={t.name} className="rounded-2xl bg-white ring-1 ring-slate-100 shadow-sm p-7">
+            <div key={t.name}
+              className="snap-center shrink-0 w-[85vw] sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]
+                         rounded-2xl bg-white ring-1 ring-slate-100 shadow-sm p-7">
               <Quote size={28} className="text-violet-200" />
               <p className="mt-4 text-slate-700 leading-relaxed">{t.text}</p>
               <div className="mt-6 flex items-center gap-3">
@@ -525,6 +541,7 @@ function Testimonials() {
             </div>
           ))}
         </div>
+        <p className="mt-2 text-center text-xs text-slate-400 sm:hidden">Swipe for more</p>
       </div>
     </section>
   );

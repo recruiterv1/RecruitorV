@@ -254,13 +254,12 @@ const shape = (data, id) => {
 // ── Author-facing routes ──────────────────────────────────────────────────────
 
 // GET /api/briefing/areas — the five prompts, so the UI and the detector agree.
-// Briefings belong to the Coach/Expert side. While that is closed nobody sees
-// one — not the recruiter it was recorded for, not the Client SPOC, not the
-// public position page. Enforced here rather than in each of the twelve screens
-// that render them, because a screen can only hide what it was sent.
+// Kept for a blanket close, but nothing uses it now.
 //
-// Admin and SuperAdmin keep their own views; those read the collection directly
-// and are deliberately not routed through here.
+// Hiding briefings wholesale was wrong twice over: it stopped Client SPOCs
+// saving their own answers at all, and it silenced the client's briefing
+// alongside the coach's. Only the coach's voice is withdrawn, and /for-me does
+// that by author — see the filter there.
 const briefingsOpen = async (req, res, next) => {
   try {
     const { coachExpertEnabled } = require('../utils/featureFlags');
@@ -284,7 +283,7 @@ router.get('/areas', (_req, res) => {
 
 // GET /api/briefing/my-positions — the summary screen: every position the author
 // can brief on, with its briefing status and the header counts.
-router.get('/my-positions', authMiddleware, briefingsOpen, async (req, res) => {
+router.get('/my-positions', authMiddleware, async (req, res) => {
   try {
     const author = await resolveAuthor(req.user.email);
     if (!author) return res.status(403).json({ success: false, message: 'Only a coach, expert or vendor has briefings.' });
@@ -357,7 +356,7 @@ router.get('/my-positions', authMiddleware, briefingsOpen, async (req, res) => {
 
 // GET /api/briefing/position/:posId — the entry screen: position snapshot, the
 // author's own briefing, and their overall progress for the sticky header.
-router.get('/position/:posId', authMiddleware, briefingsOpen, async (req, res) => {
+router.get('/position/:posId', authMiddleware, async (req, res) => {
   try {
     const author = await resolveAuthor(req.user.email);
     if (!author) return res.status(403).json({ success: false, message: 'Only a coach, expert or vendor can brief.' });
@@ -410,7 +409,7 @@ router.get('/position/:posId', authMiddleware, briefingsOpen, async (req, res) =
 
 // POST /api/briefing/position/:posId  { answers: {areaKey: text}, status }
 // status 'draft' saves privately; 'ready' publishes it to whoever may hear it.
-router.post('/position/:posId', authMiddleware, briefingsOpen, async (req, res) => {
+router.post('/position/:posId', authMiddleware, async (req, res) => {
   try {
     const author = await resolveAuthor(req.user.email);
     if (!author) return res.status(403).json({ success: false, message: 'Your role cannot record a briefing.' });
@@ -482,7 +481,7 @@ router.post('/position/:posId', authMiddleware, briefingsOpen, async (req, res) 
 // GET /api/briefing/for-me/:posId — every briefing this viewer may hear on this
 // position: the ones from their own coach/vendor (team-private), plus the
 // ClientSPOC's briefing, which is open to everyone working the position.
-router.get('/for-me/:posId', authMiddleware, briefingsOpen, async (req, res) => {
+router.get('/for-me/:posId', authMiddleware, async (req, res) => {
   try {
     const me = (req.user.email || '').toLowerCase();
     const posId = String(req.params.posId);
@@ -503,8 +502,17 @@ router.get('/for-me/:posId', authMiddleware, briefingsOpen, async (req, res) => 
     const docs = await Promise.all([...authors].map(a =>
       db.collection('position_coach_briefing').doc(`${posId}__${a}`).get()));
 
+    // Only the coach's voice is withdrawn. The Client SPOC's briefing on their
+    // own position is theirs and keeps playing — it is the client telling a
+    // recruiter what they want, which has nothing to do with coaching.
+    const { coachExpertEnabled } = require('../utils/featureFlags');
+    let coachBriefingsOpen = false;
+    try { coachBriefingsOpen = await coachExpertEnabled(); }
+    catch (e) { console.error('briefing author gate failed, keeping coach briefings hidden:', e.message); }
+
     const briefings = docs
       .filter(d => d.exists && (d.data().status || 'draft') === 'ready')
+      .filter(d => coachBriefingsOpen || d.data().authorType === 'clientspoc')
       .map(d => {
         const b = shape(d.data(), d.id);
         // One playable item per answered area, in the canonical order.
@@ -531,7 +539,7 @@ router.get('/for-me/:posId', authMiddleware, briefingsOpen, async (req, res) => 
 // no assignment, no team membership, and no account needed to hear it.
 // Coach and vendor briefings are deliberately NOT served here — those stay
 // private to their own team and remain behind /for-me.
-router.get('/public/:posId', briefingsOpen, async (req, res) => {
+router.get('/public/:posId', async (req, res) => {
   try {
     const posId = String(req.params.posId);
 
