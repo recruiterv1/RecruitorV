@@ -96,6 +96,30 @@ function authMiddleware(req, res, next) {
  * POST /coach/add
  * Add a new coach
  */
+// The Coach/Expert team — a coach gathering recruiters under them, and the
+// requests in both directions. Closed along with the rest of that side.
+//
+// This is only the coach's team. Vendor teams and consulting-firm teams are
+// separate features and are left running.
+//
+// Gated on the server because a hidden button is not a closed door: these are
+// plain endpoints and anything that knows the path can still call them.
+const teamOpen = async (req, res, next) => {
+  try {
+    const { coachExpertEnabled } = require('../utils/featureFlags');
+    if (await coachExpertEnabled()) return next();
+  } catch (e) {
+    console.error('team gate check failed, staying closed:', e.message);
+  }
+  // Empty rather than an error, so each screen falls back to "nobody here"
+  // instead of showing a failure to a recruiter who cannot act on it.
+  return res.json({
+    success: true, closed: true,
+    data: [], coaches: [], recruiters: [], members: [], requests: [], team: [], count: 0,
+  });
+};
+
+
 router.post('/coach/add', async (req, res) => {
   try {
     const { name, email, phone, specialization, userType, password } = req.body;
@@ -2380,7 +2404,7 @@ router.patch('/coach-vendor-requests/:id', async (req, res) => {
 // GET /api/coach-expert/team/eligible-recruiters
 // Returns recruiters matching coach's skill categories, not vendor-associated, not already at team limit,
 // active within last 72 hours, and profile completion > 50%
-router.get('/team/eligible-recruiters', authMiddleware, async (req, res) => {
+router.get('/team/eligible-recruiters', authMiddleware, teamOpen, async (req, res) => {
   try {
     const coachEmail = req.user.email;
     // scope=all → every joinable recruiter (non-employee) active in the last 72h,
@@ -2534,7 +2558,7 @@ router.get('/recruiter-profile/:recruiterId', authMiddleware, async (req, res) =
 });
 
 // POST /api/coach-expert/team/send-request — coach sends a team join request to a recruiter
-router.post('/team/send-request', authMiddleware, async (req, res) => {
+router.post('/team/send-request', authMiddleware, teamOpen, async (req, res) => {
   try {
     const coachEmail = req.user.email;
     const { recruiterId } = req.body;
@@ -2618,7 +2642,7 @@ router.post('/team/send-request', authMiddleware, async (req, res) => {
 });
 
 // DELETE /api/coach-expert/team/remove/:requestId — coach removes a recruiter (deletes the request doc)
-router.delete('/team/remove/:requestId', authMiddleware, async (req, res) => {
+router.delete('/team/remove/:requestId', authMiddleware, teamOpen, async (req, res) => {
   try {
     const coachEmail = req.user.email;
     const docRef = db.collection('coach_team_requests').doc(req.params.requestId);
@@ -2634,7 +2658,7 @@ router.delete('/team/remove/:requestId', authMiddleware, async (req, res) => {
 });
 
 // GET /api/coach-expert/team/my-team — coach gets their approved team + all sent requests
-router.get('/team/my-team', authMiddleware, async (req, res) => {
+router.get('/team/my-team', authMiddleware, teamOpen, async (req, res) => {
   try {
     const coachEmail = req.user.email;
     const snap = await db.collection('coach_team_requests').where('coachEmail', '==', coachEmail).get();
@@ -2648,7 +2672,7 @@ router.get('/team/my-team', authMiddleware, async (req, res) => {
 });
 
 // GET /api/coach-expert/team/join-requests — recruiter gets all team requests sent to them (enriched with coach profile)
-router.get('/team/join-requests', authMiddleware, async (req, res) => {
+router.get('/team/join-requests', authMiddleware, teamOpen, async (req, res) => {
   try {
     const recruiterEmail = req.user.email;
     const snap = await db.collection('coach_team_requests').where('recruiterEmail', '==', recruiterEmail).get();
@@ -2717,7 +2741,7 @@ router.patch('/team/respond/:id', authMiddleware, async (req, res) => {
 });
 
 // DELETE /api/coach-expert/team/leave/:requestId — recruiter leaves a coach-initiated team
-router.delete('/team/leave/:requestId', authMiddleware, async (req, res) => {
+router.delete('/team/leave/:requestId', authMiddleware, teamOpen, async (req, res) => {
   try {
     const recruiterEmail = req.user.email;
     const docRef = db.collection('coach_team_requests').doc(req.params.requestId);
@@ -2736,7 +2760,7 @@ router.delete('/team/leave/:requestId', authMiddleware, async (req, res) => {
 // assign-recruiter dropdown. Returns the FULL recruiter objects (resolved from
 // recruiter_db, NOT filtered by skill category / employee flag) so every team
 // member is selectable regardless of category.
-router.get('/team/my-team-members', authMiddleware, async (req, res) => {
+router.get('/team/my-team-members', authMiddleware, teamOpen, async (req, res) => {
   try {
     const coachEmail = req.user.email || '';
     // Case-tolerant match on coachEmail (requests may be stored in either case).
@@ -2870,7 +2894,7 @@ router.put('/my-availability', async (req, res) => {
   }
 });
 
-router.get('/team/available-coaches', authMiddleware, async (req, res) => {
+router.get('/team/available-coaches', authMiddleware, teamOpen, async (req, res) => {
   try {
     const recruiterEmail = req.user.email;
     // scope=all → every coach/expert of ANY skill category active in the last 48h.
@@ -3023,7 +3047,7 @@ router.get('/team/available-coaches', authMiddleware, async (req, res) => {
 
 // POST /api/coach-expert/team/recruiter-join-request
 // Recruiter sends a request to join a coach/expert's team
-router.post('/team/recruiter-join-request', authMiddleware, async (req, res) => {
+router.post('/team/recruiter-join-request', authMiddleware, teamOpen, async (req, res) => {
   try {
     const { FieldValue } = require('firebase-admin/firestore');
     const recruiterEmail = req.user.email;

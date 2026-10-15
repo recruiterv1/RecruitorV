@@ -1,3 +1,4 @@
+import useFeatures from '../hooks/useFeatures';
 import React from "react";
 import { Link } from "react-router-dom";
 import Header from "./Header";
@@ -121,6 +122,7 @@ function DashboardMockup() {
 
 /* ─────────────────────────  HERO  ───────────────────────── */
 function Hero() {
+  const coachExpertOpen = useFeatures().coachExpert;
   const features = [
     [ShieldCheck, "Transparent Commission"],
     [BadgeCheck, "Verified Candidates"],
@@ -140,7 +142,7 @@ function Hero() {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-teal-500">Earn Together.</span>
           </h1>
           <p className="mt-5 text-lg text-slate-600 max-w-xl leading-relaxed">
-            Recruiters, coaches, experts and referrers collaborate to find the right talent, close positions faster and earn fair rewards transparently.
+            {coachExpertOpen ? "Recruiters, coaches, experts and referrers" : "Recruiters and referrers"} collaborate to find the right talent, close positions faster and earn fair rewards transparently.
           </p>
           <div className="mt-7 flex flex-wrap gap-x-7 gap-y-3">
             {features.map(([Icon, label]) => (
@@ -176,10 +178,14 @@ function Hero() {
 
 /* ─────────────────────────  SHARED REWARDS  ───────────────────────── */
 function SharedRewards() {
+  const coachExpertOpen = useFeatures().coachExpert;
+  // Roles that are not open to join should not be advertised on the way in.
   const roles = [
     { icon: UserSearch, label: "Recruiter", color: "#10b981", note: "Owns the position and drives it to a successful closure." },
-    { icon: Lightbulb, label: "Expert", color: "#8b5cf6", note: "Validates fit and shortlists the right candidates." },
-    { icon: GraduationCap, label: "Coach", color: "#f59e0b", note: "Guides and supports the team to close faster." },
+    ...(coachExpertOpen ? [
+      { icon: Lightbulb, label: "Expert", color: "#8b5cf6", note: "Validates fit and shortlists the right candidates." },
+      { icon: GraduationCap, label: "Coach", color: "#f59e0b", note: "Guides and supports the team to close faster." },
+    ] : []),
     { icon: Gift, label: "Referrer", color: "#f43f5e", note: "Brings in a candidate who gets selected." },
   ];
   return (
@@ -190,7 +196,7 @@ function SharedRewards() {
             <span className="text-xs font-bold tracking-[0.2em] text-violet-500 uppercase">Fair, Transparent, Together</span>
             <h2 className="mt-3 text-4xl font-black text-slate-900">Everyone Shares in the Success</h2>
             <p className="mt-4 text-slate-600 max-w-lg leading-relaxed">
-              When a position is closed, every contributor earns a fair, pre-agreed reward — recruiters, experts, coaches and referrers all win together. Your exact share is shown transparently inside your dashboard.
+              When a position is closed, every contributor earns a fair, pre-agreed reward — {coachExpertOpen ? "recruiters, experts, coaches and referrers" : "recruiters and referrers"} all win together. Your exact share is shown transparently inside your dashboard.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link to="/join" className="inline-flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white px-6 py-3 font-bold shadow-lg shadow-violet-500/25 transition-all">
@@ -243,10 +249,11 @@ function SharedRewards() {
 
 /* ─────────────────────────  HOW IT WORKS  ───────────────────────── */
 function HowItWorks() {
+  const coachExpertOpen = useFeatures().coachExpert;
   const steps = [
     [Briefcase, "Post a Position", "Share job details and requirements", "bg-violet-100 text-violet-600"],
     [Search, "Find Candidates", "Search our DB or get applications", "bg-emerald-100 text-emerald-600"],
-    [Handshake, "Collaborate", "Work with coaches, experts & referrers", "bg-amber-100 text-amber-600"],
+    [Handshake, "Collaborate", coachExpertOpen ? "Work with coaches, experts & referrers" : "Work with referrers and your team", "bg-amber-100 text-amber-600"],
     [CheckCircle2, "Candidate Hired", "Close the position successfully", "bg-blue-100 text-blue-600"],
     [Trophy, "Earn Commission", "Rewards are distributed transparently", "bg-rose-100 text-rose-600"],
   ];
@@ -357,25 +364,27 @@ function CandidateDatabase() {
 
 /* ─────────────────────────  WHO WE SERVE  ───────────────────────── */
 function WhoWeServe() {
+  const coachExpertOpen = useFeatures().coachExpert;
   const roles = [
     {
       icon: UserSearch, title: "Recruiter", to: "/recruiter",
       text: "Work on verified positions, submit candidates and earn fair commissions on every closure.",
       grad: "from-violet-500 to-indigo-600", soft: "bg-violet-50 text-violet-600",
     },
-    {
+    // Coach and Expert tiles are dropped while those roles are closed — each
+    // one linked to a sign-up path that now refuses the role.
+    ...(coachExpertOpen ? [{
       icon: GraduationCap, title: "Coach", to: "/coach",
       text: "Guide recruiters, sharpen submissions and earn for the closures you help drive.",
       grad: "from-emerald-500 to-teal-600", soft: "bg-emerald-50 text-emerald-600",
-    },
-    {
+    }, {
       icon: Lightbulb, title: "Expert", to: "/expert",
       text: "Validate the right fit with your domain knowledge and get rewarded for quality shortlists.",
       grad: "from-amber-500 to-orange-600", soft: "bg-amber-50 text-amber-600",
-    },
+    }] : []),
     {
       icon: Building2, title: "Company", to: "/corporate",
-      text: "Post positions and access a coached network of recruiters, coaches and experts to hire faster.",
+      text: "Post positions and access a vetted network of recruiters to hire faster.",
       grad: "from-rose-500 to-pink-600", soft: "bg-rose-50 text-rose-600",
     },
   ];
@@ -483,7 +492,6 @@ function Testimonials() {
   const items = [
     { text: "Recruiterv has completely changed how we hire. We close positions faster and the reward distribution is always transparent.", name: "Neha Singh", role: "Talent Acquisition Lead, Deloitte", g: "from-violet-400 to-indigo-500" },
     { text: "The candidate database quality is outstanding. We always find the right fit in less time.", name: "Ravi Kumar", role: "HR Manager, Tata Consultancy Services", g: "from-emerald-400 to-teal-500" },
-    { text: "As a coach, I love how I can support recruiters and earn fairly for my contribution.", name: "Arjun Verma", role: "Career Coach & Mentor", g: "from-amber-400 to-orange-500" },
   ];
   return (
     <section className="py-20 bg-violet-50">
@@ -523,7 +531,7 @@ function FinalCTA() {
           <div className="relative max-w-2xl">
             <h2 className="text-4xl sm:text-5xl font-black leading-tight">Ready to Close Your Next Position?</h2>
             <p className="mt-4 text-violet-100 text-lg">
-              Join thousands of recruiters, coaches and candidates who are already growing with Recruiterv.
+              Join thousands of recruiters and candidates who are already growing with Recruiterv.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <Link to="/join" className="inline-flex items-center gap-2 rounded-xl bg-white text-violet-700 px-7 py-3.5 font-bold shadow-lg hover:bg-violet-50 transition-all">
@@ -546,7 +554,7 @@ function FinalCTA() {
 /* ─────────────────────────  ELIGIBILITY CHECK  ───────────────────────── */
 function EligibilityCheck() {
   const points = [
-    ["Required before you register", "Recruiters, Coaches and Experts clear the check first — it takes a few minutes."],
+    ["Required before you register", "Every recruiter clears the check first — it takes a few minutes."],
     ["Know straight away", "Your result appears the moment you submit — no waiting to hear back."],
     ["Pass, then register", "Clear it and you go straight on to registration with the same email."],
   ];
@@ -563,8 +571,8 @@ function EligibilityCheck() {
 Start with the<br />eligibility check.
               </h2>
               <p className="mt-4 text-slate-300 leading-relaxed max-w-lg">
-                The eligibility check is the first step to joining as a Recruiter, Coach or
-                Expert. Answer a few multiple-choice questions for the role you want, see your
+                The eligibility check is the first step to joining as a Recruiter.
+                Answer a few multiple-choice questions, see your
                 result immediately, and go straight on to registration once you pass.
               </p>
               <div className="mt-8 flex flex-wrap gap-4">

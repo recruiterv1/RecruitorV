@@ -254,6 +254,27 @@ const shape = (data, id) => {
 // ── Author-facing routes ──────────────────────────────────────────────────────
 
 // GET /api/briefing/areas — the five prompts, so the UI and the detector agree.
+// Briefings belong to the Coach/Expert side. While that is closed nobody sees
+// one — not the recruiter it was recorded for, not the Client SPOC, not the
+// public position page. Enforced here rather than in each of the twelve screens
+// that render them, because a screen can only hide what it was sent.
+//
+// Admin and SuperAdmin keep their own views; those read the collection directly
+// and are deliberately not routed through here.
+const briefingsOpen = async (req, res, next) => {
+  try {
+    const { coachExpertEnabled } = require('../utils/featureFlags');
+    if (await coachExpertEnabled()) return next();
+  } catch (e) {
+    // A flag failure must not expose what it was meant to hide.
+    console.error('briefing gate check failed, staying closed:', e.message);
+  }
+  // Answering "there are none" rather than an error keeps every caller on its
+  // existing empty state instead of showing a failure.
+  return res.json({ success: true, briefings: [], positions: [], briefing: null, closed: true });
+};
+
+
 router.get('/areas', (_req, res) => {
   res.json({
     success: true,
@@ -263,7 +284,7 @@ router.get('/areas', (_req, res) => {
 
 // GET /api/briefing/my-positions — the summary screen: every position the author
 // can brief on, with its briefing status and the header counts.
-router.get('/my-positions', authMiddleware, async (req, res) => {
+router.get('/my-positions', authMiddleware, briefingsOpen, async (req, res) => {
   try {
     const author = await resolveAuthor(req.user.email);
     if (!author) return res.status(403).json({ success: false, message: 'Only a coach, expert or vendor has briefings.' });
@@ -336,7 +357,7 @@ router.get('/my-positions', authMiddleware, async (req, res) => {
 
 // GET /api/briefing/position/:posId — the entry screen: position snapshot, the
 // author's own briefing, and their overall progress for the sticky header.
-router.get('/position/:posId', authMiddleware, async (req, res) => {
+router.get('/position/:posId', authMiddleware, briefingsOpen, async (req, res) => {
   try {
     const author = await resolveAuthor(req.user.email);
     if (!author) return res.status(403).json({ success: false, message: 'Only a coach, expert or vendor can brief.' });
@@ -389,7 +410,7 @@ router.get('/position/:posId', authMiddleware, async (req, res) => {
 
 // POST /api/briefing/position/:posId  { answers: {areaKey: text}, status }
 // status 'draft' saves privately; 'ready' publishes it to whoever may hear it.
-router.post('/position/:posId', authMiddleware, async (req, res) => {
+router.post('/position/:posId', authMiddleware, briefingsOpen, async (req, res) => {
   try {
     const author = await resolveAuthor(req.user.email);
     if (!author) return res.status(403).json({ success: false, message: 'Your role cannot record a briefing.' });
@@ -461,7 +482,7 @@ router.post('/position/:posId', authMiddleware, async (req, res) => {
 // GET /api/briefing/for-me/:posId — every briefing this viewer may hear on this
 // position: the ones from their own coach/vendor (team-private), plus the
 // ClientSPOC's briefing, which is open to everyone working the position.
-router.get('/for-me/:posId', authMiddleware, async (req, res) => {
+router.get('/for-me/:posId', authMiddleware, briefingsOpen, async (req, res) => {
   try {
     const me = (req.user.email || '').toLowerCase();
     const posId = String(req.params.posId);
@@ -510,7 +531,7 @@ router.get('/for-me/:posId', authMiddleware, async (req, res) => {
 // no assignment, no team membership, and no account needed to hear it.
 // Coach and vendor briefings are deliberately NOT served here — those stay
 // private to their own team and remain behind /for-me.
-router.get('/public/:posId', async (req, res) => {
+router.get('/public/:posId', briefingsOpen, async (req, res) => {
   try {
     const posId = String(req.params.posId);
 
