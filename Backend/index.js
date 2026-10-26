@@ -1,4 +1,7 @@
-const functions = require("firebase-functions");
+// Self-hosted (Hostinger) build: the routers below use K_SERVICE to mean "production".
+if (!process.env.K_SERVICE && process.env.NODE_ENV === 'production') process.env.K_SERVICE = 'self-hosted';
+const path = require("path");
+const fs = require("fs");
 const express = require("express");
 const app = express();
 
@@ -60,12 +63,10 @@ app.use((req, res, next) => {
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Load Firebase secrets
-const { loadSecretsIntoProcessEnv, SECRETS } = require("./loadSecrets.js");
 
 // Local .env support
 if (!process.env.K_SERVICE) {
   const dotenv = require("dotenv");
-  const path = require("path");
   // .env.local is ignored by Firebase CLI (won't be uploaded as plain env vars)
   dotenv.config({ path: path.resolve(__dirname, ".env.local") });
   console.log("Loaded .env.local for local development");
@@ -189,10 +190,7 @@ app.use("/activity", require("./router/activity"));
 app.use("/api/app", require("./router/appMobile"));
 
 
-app.get("/", (req, res) => {
-  res.cookie("name", "utkarsg");
-  res.send("RecruitorV Backend is running on Firebase!");
-});
+app.get("/healthz", (req, res) => res.send("ok"));
 
 // ---- SOCIAL SHARE META TAGS for shared position links (/position/:pos_id) ----
 // Crawlers (WhatsApp/LinkedIn/Facebook) don't run JS, so OG tags must be in the
@@ -200,6 +198,8 @@ app.get("/", (req, res) => {
 const adminPosModel = require("./model_fire/adminF");
 const SITE_ORIGIN = "https://www.recruiterv.com";
 const SHARE_LOGO = `${SITE_ORIGIN}/recruitorV.png`;
+const FRONTEND_DIST = path.resolve(__dirname, "../Frontend/dist");
+const DIST_INDEX = path.join(FRONTEND_DIST, "index.html");
 let _shellHtmlCache = { html: null, at: 0 };
 
 const escapeHtml = (str = "") =>
@@ -216,20 +216,9 @@ const getShellHtml = async () => {
   if (_shellHtmlCache.html && now - _shellHtmlCache.at < 60 * 1000) {
     return _shellHtmlCache.html;
   }
-  // Fetch the CURRENT SPA shell from the site root (served fresh, no 301 redirect,
-  // no-cache). Root "/" is served by Hosting's index.html, not this function.
-  const resp = await fetch(`${SITE_ORIGIN}/`, {
-    headers: { "User-Agent": "recruiterv-og-injector", "Cache-Control": "no-cache" },
-    redirect: "follow"
-  });
-  const html = await resp.text();
-  // Only cache/return if it looks like a valid SPA shell with a real asset reference,
-  // so a transient bad response can never cause a white screen.
-  if (html.includes('id="root"') && /assets\/index-[A-Za-z0-9_]+\.js/.test(html)) {
-    _shellHtmlCache = { html, at: now };
-    return html;
-  }
-  return _shellHtmlCache.html || html;
+  const html = fs.readFileSync(DIST_INDEX, "utf8");
+  _shellHtmlCache = { html, at: now };
+  return html;
 };
 
 const renderPositionShare = async (req, res) => {
@@ -431,86 +420,52 @@ app.get('/api/debug/brevo', async (req, res) => {
   }
 });
 
-// ---- LOCAL DEVELOPMENT SERVER ----
-if (!process.env.K_SERVICE) {
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => {
-    console.log(`🚀 Backend server running on http://localhost:${PORT}`);
-    console.log(`📝 Environment: Local Development`);
-  });
-}
-
-
-
-// ---- FINAL EXPORT (CommonJS, working) ----
-exports.api = functions.https.onRequest(
-  {
-    secrets: SECRETS.map(s => s.secret),
-    region: 'us-central1',
-    invoker: 'public',
-    timeoutSeconds: 300,
-    // Performance: keep one instance warm so users never hit a multi-second cold
-    // start, give it more CPU (memory scales CPU in Cloud Functions), and let a
-    // single warm instance serve many requests at once instead of spinning up new
-    // (cold) instances under normal load.
-    memory: '1GiB',
-    minInstances: 1,
-    concurrency: 80
-  },
-  (req, res) => {
-    loadSecretsIntoProcessEnv();
-    app(req, res);
+// ---- STATIC FRONTEND + SPA FALLBACK (must stay after all API routes) ----
+app.use(express.static(FRONTEND_DIST, {
+  index: false,
+  setHeaders: (res, p) => {
+    res.setHeader("Cache-Control", p.includes(`${path.sep}assets${path.sep}`)
+      ? "public, max-age=31536000, immutable"
+      : "no-cache, no-store, must-revalidate");
   }
-);
+}));
+app.get(/^(?!\/(api|auth|admin|candidate|addit|download|clientspoc|recruiterstats|clientspocstats|positionstats|dashboardstats|candidatestats|clientstats|vendor|activity|blog)\/).*/, (req, res) => {
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.sendFile(DIST_INDEX);
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`🚀 RecruitorV server on port ${PORT}`));
+
+// ---- SCHEDULED JOBS (replace Cloud Functions onSchedule) ----
+const cron = require("node-cron");
+const TZ = "Asia/Kolkata";
+const schedule = (name, expr, fn) =>
+  cron.schedule(expr, async () => {
+    try { await fn(); } catch (e) { console.error(`❌ cron ${name} failed:`, e); }
+  }, { timezone: TZ });
 
 // ---- Scheduled: auto-suspend inactive recruiters (daily) ----
-const { onSchedule } = require('firebase-functions/v2/scheduler');
-exports.suspendInactiveRecruiters = onSchedule(
-  {
-    schedule: 'every day 02:30',
-    timeZone: 'Asia/Kolkata',
-    region: 'us-central1',
-    memory: '512MiB',
-    timeoutSeconds: 540,
-  },
-  async () => {
+schedule('suspendInactiveRecruiters', '30 2 * * *', async () => {
     const { suspendInactiveRecruiters, suspendInactiveCoachesExperts } = require('./model_fire/inactivityF');
     const rec = await suspendInactiveRecruiters();
     const ce = await suspendInactiveCoachesExperts();
     console.log('🕑 Inactivity sweep complete:', JSON.stringify({ recruiters: rec, coachesExperts: ce }));
-  }
-);
+});
 
 
 // ---- Scheduled: auto Screen Reject stale candidates (hourly) ----
 // 'Applied' untouched for 48h and 'Submitted' untouched for 72h are moved to
 // Screen Reject so they stop holding position slots and become visible in the
 // Resume Bank. Controlled by Firestore app_config/auto_screen_reject.
-exports.autoScreenRejectSweep = onSchedule(
-  {
-    schedule: 'every 1 hours',
-    timeZone: 'Asia/Kolkata',
-    region: 'us-central1',
-    memory: '512MiB',
-    timeoutSeconds: 540,
-  },
-  async () => {
+schedule('autoScreenRejectSweep', '0 * * * *', async () => {
     const { runAutoScreenReject } = require('./utils/autoScreenReject');
     const r = await runAutoScreenReject();
     console.log('🧹 Auto screen-reject sweep:', JSON.stringify(r));
-  }
-);
+});
 
 // ---- Scheduled: delete candidate submission drafts older than 72h ----
-exports.cleanupCandidateDrafts = onSchedule(
-  {
-    schedule: 'every day 03:00',
-    timeZone: 'Asia/Kolkata',
-    region: 'us-central1',
-    memory: '256MiB',
-    timeoutSeconds: 120,
-  },
-  async () => {
+schedule('cleanupCandidateDrafts', '0 3 * * *', async () => {
     const admin = require('firebase-admin');
     const db = admin.firestore();
     const snap = await db.collection('candidate_drafts').where('expiresAt', '<', new Date()).get();
@@ -522,8 +477,7 @@ exports.cleanupCandidateDrafts = onSchedule(
       await batch.commit();
     }
     console.log('🧹 Expired candidate drafts deleted:', n);
-  }
-);
+});
 
 // ---- Scheduled: daily 7 AM IST direct-applicant digest ----
 // Keep the Resume Bank index hot.
@@ -531,15 +485,7 @@ exports.cleanupCandidateDrafts = onSchedule(
 // Building it reads the whole candidate pool, which takes about half a minute.
 // That is survivable but it is not something a person should ever sit through,
 // so it is rebuilt on a timer and a search always meets a warm one.
-exports.warmResumeBankIndex = onSchedule(
-  {
-    schedule: 'every 10 minutes',
-    timeZone: 'Asia/Kolkata',
-    region: 'us-central1',
-    memory: '1GiB',
-    timeoutSeconds: 300,
-  },
-  async () => {
+schedule('warmResumeBankIndex', process.env.WARM_INDEX_CRON || '*/10 * * * *', async () => {
     const { db } = require('./router/firebase_ad');
     const [bank, all, pool, rejPool] = await Promise.all([
       require('./router/resumeBank').warmIndex(),
@@ -554,42 +500,19 @@ exports.warmResumeBankIndex = onSchedule(
     console.log('🔎 Indexes warm — resume bank:', bank.length,
       '| candidate tables:', all.length, '| scoring pool:', pool.length,
       '| rejected pool:', rejPool.length);
-  }
-);
+});
 
 // The first of the month: tell each recruiter why their CVs came back, with
 // the guidance attached. Monthly on purpose — a pattern needs a month to be
 // one, and a weekly version would just be nagging.
-exports.monthlyRejectionDigest = onSchedule(
-  {
-    schedule: '0 9 1 * *',
-    timeZone: 'Asia/Kolkata',
-    region: 'us-central1',
-    memory: '512MiB',
-    timeoutSeconds: 540,
-    secrets: SECRETS.map(s => s.secret),   // Brevo key for sending
-  },
-  async () => {
-    loadSecretsIntoProcessEnv();
+schedule('monthlyRejectionDigest', '0 9 1 * *', async () => {
     const { sendMonthlyRejectionDigest } = require('./utils/rejectionDigest');
     const result = await sendMonthlyRejectionDigest(30);
     console.log('📬 Rejection digest sent:', JSON.stringify(result));
-  }
-);
+});
 
-exports.dailyDirectApplicantDigest = onSchedule(
-  {
-    schedule: 'every day 07:00',
-    timeZone: 'Asia/Kolkata',
-    region: 'us-central1',
-    memory: '512MiB',
-    timeoutSeconds: 540,
-    secrets: SECRETS.map(s => s.secret), // Brevo key for sending
-  },
-  async () => {
-    loadSecretsIntoProcessEnv();
+schedule('dailyDirectApplicantDigest', '0 7 * * *', async () => {
     const { sendDailyDirectApplicantDigest } = require('./utils/directApplicantDigest');
     const result = await sendDailyDirectApplicantDigest(24);
     console.log('📬 Direct-applicant digest sent:', JSON.stringify(result));
-  }
-);
+});
