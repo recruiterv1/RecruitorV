@@ -1543,7 +1543,7 @@ router.post('/logo', vendorAuth, async (req, res) => {
     const { v4: uuidv4 } = require('uuid');
     const buffer = Buffer.from(base64, 'base64');
     if (buffer.length > 3 * 1024 * 1024) return res.status(400).json({ success: false, message: 'Logo must be under 3 MB.' });
-    const bucket = admin.storage().bucket();
+    const bucket = require('../utils/localBucket').bucket();
     const token = uuidv4();
     const safe = filename.replace(/[^\w.\-]+/g, '_');
     const filepath = `vendor-logos/${req.vendor.id}/${Date.now()}_${safe}`;
@@ -1551,7 +1551,7 @@ router.post('/logo', vendorAuth, async (req, res) => {
       contentType, resumable: false,
       metadata: { metadata: { firebaseStorageDownloadTokens: token } },
     });
-    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
+    const url = `${bucket.base}/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
     await db.collection('admin_db').doc(req.vendor.id).update({ logoUrl: url });
     res.json({ success: true, url });
   } catch (e) {

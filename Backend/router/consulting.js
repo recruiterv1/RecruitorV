@@ -220,12 +220,12 @@ router.post('/companies/:id/logo', firmAuth, requireApproved, async (req, res) =
     const { v4: uuidv4 } = require('uuid');
     const buffer = Buffer.from(base64, 'base64');
     if (buffer.length > 3 * 1024 * 1024) return res.status(400).json({ message: 'Logo must be under 3 MB.' });
-    const bucket = admin.storage().bucket();
+    const bucket = require('../utils/localBucket').bucket();
     const token = uuidv4();
     const safe = filename.replace(/[^\w.\-]+/g, '_');
     const filepath = `company-logos/${req.params.id}/${Date.now()}_${safe}`;
     await bucket.file(filepath).save(buffer, { contentType, resumable: false, metadata: { metadata: { firebaseStorageDownloadTokens: token } } });
-    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
+    const url = `${bucket.base}/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
     await COMPANY.doc(req.params.id).set({ logoUrl: url }, { merge: true });
     res.json({ success: true, url });
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -241,12 +241,12 @@ router.post('/upload-image', firmAuth, requireApproved, async (req, res) => {
     const { v4: uuidv4 } = require('uuid');
     const buffer = Buffer.from(base64, 'base64');
     if (buffer.length > 3 * 1024 * 1024) return res.status(400).json({ message: 'Image must be under 3 MB.' });
-    const bucket = admin.storage().bucket();
+    const bucket = require('../utils/localBucket').bucket();
     const token = uuidv4();
     const safe = filename.replace(/[^\w.\-]+/g, '_');
     const filepath = `firm-images/${req.firm.id}/${Date.now()}_${safe}`;
     await bucket.file(filepath).save(buffer, { contentType, resumable: false, metadata: { metadata: { firebaseStorageDownloadTokens: token } } });
-    res.json({ success: true, url: `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}` });
+    res.json({ success: true, url: `${bucket.base}/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}` });
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
@@ -468,12 +468,12 @@ router.post('/logo', firmAuth, async (req, res) => {
     const { v4: uuidv4 } = require('uuid');
     const buffer = Buffer.from(base64, 'base64');
     if (buffer.length > 3 * 1024 * 1024) return res.status(400).json({ message: 'Logo must be under 3 MB.' });
-    const bucket = admin.storage().bucket();
+    const bucket = require('../utils/localBucket').bucket();
     const token = uuidv4();
     const safe = filename.replace(/[^\w.\-]+/g, '_');
     const filepath = `firm-logos/${req.firm.id}/${Date.now()}_${safe}`;
     await bucket.file(filepath).save(buffer, { contentType, resumable: false, metadata: { metadata: { firebaseStorageDownloadTokens: token } } });
-    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
+    const url = `${bucket.base}/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
     await firmF.updateFirm(req.firm.id, { logoUrl: url });
     res.json({ success: true, url });
   } catch (e) { res.status(500).json({ message: e.message }); }

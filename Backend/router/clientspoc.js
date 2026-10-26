@@ -930,7 +930,7 @@ router.post('/bulk-resume/parse', authMiddleware, async (req, res) => {
     // Store the file in Firebase Storage (resume bank)
     const admin = require('firebase-admin');
     const { v4: uuidv4 } = require('uuid');
-    const bucket = admin.storage().bucket();
+    const bucket = require('../utils/localBucket').bucket();
     const token = uuidv4();
     const safeName = filename.replace(/\s+/g, '_');
     const filepath = `resumes/bulk/${Date.now()}_${safeName}`;
@@ -939,7 +939,7 @@ router.post('/bulk-resume/parse', authMiddleware, async (req, res) => {
       resumable: false,
       metadata: { metadata: { firebaseStorageDownloadTokens: token } },
     });
-    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
+    const url = `${bucket.base}/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
 
     // Duplicate check — same email AND phone already in this SPOC's bank.
     let duplicate = null;
@@ -1136,7 +1136,7 @@ router.delete('/bulk-resume/:id', authMiddleware, async (req, res) => {
       try {
         const admin = require('firebase-admin');
         const m = String(data.cv_data).match(/\/o\/([^?]+)/);
-        if (m) await admin.storage().bucket().file(decodeURIComponent(m[1])).delete().catch(() => {});
+        if (m) await require('../utils/localBucket').bucket().file(decodeURIComponent(m[1])).delete().catch(() => {});
       } catch (_) { /* non-fatal */ }
     }
 

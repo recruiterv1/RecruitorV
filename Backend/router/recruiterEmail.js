@@ -20,7 +20,7 @@ const storeAttachment = async (buffer, filename, contentType) => {
   const token = uuidv4();
   const safe = String(filename || 'file').replace(/[^\w.\-]+/g, '_').slice(0, 120);
   const path = `email-attachments/${Date.now()}_${uuidv4()}_${safe}`;
-  const bucket = admin.storage().bucket();
+  const bucket = require('../utils/localBucket').bucket();
   const file = bucket.file(path);
   await file.save(buffer, { resumable: false, contentType: contentType || 'application/octet-stream' });
   await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
@@ -28,7 +28,7 @@ const storeAttachment = async (buffer, filename, contentType) => {
     name: filename || safe,
     size: buffer.length,
     contentType: contentType || 'application/octet-stream',
-    url: `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`,
+    url: `${bucket.base}/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`,
   };
 };
 

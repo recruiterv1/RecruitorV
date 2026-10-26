@@ -502,7 +502,7 @@ router.post('/upload', authMiddleware, async (req, res) => {
 
     const admin = require('firebase-admin');
     const { v4: uuidv4 } = require('uuid');
-    const bucket = admin.storage().bucket();
+    const bucket = require('../utils/localBucket').bucket();
     const token = uuidv4();
     const safe = filename.replace(/[^\w.\-]+/g, '_');
     const filepath = `chat/${lc(req.user.email)}/${Date.now()}_${safe}`;
@@ -512,7 +512,7 @@ router.post('/upload', authMiddleware, async (req, res) => {
       resumable: false,
       metadata: { metadata: { firebaseStorageDownloadTokens: token } },
     });
-    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
+    const url = `${bucket.base}/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
     const kind = (contentType || '').startsWith('image/') ? 'image' : 'file';
     res.json({ success: true, url, name: filename, type: contentType || '', kind });
   } catch (e) { console.error('chat/upload', e); res.status(500).json({ success: false, message: e.message }); }

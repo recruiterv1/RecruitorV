@@ -239,7 +239,7 @@ router.post('/admin/screenshot', adminAuth, async (req, res) => {
     const { v4: uuidv4 } = require('uuid');
     const buffer = Buffer.from(base64, 'base64');
     if (buffer.length > 5 * 1024 * 1024) return res.status(400).json({ success: false, message: 'Screenshot must be under 5 MB.' });
-    const bucket = admin.storage().bucket();
+    const bucket = require('../utils/localBucket').bucket();
     const token = uuidv4();
     const safe = filename.replace(/[^\w.\-]+/g, '_');
     const filepath = `training-manuals/${Date.now()}_${safe}`;
@@ -247,7 +247,7 @@ router.post('/admin/screenshot', adminAuth, async (req, res) => {
       contentType, resumable: false,
       metadata: { metadata: { firebaseStorageDownloadTokens: token } },
     });
-    const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
+    const url = `${bucket.base}/v0/b/${bucket.name}/o/${encodeURIComponent(filepath)}?alt=media&token=${token}`;
     res.json({ success: true, url });
   } catch (e) {
     console.error('training/screenshot error:', e.message);

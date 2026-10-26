@@ -420,6 +420,9 @@ app.get('/api/debug/brevo', async (req, res) => {
   }
 });
 
+// ---- UPLOADED FILES (disk-backed, Firebase-Storage-style URLs) ----
+app.use(require("./utils/localBucket").filesRouter);
+
 // ---- STATIC FRONTEND + SPA FALLBACK (must stay after all API routes) ----
 app.use(express.static(FRONTEND_DIST, {
   index: false,

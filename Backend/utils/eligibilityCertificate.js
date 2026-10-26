@@ -246,14 +246,14 @@ const issueCertificate = async ({ attemptId, name, email, role, skillCategory, p
   try {
     const admin = require('firebase-admin');
     const { v4: uuidv4 } = require('uuid');
-    const bucket = admin.storage().bucket();
+    const bucket = require('./localBucket').bucket();
     const token = uuidv4();
     const path = `eligibility-certificates/${certificateId}.pdf`;
     await bucket.file(path).save(pdf, {
       contentType: 'application/pdf', resumable: false,
       metadata: { metadata: { firebaseStorageDownloadTokens: token } },
     });
-    url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+    url = `${bucket.base}/v0/b/${bucket.name}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
   } catch (e) {
     console.error('certificate upload failed:', e.message);
   }
