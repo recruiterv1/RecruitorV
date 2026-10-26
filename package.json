@@ -1,10 +1,13 @@
 {
   "name": "recruitorv",
   "private": true,
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "build": "npm --prefix Frontend ci --legacy-peer-deps && npm --prefix Frontend run build && npm --prefix Backend ci",
-    "start": "node Backend/index.js"
+    "build": "echo build handled by postinstall",
+    "start": "node Backend/index.js",
+    "postinstall": "npm --prefix Backend ci --omit=dev && npm --prefix Frontend ci --legacy-peer-deps --include=dev && npm --prefix Frontend run build"
   },
   "devDependencies": {
     "firebase-tools": "^15.2.0"
