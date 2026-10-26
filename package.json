@@ -1,7 +1,7 @@
 {
   "name": "recruitorv",
   "private": true,
-  "engines": { "node": "20" },
+  "engines": { "node": ">=20" },
   "scripts": {
     "build": "npm --prefix Frontend ci --legacy-peer-deps && npm --prefix Frontend run build && npm --prefix Backend ci",
     "start": "node Backend/index.js"
