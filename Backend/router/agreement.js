@@ -73,7 +73,7 @@ router.post('/submit', async (req, res) => {
           await recruiterF.updateRecruiter(recruiterDoc.id, {
             agreementSigned: true,
             agreementRole: role,
-            agreementSignedAt: admin.firestore.Timestamp.now(),
+            agreementSignedAt: require('../db').Timestamp.now(),
             agreementVersion: meta?.version || 'v1.0',
             ...(commisiontype ? { commisiontype } : {})
           });
@@ -87,7 +87,7 @@ router.post('/submit', async (req, res) => {
           await coachF.updateCoach(coachDoc.id, {
             agreementSigned: true,
             agreementRole: role,
-            agreementSignedAt: admin.firestore.Timestamp.now(),
+            agreementSignedAt: require('../db').Timestamp.now(),
             agreementVersion: meta?.version || 'v1.0'
           });
           recorded = true;
@@ -100,7 +100,7 @@ router.post('/submit', async (req, res) => {
           await expertF.updateExpert(expertDoc.id, {
             agreementSigned: true,
             agreementRole: role,
-            agreementSignedAt: admin.firestore.Timestamp.now(),
+            agreementSignedAt: require('../db').Timestamp.now(),
             agreementVersion: meta?.version || 'v1.0'
           });
           recorded = true;

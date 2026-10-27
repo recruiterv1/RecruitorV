@@ -108,7 +108,7 @@ router.put('/:key', managerAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Write the message before making it live.' });
     }
 
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     await db.collection('internal_message_templates').doc(trigger.key).set({
       key: trigger.key, name: trigger.name, body, enabled,
       updatedAt: FieldValue.serverTimestamp(), updatedBy: req.managerEmail,
@@ -168,7 +168,7 @@ router.post('/custom', managerAuth, async (req, res) => {
     if (!recipientRole) return res.status(400).json({ success: false, message: 'Choose who receives this message.' });
     if (!senderRole) return res.status(400).json({ success: false, message: 'Choose who it comes from.' });
 
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const key = slugKey(name);
     await db.collection('internal_message_templates').doc(key).set({
       key, name, body, senderRole, recipientRole, event, audience, recipients,
@@ -193,7 +193,7 @@ router.put('/custom/:key', managerAuth, async (req, res) => {
     const body = String(req.body?.body || '').trim();
     if (!name || !body) return res.status(400).json({ success: false, message: 'Title and message are both required.' });
 
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     await ref.set({
       name, body,
       senderRole: ROLE_MAP[req.body?.senderRole] ? req.body.senderRole : (doc.data().senderRole || ''),
@@ -292,7 +292,7 @@ router.post('/custom/:key/send', managerAuth, async (req, res) => {
     const nextOffset = offset + slice.length;
     const done = nextOffset >= people.length;
 
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     if (done) {
       await ref.set({
         lastSentAt: FieldValue.serverTimestamp(),

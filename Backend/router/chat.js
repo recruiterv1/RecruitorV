@@ -15,7 +15,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { db } = require('./firebase_ad');
-const { FieldValue } = require('firebase-admin/firestore');
+const { FieldValue } = require('../db');
 const { sendPushToEmails, tokenDocId } = require('../utils/push');
 
 const lc = (s) => (s || '').toString().toLowerCase().trim();

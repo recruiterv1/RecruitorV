@@ -469,8 +469,7 @@ schedule('autoScreenRejectSweep', '0 * * * *', async () => {
 
 // ---- Scheduled: delete candidate submission drafts older than 72h ----
 schedule('cleanupCandidateDrafts', '0 3 * * *', async () => {
-    const admin = require('firebase-admin');
-    const db = admin.firestore();
+    const { db } = require('./router/firebase_ad');
     const snap = await db.collection('candidate_drafts').where('expiresAt', '<', new Date()).get();
     let n = 0;
     // Batch deletes (Firestore caps a batch at 500 ops).

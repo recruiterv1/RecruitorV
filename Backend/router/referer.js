@@ -29,7 +29,7 @@ const isLoggedIn = async (req, res, next) => {
 router.post('/submit', isLoggedIn, async (req, res) => {
   try {
     const { db } = require('./firebase_ad');
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
 
     const refererEmail = (req.user.email || '').toLowerCase().trim();
 

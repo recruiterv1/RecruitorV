@@ -131,7 +131,7 @@ router.post('/', managerAuth, async (req, res) => {
     if (!data.text) return res.status(400).json({ success: false, message: 'Write the announcement text.' });
     if (!data.roles.length) return res.status(400).json({ success: false, message: 'Choose at least one role.' });
 
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const ref = await db.collection('announcements').add({
       ...data,
       createdAt: FieldValue.serverTimestamp(),
@@ -152,7 +152,7 @@ router.put('/:id', managerAuth, async (req, res) => {
     if (!data.text) return res.status(400).json({ success: false, message: 'Write the announcement text.' });
     if (!data.roles.length) return res.status(400).json({ success: false, message: 'Choose at least one role.' });
 
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     await ref.set({ ...data, updatedAt: FieldValue.serverTimestamp(), updatedBy: req.managerEmail }, { merge: true });
     res.json({ success: true, message: 'Saved.' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }

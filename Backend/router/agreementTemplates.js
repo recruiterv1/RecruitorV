@@ -122,7 +122,7 @@ router.put('/:role', managerAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Add at least one clause before making it live.' });
     }
 
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     await TEMPLATES.doc(role).set({
       role, clauses, enabled,
       intro: String(req.body?.intro || '').trim().slice(0, 2000),
