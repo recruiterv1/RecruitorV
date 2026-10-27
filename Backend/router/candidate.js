@@ -1185,7 +1185,7 @@ async function getSubmitterPhoneDir(db) {
 // response limit and stopping the page from loading at all.
 const SPOC_LIST_OMIT = new Set([
   'resumeText', 'matchTokens', 'skillsTextTokens', 'skillsText', 'skills',
-  'client_answers', 'referrerProfile', 'statusChangedAt', 'statusChangedByName',
+  'referrerProfile', 'statusChangedAt', 'statusChangedByName',
   'recId', 'matchEvaluatedAt', 'matchMethod',
   'tech_category', 'tech_subcategory', 'tech_exp', 'skill_type',
   'nontech_category', 'nontech_subcategory',
