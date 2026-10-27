@@ -5,7 +5,14 @@ if (!admin.apps.length) {
     // Try to load service account for local development
     // This will fail gracefully in production (Firebase Functions)
     try {
-      const serviceAccount = require("../serviceAccountKey.json");
+      // Self-hosted: FIREBASE_SERVICE_ACCOUNT holds the service-account JSON (raw or base64).
+      let serviceAccount;
+      const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+      if (raw) {
+        serviceAccount = JSON.parse(raw.trim().startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8'));
+      } else {
+        serviceAccount = require("../serviceAccountKey.json");
+      }
       
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),

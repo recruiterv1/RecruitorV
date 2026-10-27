@@ -274,7 +274,7 @@ router.post('/upload-cv', async (req, res) => {
     const { v4: uuidv4 } = require('uuid');
 
     const buffer   = Buffer.from(base64, 'base64');
-    const bucket   = admin.storage().bucket();
+    const bucket   = require('../utils/localBucket').bucket();
     const token    = uuidv4();
     const safeName = origName.replace(/\s+/g, '_');
     const filepath = `resumes/direct/${Date.now()}_${safeName}`;
@@ -287,7 +287,7 @@ router.post('/upload-cv', async (req, res) => {
     });
 
     const downloadUrl =
-      `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
+      `${bucket.base}/v0/b/${bucket.name}/o/` +
       `${encodeURIComponent(filepath)}?alt=media&token=${token}`;
 
     return res.json({ success: true, url: downloadUrl });

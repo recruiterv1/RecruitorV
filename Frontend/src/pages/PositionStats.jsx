@@ -20,13 +20,8 @@ const PositionStats = () => {
   const [loadingDetails, setLoadingDetails] = useState({});
   const [isExporting, setIsExporting] = useState(false);
 
-  // Get API base URL - use Firebase Function URL in production
-  const getApiUrl = () => {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return ''; // Use proxy in development
-    }
-    return 'https://api-myh3hnbr6q-uc.a.run.app'; // Firebase Function URL
-  };
+  // Same-origin: the backend serves the site and the API together
+  const getApiUrl = () => '';
 
   const fetchPositionStats = async () => {
     setLoading(true);

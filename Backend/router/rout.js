@@ -99,7 +99,7 @@ router.post('/upload-resume', async (req, res) => {
     }
     const token = uuidv4();
     const filename = `resumes/${Date.now()}_${uuidv4()}.pdf`;
-    const bucket = admin.storage().bucket();
+    const bucket = require('../utils/localBucket').bucket();
     const storageFile = bucket.file(filename);
     await storageFile.save(buffer, {
       resumable: false,
@@ -108,7 +108,7 @@ router.post('/upload-resume', async (req, res) => {
     await storageFile.setMetadata({
       metadata: { firebaseStorageDownloadTokens: token }
     });
-    const resumeUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filename)}?alt=media&token=${token}`;
+    const resumeUrl = `${bucket.base}/v0/b/${bucket.name}/o/${encodeURIComponent(filename)}?alt=media&token=${token}`;
     return res.json({ success: true, resumeUrl });
   } catch (err) {
     console.error('Resume upload error:', err);
