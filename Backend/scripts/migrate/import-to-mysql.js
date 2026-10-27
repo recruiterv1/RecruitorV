@@ -13,6 +13,7 @@ const { db } = require('../../db/mysql');
 
 const DUMP = path.join(__dirname, 'dump');
 const BATCH = 200;
+const MAX_BYTES = 4 * 1024 * 1024; // keep each INSERT well under max_allowed_packet
 
 (async () => {
   const args = process.argv.slice(2);
@@ -31,19 +32,21 @@ const BATCH = 200;
     const file = path.join(DUMP, `${c.name}.ndjson`);
     if (!fs.existsSync(file)) { console.log(`  ${c.name}: no file`); continue; }
     const rl = readline.createInterface({ input: fs.createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity });
-    let rows = [], n = 0;
+    let rows = [], bytes = 0, n = 0;
     const flush = async () => {
       if (!rows.length) return;
       const ph = rows.map(() => '(?,?,?)').join(',');
       await pool.query(`INSERT INTO docs (collection, id, data) VALUES ${ph} ON DUPLICATE KEY UPDATE data = VALUES(data)`, rows.flat());
-      n += rows.length; rows = [];
+      n += rows.length; rows = []; bytes = 0;
     };
     for await (const line of rl) {
       if (!line.trim()) continue;
       const doc = JSON.parse(line);
       // the exporter writes {"_id": "...", ...fields}; keep every other field verbatim
       const { _id, ...data } = doc;
-      rows.push([c.name, String(_id), JSON.stringify(data)]);
+      const json = JSON.stringify(data);
+      if (rows.length && bytes + json.length > MAX_BYTES) await flush();
+      rows.push([c.name, String(_id), json]); bytes += json.length;
       if (rows.length >= BATCH) await flush();
     }
     await flush();
@@ -55,4 +58,4 @@ const BATCH = 200;
   console.log(bad ? `${bad} collection(s) did not match the manifest` : 'All collection counts match the export manifest.');
   await db.close();
   process.exit(bad ? 1 : 0);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch((e) => { console.error('import failed:', e.code || '', String(e.message).slice(0, 200)); process.exit(1); });
