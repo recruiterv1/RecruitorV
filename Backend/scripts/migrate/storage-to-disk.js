@@ -22,19 +22,24 @@ const LINK = /https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[^/]+\/o\//g;
 const download = async () => {
   const bucket = admin.storage().bucket();
   const [files] = await bucket.getFiles();
-  let n = 0, bytes = 0, skipped = 0;
-  for (const f of files) {
-    if (f.name.endsWith('/')) continue;
+  let n = 0, bytes = 0, skipped = 0, failed = 0;
+  const queue = files.filter((f) => !f.name.endsWith('/'));
+  const one = async (f) => {
     const dest = path.join(OUT, f.name);
-    if (fs.existsSync(dest) && fs.existsSync(dest + '.meta.json')) { skipped++; continue; }
-    const [meta] = await f.getMetadata();
-    const token = String(meta.metadata?.firebaseStorageDownloadTokens || '').split(',')[0] || null;
-    await fs.promises.mkdir(path.dirname(dest), { recursive: true });
-    await f.download({ destination: dest });
-    await fs.promises.writeFile(dest + '.meta.json', JSON.stringify({ contentType: meta.contentType || 'application/octet-stream', token }));
-    n++; bytes += Number(meta.size || 0);
-    if (n % 50 === 0) console.log(`  ${n} files…`);
-  }
+    if (fs.existsSync(dest) && fs.existsSync(dest + '.meta.json')) { skipped++; return; }
+    try {
+      const [meta] = await f.getMetadata();
+      const token = String(meta.metadata?.firebaseStorageDownloadTokens || '').split(',')[0] || null;
+      await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+      await f.download({ destination: dest });
+      await fs.promises.writeFile(dest + '.meta.json', JSON.stringify({ contentType: meta.contentType || 'application/octet-stream', token }));
+      n++; bytes += Number(meta.size || 0);
+      if (n % 200 === 0) console.log(`  ${n} files…`);
+    } catch (e) { failed++; console.error('  failed:', f.name, e.message); }
+  };
+  // 24 downloads in flight at once; each file is a few round trips, so sequential is hours.
+  await Promise.all(Array.from({ length: 24 }, async () => { while (queue.length) await one(queue.shift()); }));
+  if (failed) console.log(`${failed} files failed — re-run to retry them.`);
   console.log(`Downloaded ${n} files (${(bytes / 1048576).toFixed(1)} MB), skipped ${skipped} already present, into ${OUT}`);
   const noToken = files.length ? 'Files without a token cannot be served until they get one.' : '';
   if (noToken) console.log(noToken);
@@ -61,6 +66,7 @@ const walk = (v) => {
 };
 
 const rewrite = async (apply) => {
+  const backup = apply ? fs.createWriteStream(path.join(OUT, '..', 'link-rewrite-backup.ndjson'), { flags: 'a' }) : { write() {} };
   const cols = await db.listCollections();
   let docs = 0, changed = 0;
   for (const col of cols) {
@@ -74,14 +80,26 @@ const rewrite = async (apply) => {
       let ops = 0;
       for (const d of snap.docs) {
         docs++;
-        const [data, ch] = walk(d.data());
-        if (ch) { colChanged++; changed++; if (apply) { batch.set(d.ref, data); ops++; } }
+        const orig = d.data();
+        const [data, ch] = walk(orig);
+        if (ch) {
+          colChanged++; changed++;
+          if (apply) {
+            // Touch only the top-level fields that held a link (update, not set), and keep the
+            // old values in a backup file so the change can be undone.
+            const patch = {}, before = {};
+            for (const k of Object.keys(orig)) if (walk(orig[k])[1]) { patch[k] = data[k]; before[k] = orig[k]; }
+            backup.write(JSON.stringify({ path: d.ref.path, before }) + '\n');
+            batch.update(d.ref, patch); ops++;
+          }
+        }
       }
       if (apply && ops) await batch.commit();
       last = snap.docs[snap.docs.length - 1];
     }
     if (colChanged) console.log(`  ${col.id}: ${colChanged} docs ${apply ? 'rewritten' : 'would change'}`);
   }
+  if (apply) backup.end();
   console.log(`${apply ? 'Rewrote' : 'Dry run:'} ${changed} of ${docs} documents contain Firebase Storage links.`);
 };
 
