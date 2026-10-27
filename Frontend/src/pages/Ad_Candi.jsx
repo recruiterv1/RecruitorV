@@ -716,6 +716,31 @@ const CandidateModal = ({ candidate, onClose, onStatusChange, onEmail, onViewPos
             <InfoItem icon={Calendar} label="Offer & DOJ"       value={candidate.offer_amt}                         color="#d97706" />
           </div>
 
+          {/* ── Recruiter's answers to the client-requirement questions ── */}
+          {(() => {
+            let ca = candidate.client_answers;
+            if (typeof ca === 'string') { try { ca = JSON.parse(ca); } catch (_) { ca = []; } }
+            if (!Array.isArray(ca)) return null;
+            ca = ca.filter(a => a && a.question);
+            if (!ca.length) return null;
+            const show = (a) => Array.isArray(a.answer) ? a.answer.join(', ') : (a.answer || '');
+            return (
+              <>
+                <div style={{ fontSize:12, fontWeight:800, color:'#374151', textTransform:'uppercase', letterSpacing:0.6, margin:'18px 0 8px', paddingBottom:6, borderBottom:'2px solid #eef2f7' }}>
+                  Client Requirement Answers
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {ca.map((a, i) => (
+                    <div key={i} style={{ padding:'10px 14px', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:'#475569' }}>{i + 1}. {a.question}</div>
+                      <div style={{ fontSize:14, color:'#0f172a', marginTop:3, whiteSpace:'pre-wrap' }}>{show(a) || '—'}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
+
           {/* ── Reviewed By — the coach or expert who cleared this candidate before
                  it reached the client. Only present for candidates that went
                  through the review bin; everything else renders nothing. ── */}
