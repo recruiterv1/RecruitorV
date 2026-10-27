@@ -7,8 +7,14 @@ const os = require('os');
 const path = require('path');
 const express = require('express');
 
+// Hostinger runs the app with HOME=<account>/domains/<site>, so os.homedir() is not the account
+// root. Derive the account root from where the code lives (<root>/domains/<site>/...) instead.
+const accountRoot = () => {
+  const i = __dirname.indexOf(`${path.sep}domains${path.sep}`);
+  return i > 0 ? __dirname.slice(0, i) : os.homedir();
+};
 const STORAGE_DIR = path.resolve(process.env.STORAGE_DIR || (process.env.NODE_ENV === 'production'
-  ? path.join(os.homedir(), 'recruiterv-storage')   // outside the deploy dir so redeploys keep uploads
+  ? path.join(accountRoot(), 'recruiterv-storage')   // outside the deploy dir so redeploys keep uploads
   : path.join(__dirname, '..', '.uploads')));
 const BUCKET_NAME = 'local';
 
