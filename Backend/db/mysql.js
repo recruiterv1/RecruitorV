@@ -160,9 +160,10 @@ const buildFilter = ({ field, op, value }) => {
     return [`id ${op === '!=' ? '<>' : SQL_OPS[op] || '='} ?`, [String(value)]];
   }
   const p = pathOf(field);
-  if (op === 'array-contains') return ['JSON_CONTAINS(JSON_EXTRACT(data, ?), ?)', [p, JSON.stringify(encode(value))]];
+  const AC = "(JSON_TYPE(JSON_EXTRACT(data, ?)) = 'ARRAY' AND JSON_CONTAINS(JSON_EXTRACT(data, ?), ?))";
+  if (op === 'array-contains') return [AC, [p, p, JSON.stringify(encode(value))]];
   if (op === 'array-contains-any') {
-    return [`(${value.map(() => 'JSON_CONTAINS(JSON_EXTRACT(data, ?), ?)').join(' OR ') || '0'})`, value.flatMap((x) => [p, JSON.stringify(encode(x))])];
+    return [`(${value.map(() => AC).join(' OR ') || '0'})`, value.flatMap((x) => [p, p, JSON.stringify(encode(x))])];
   }
   if (op === 'in' || op === 'not-in') {
     const scalar = (x) => (isTs(x) ? tsIso(x) : typeof x === 'boolean' ? String(x) : String(x));
@@ -208,7 +209,7 @@ class Query {
     let sql = `SELECT id, data FROM docs WHERE ${where}`;
     if (this._s.orders.length) {
       const orderParams = [];
-      sql += ' ORDER BY ' + this._s.orders.map((o) => { const [e, ps] = orderExpr(o.field); orderParams.push(...ps); return `${e} ${o.dir}`; }).join(', ') + ', id';
+      sql += ' ORDER BY ' + this._s.orders.map((o) => { const [e, ps] = orderExpr(o.field); orderParams.push(...ps); return `${e} ${o.dir}`; }).join(', ') + `, id ${this._s.orders[this._s.orders.length - 1].dir}`;
       params.push(...orderParams);
     } else sql += ' ORDER BY id';
     if (this._s.limit != null) { sql += ' LIMIT ?'; params.push(this._s.limit); if (this._s.offset) { sql += ' OFFSET ?'; params.push(this._s.offset); } }
