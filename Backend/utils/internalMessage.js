@@ -9,7 +9,7 @@
 // Mirrors the email-template pattern in utils/emailTemplates.js.
 
 const { db } = require('../router/firebase_ad');
-const { FieldValue } = require('firebase-admin/firestore');
+const { FieldValue } = require('../db');
 
 const lc = (s) => String(s || '').toLowerCase().trim();
 

@@ -2674,7 +2674,7 @@ router.get('/category-stats', adminAuthMiddleware, async (req, res) => {
 router.post('/category', adminAuthMiddleware, async (req, res) => {
   try {
     const { db } = require('./firebase_ad');
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const { parent, children } = req.body;
     if (!parent || !parent.trim()) return res.status(400).json({ success: false, message: 'Parent name is required' });
 
@@ -2700,7 +2700,7 @@ router.post('/category', adminAuthMiddleware, async (req, res) => {
 router.put('/category/:id', adminAuthMiddleware, async (req, res) => {
   try {
     const { db } = require('./firebase_ad');
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const { parent, children } = req.body;
     if (!parent || !parent.trim()) return res.status(400).json({ success: false, message: 'Parent name is required' });
 

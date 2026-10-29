@@ -1949,7 +1949,7 @@ router.post('/recruiter-assignment', authMiddleware, async (req, res) => {
     if (!recruiterId || !positionId) {
       return res.status(400).json({ success: false, message: 'recruiterId and positionId are required' });
     }
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
 
     // Get coach/expert info (the assigner may be either).
     let coachDoc = null;
@@ -2220,7 +2220,7 @@ router.patch('/coach-assigned-positions/:id', authMiddleware, async (req, res) =
     if (!['accepted', 'rejected'].includes(status)) {
       return res.status(400).json({ success: false, message: 'status must be accepted or rejected' });
     }
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const docRef = db.collection('coach_recruiter_assignments').doc(id);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ success: false, message: 'Assignment not found' });
@@ -2252,7 +2252,7 @@ router.patch('/coach-assigned-positions/:id', authMiddleware, async (req, res) =
 router.post('/vendor-upgrade-request', authMiddleware, async (req, res) => {
   try {
     const coachEmail = req.user.email;
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const { sendEmailFull, renderEmail } = require('../utils/email');
 
     const coachSnap = await db.collection('coach_db').where('email', '==', coachEmail.toLowerCase()).limit(1).get();
@@ -2345,7 +2345,7 @@ router.patch('/coach-vendor-requests/:id', async (req, res) => {
     if (!['approved', 'rejected', 'waitlist'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
     }
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const docRef = db.collection('coach_vendor_requests').doc(id);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ success: false, message: 'Request not found' });
@@ -2563,7 +2563,7 @@ router.post('/team/send-request', authMiddleware, teamOpen, async (req, res) => 
     const coachEmail = req.user.email;
     const { recruiterId } = req.body;
     if (!recruiterId) return res.status(400).json({ success: false, message: 'recruiterId required' });
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
 
     const coachSnap = await db.collection('coach_db').where('email', '==', coachEmail.toLowerCase()).limit(1).get();
     if (coachSnap.empty) return res.status(404).json({ success: false, message: 'Coach not found' });
@@ -2727,7 +2727,7 @@ router.patch('/team/respond/:id', authMiddleware, async (req, res) => {
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ success: false, message: 'status must be approved or rejected' });
     }
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const docRef = db.collection('coach_team_requests').doc(id);
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ success: false, message: 'Request not found' });
@@ -3049,7 +3049,7 @@ router.get('/team/available-coaches', authMiddleware, teamOpen, async (req, res)
 // Recruiter sends a request to join a coach/expert's team
 router.post('/team/recruiter-join-request', authMiddleware, teamOpen, async (req, res) => {
   try {
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const recruiterEmail = req.user.email;
     const { coachId, coachEmail, coachRole } = req.body;
     if (!coachEmail) return res.status(400).json({ success: false, message: 'coachEmail required' });
@@ -3180,7 +3180,7 @@ router.get('/team/incoming-join-requests', authMiddleware, async (req, res) => {
 // Coach/Expert approves or rejects a recruiter-initiated join request
 router.patch('/team/incoming-join-requests/:id', authMiddleware, async (req, res) => {
   try {
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const { status } = req.body;
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ success: false, message: 'status must be approved or rejected' });
@@ -3637,7 +3637,7 @@ router.post('/followups', authMiddleware, async (req, res) => {
     if (!cSnap.empty) coachName = cSnap.docs[0].data().name || '';
     else { const eSnap = await db.collection('expert_db').where('email', '==', emailLower).limit(1).get(); if (!eSnap.empty) coachName = eSnap.docs[0].data().name || ''; }
 
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const dupSnap = await db.collection('coach_followups')
       .where('coachEmail', '==', emailLower).where('positionId', '==', positionId)
       .where('recruiterEmail', '==', recruiterEmail).where('date', '==', date).limit(1).get();

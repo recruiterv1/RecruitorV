@@ -538,7 +538,7 @@ router.post('/check-applied', async (req, res) => {
 router.post('/submit', async (req, res) => {
   try {
     const { db } = require('./firebase_ad');
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const candida = require('../model_fire/candidateF');
     const ad_Pos = require('../model_fire/adminF');
 

@@ -46,7 +46,7 @@ router.post('/ping', async (req, res) => {
     if (!email) return res.status(400).json({ ok: false });
 
     const { db } = require('./firebase_ad');
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
 
     // Access revoked mid-session? The heartbeat is our fastest signal (runs every
     // few minutes and on every tab focus), so tell the client to sign out now

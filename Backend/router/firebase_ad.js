@@ -35,13 +35,14 @@ if (!admin.apps.length) {
   }
 }
 
-var db = admin.firestore();
+const useMysql = (process.env.DB_DRIVER || 'firestore').toLowerCase() === 'mysql';
+var db = useMysql ? require('../db/mysql').db : admin.firestore();
 // Drop undefined fields silently instead of throwing (coaches/experts don't have all recruiter fields)
 db.settings({ ignoreUndefinedProperties: true });
 
 // Test Firestore connection - NON-BLOCKING
 // Don't wait for this as it can cause startup delays with Eventarc/PubSub
-setTimeout(() => {
+if (!useMysql) setTimeout(() => {
   db.collection('_healthcheck').limit(1).get()
     .then(() => {
       console.log("✅ Firestore connection successful");

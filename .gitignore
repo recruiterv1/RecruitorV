@@ -78,3 +78,4 @@ Backend/scripts/deleted_*.json
 # Firestore export — real candidate data, never committed
 Backend/scripts/migrate/dump/
 .uploads/
+Backend/migrated-storage/

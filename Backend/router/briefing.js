@@ -437,7 +437,7 @@ router.post('/position/:posId', authMiddleware, async (req, res) => {
       });
     }
 
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const wordCount = totalWords(answers);
     const patch = {
       positionId: posId,
@@ -587,7 +587,7 @@ router.post('/for-me/:posId/listened', authMiddleware, async (req, res) => {
       return res.status(403).json({ success: false, message: 'This briefing is not shared with you.' });
     }
 
-    const { FieldValue } = require('firebase-admin/firestore');
+    const { FieldValue } = require('../db');
     const ref = db.collection('briefing_listens').doc(`${posId}__${author}__${me}`);
     const existing = await ref.get();
     await ref.set({
