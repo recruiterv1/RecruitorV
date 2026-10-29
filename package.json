@@ -8,11 +8,5 @@
     "build": "echo build handled by postinstall",
     "start": "node Backend/index.js",
     "postinstall": "npm --prefix Backend ci --omit=dev && npm --prefix Frontend ci --legacy-peer-deps --include=dev && npm --prefix Frontend run build"
-  },
-  "devDependencies": {
-    "firebase-tools": "^15.2.0"
-  },
-  "dependencies": {
-    "firebase": "^12.7.0"
   }
 }
