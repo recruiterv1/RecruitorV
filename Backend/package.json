@@ -22,7 +22,6 @@
     "firebase-admin": "^13.7.0",
     "helmet": "^8.1.0",
     "imapflow": "^1.4.0",
-    "json2xls": "^0.1.2",
     "jsonwebtoken": "^9.0.2",
     "mailparser": "^3.9.9",
     "mammoth": "^1.12.0",
@@ -31,13 +30,12 @@
     "multer": "^2.0.2",
     "mysql2": "^3.24.6",
     "node-cron": "^3.0.3",
-    "nodemailer": "^7.0.7",
     "nodemon": "^3.1.10",
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.20.2",
     "razorpay": "^2.9.8",
     "uuid": "^13.0.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "overrides": {
     "google-gax": {

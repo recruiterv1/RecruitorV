@@ -505,12 +505,10 @@ router.get('/reports/export/:pos_id', authMiddleware, isClientSpocLoggedIn, asyn
     }));
 
     // Generate XLS
-    const json2xls = require('json2xls');
-    const xls = json2xls(exportData, {
-      sheet: {
-        name: 'Candidates Report'
-      }
-    });
+    const XLSX = require('xlsx');
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportData), 'Candidates Report');
+    const xls = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
     const filename = `clientspoc-report-${pos_id}-${Date.now()}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
