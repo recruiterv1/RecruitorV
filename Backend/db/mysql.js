@@ -153,8 +153,23 @@ const isTs = (v) => v instanceof Timestamp || v instanceof Date;
 const tsIso = (v) => (v instanceof Timestamp ? v.toDate() : v).toISOString();
 const SQL_OPS = { '==': '=', '<': '<', '<=': '<=', '>': '>', '>=': '>=' };
 
+// Hot top-level fields get an indexed virtual column (ix_<field>) so equality / IN
+// filters seek instead of scanning every document's JSON. ensureIndexes() builds
+// them; IX holds the ones that exist so queries fall back safely when they don't.
+const IX_FIELDS = ['email', 'pos_id', 'status', 'recruiterEmail', 'positionId', 'recEmail', 'clientspoc',
+  'coachExpertEmail', 'coachEmail', 'vendorEmail', 'role', 'consultingFirmId', 'type', 'source',
+  'recruiterId', 'referredBy', 'mob', 'lower', 'client', 'pairKey'];
+const IX = new Set();
+const ixCol = (field) => (IX.has(field) ? '`ix_' + field + '`' : null);
+const ixOk = (v) => typeof v === 'string' && v.length <= 100;
+
 // Returns [sqlFragment, params].
 const buildFilter = ({ field, op, value }) => {
+  const col = ixCol(field);
+  if (col && op === '==' && ixOk(value)) return [`${col} = ?`, [value]];
+  if (col && op === 'in' && Array.isArray(value) && value.length && value.every(ixOk)) {
+    return [`${col} IN (${value.map(() => '?').join(',')})`, value];
+  }
   if (field === '__name__') {
     if (op === 'in') return [`id IN (${value.map(() => '?').join(',') || 'NULL'})`, value.map(String)];
     return [`id ${op === '!=' ? '<>' : SQL_OPS[op] || '='} ?`, [String(value)]];
@@ -218,6 +233,7 @@ class Query {
   }
 
   async get(conn = this._store._pool) {
+    await this._store._ready;
     const [sql, params] = this._sql();
     const [rows] = await conn.query(sql, params);
     const sel = this._s.select;
@@ -234,7 +250,7 @@ class Query {
   }
 
   count() {
-    return { get: async () => { const [sql, params] = this._sql(true); const [rows] = await this._store._pool.query(sql, params); return { data: () => ({ count: Number(rows[0].n) }) }; } };
+    return { get: async () => { await this._store._ready; const [sql, params] = this._sql(true); const [rows] = await this._store._pool.query(sql, params); return { data: () => ({ count: Number(rows[0].n) }) }; } };
   }
 }
 
@@ -276,9 +292,25 @@ class Store {
          PRIMARY KEY (collection, id),
          CHECK (JSON_VALID(data))
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin ROW_FORMAT=DYNAMIC`
-    ).catch((e) => { console.error('MySQL init failed:', e.message); throw e; });
+    ).then(async () => {
+      const [cols] = await rawQuery("SELECT COLUMN_NAME c FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'docs' AND COLUMN_NAME LIKE 'ix\\_%'");
+      for (const r of cols) IX.add(String(r.c).slice(3));
+    }).catch((e) => { console.error('MySQL init failed:', e.message); throw e; });
     pool.query = async (...a) => { await ready; return rawQuery(...a); };
     this._pool = pool; this._ready = ready;
+  }
+
+  // One-time (idempotent) build of the indexed virtual columns. Run from the
+  // import script / add-indexes script, not on app start: it scans the table.
+  async ensureIndexes() {
+    this._init(); await this._ready;
+    const parts = [];
+    for (const f of IX_FIELDS) {
+      parts.push(`ADD COLUMN IF NOT EXISTS \`ix_${f}\` VARCHAR(191) COLLATE utf8mb4_bin GENERATED ALWAYS AS (LEFT(JSON_VALUE(data, '$.${f}'), 191)) VIRTUAL`);
+      parts.push(`ADD INDEX IF NOT EXISTS \`ix_${f}_idx\` (collection, \`ix_${f}\`)`);
+    }
+    await this._pool.query(`ALTER TABLE docs ${parts.join(', ')}`);
+    for (const f of IX_FIELDS) IX.add(f);
   }
 
   settings() {}
