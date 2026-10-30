@@ -432,6 +432,7 @@ function DashViewV2Inner() {
   const [skillHierarchy, setSkillHierarchy] = useState([]);
   const [selChildren, setSelChildren] = useState([]);
   const [selSubs, setSelSubs] = useState({});          // { [child]: string[] }
+  const [pendingBankSkills, setPendingBankSkills] = useState(null);   // skills from a Resume Bank candidate, mapped once the hierarchy loads
   const [subExp, setSubExp] = useState({});            // { 'child||sub': 'experience' }
 
   // ── Matching coaches/experts (same skill category, active in last 48h) ────────
@@ -559,7 +560,22 @@ function DashViewV2Inner() {
         candidate: c.candidate || '', mob: c.mob || '', emails: c.emails || '', dob: c.dob || '',
         pan_number: c.pan_number || '', curr_emp: c.curr_emp || '', highest_education: c.highest_education || '',
         totalYrs: te.y, totalMos: te.mo, relMos: re.mo, curr_state: c.curr_state || '', joinDate: c.last_day || '',
+        jr_number: c.jr_number || f.jr_number,
+        avgTenure: c.avg_tenure || f.avgTenure, empGaps: c.employment_gaps || f.empGaps,
+        employerTier: c.employer_tier || f.employerTier, industryMatch: c.industry_match || f.industryMatch,
       }));
+      if (c.skill_evidence) setSkillEvidence(c.skill_evidence);
+      if (c.relocation_willingness) setRelocation(c.relocation_willingness);
+      if (c.notice_proof) setNoticeProof(c.notice_proof);
+      // Skills: map the candidate's saved skills onto THIS position's skill options.
+      const asArr = (v) => {
+        if (Array.isArray(v)) return v;
+        if (typeof v !== 'string' || !v.trim()) return [];
+        try { const j = JSON.parse(v); if (Array.isArray(j)) return j; } catch (_) { /* plain text */ }
+        return v.split(',').map(x => x.trim()).filter(Boolean);
+      };
+      const bankSkills = asArr(c.tech_skill).length ? asArr(c.tech_skill) : asArr(c.skills);
+      if (bankSkills.length) setPendingBankSkills({ skills: bankSkills, exps: asArr(c.tech_exp) });
       setRelYrs(re.y);
       setCurrentCTC(num(c.current_ctc)); setExpectedCTC(num(c.exp_ctc || c.expected_ctc));
       setCurrentCity(c.curr_loc || ''); setNotice(noticeVal);
@@ -719,6 +735,28 @@ function DashViewV2Inner() {
   };
 
   const selectedSubList = selChildren.flatMap(ch => (selSubs[ch] || []).map(sub => ({ child: ch, sub })));
+
+  // Apply a Resume Bank candidate's skills to this position's skill options (only
+  // those that exist here; the recruiter fills in whatever is left).
+  useEffect(() => {
+    if (!pendingBankSkills || !childOptions.length) return;
+    const ch = [], subs = {}, exp = {};
+    pendingBankSkills.skills.forEach((sk, i) => {
+      for (const opt of childOptions) {
+        const m = (opt.subChildren || []).find(x => String(x).toLowerCase() === String(sk).toLowerCase());
+        if (!m) continue;
+        if (!ch.includes(opt.name)) { if (ch.length >= MAX_CHILDREN) break; ch.push(opt.name); }
+        subs[opt.name] = subs[opt.name] || [];
+        if (subs[opt.name].length < MAX_SUBS_PER_CHILD) {
+          subs[opt.name].push(m);
+          if (pendingBankSkills.exps[i]) exp[`${opt.name}||${m}`] = String(pendingBankSkills.exps[i]);
+        }
+        break;
+      }
+    });
+    if (ch.length) { setSelChildren(ch); setSelSubs(subs); setSubExp(exp); }
+    setPendingBankSkills(null);
+  }, [pendingBankSkills, childOptions]);
 
   // Client-requirement questions from the company profile (+ position's own).
   // Answered by the recruiter in the "Client Req" step of the submit form.
