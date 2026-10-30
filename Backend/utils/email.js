@@ -2,6 +2,44 @@ const axios = require('axios');
 
 const BREVO_API = 'https://api.brevo.com/v3/smtp/email';
 
+// Optional SMTP delivery (e.g. a Hostinger mailbox). Off unless MAIL_DRIVER=smtp.
+// Brevo stays the fallback: if SMTP fails and BREVO_API_KEY is set, the message is
+// re-sent through Brevo so a mail-server hiccup never drops a notification.
+const useSmtp = () => String(process.env.MAIL_DRIVER || '').toLowerCase() === 'smtp';
+let _smtp = null;
+const smtpTransport = () => {
+  if (_smtp) return _smtp;
+  const user = process.env.MAIL_SMTP_USER, pass = process.env.MAIL_SMTP_PASS;
+  if (!user || !pass) throw new Error('MAIL_SMTP_USER / MAIL_SMTP_PASS are not set');
+  const port = Number(process.env.MAIL_SMTP_PORT) || 465;
+  _smtp = require('nodemailer').createTransport({
+    host: process.env.MAIL_SMTP_HOST || 'smtp.hostinger.com',
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+    pool: true,
+    maxConnections: 3,
+  });
+  return _smtp;
+};
+const addr = (x) => (typeof x === 'string' ? x : x && x.email ? (x.name ? { name: x.name, address: x.email } : x.email) : undefined);
+const sendViaSmtp = async ({ to, subject, htmlContent, fromEmail, fromName, cc, replyTo, attachment }) => {
+  const auth = process.env.MAIL_SMTP_USER;
+  // SMTP providers only let a mailbox send as itself (or its aliases). If a call
+  // site asks for another From, send as the mailbox and keep that address as Reply-To.
+  const sameAddr = String(fromEmail || '').toLowerCase() === String(auth).toLowerCase();
+  const info = await smtpTransport().sendMail({
+    from: { name: fromName, address: sameAddr || process.env.MAIL_SMTP_ANY_FROM === 'true' ? fromEmail : auth },
+    to: (Array.isArray(to) ? to : [to]).map(addr).filter(Boolean),
+    cc: cc && cc.length ? cc.map(addr).filter(Boolean) : undefined,
+    replyTo: replyTo || (!sameAddr && process.env.MAIL_SMTP_ANY_FROM !== 'true' ? fromEmail : undefined),
+    subject,
+    html: htmlContent,
+    attachments: (attachment || []).map(a => ({ filename: a.name, content: Buffer.from(a.content, 'base64') })),
+  });
+  return info.messageId;
+};
+
 /**
  * Core send function — all fields optional except to/subject/htmlContent.
  * @param {Object} opts
@@ -37,6 +75,17 @@ const sendEmailFull = async ({
   if (!String(htmlContent || '').trim()) {
     console.log('email suppressed (no body — paused template or empty render):', subject || '(no subject)');
     return { skipped: true };
+  }
+  if (useSmtp()) {
+    try {
+      const messageId = await sendViaSmtp({ to, subject, htmlContent, fromEmail, fromName, cc, replyTo, attachment });
+      const toAddr = Array.isArray(to) ? to.map(t => t.email || t).join(', ') : to;
+      console.log(`✅ Email sent (smtp) to ${toAddr}: ${messageId}`);
+      return { success: true, messageId };
+    } catch (e) {
+      if (!process.env.BREVO_API_KEY) throw new Error(`Email send failed: ${e.message}`);
+      console.error('SMTP send failed, falling back to Brevo:', e.message);
+    }
   }
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) throw new Error('BREVO_API_KEY is not set');
