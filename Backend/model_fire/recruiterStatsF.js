@@ -343,7 +343,7 @@ const getRecruiterDashboardStats = async (recruiterEmail) => {
     // Find recruiter by email
     const recruiterData = await findRecruiterByEmail(recruiterEmail);
 
-    console.log(`Recruiter data found:`, recruiterData);
+    console.log(`Recruiter data found: ${recruiterData && recruiterData.email}`);
 
     if (!recruiterData) {
       console.log(`No recruiter found with email: ${recruiterEmail}`);

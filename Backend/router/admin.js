@@ -54,7 +54,7 @@ const adminAuthMiddleware = async (req, res, next) => {
 };
 
 const handleAdminLogin = async (req, res) => {
-  console.log("Request body:", req.body);
+  console.log("Admin login attempt:", req.body && req.body.email);
   const {email,pass}=req.body;
   const result= await adminVerify.checkCredentials(email,pass);
   if(!result.success) {

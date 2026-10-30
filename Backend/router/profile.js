@@ -279,7 +279,7 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     console.log('[Profile POST] Request received from:', req.user.email);
     console.log('[Profile POST] Request body keys:', Object.keys(req.body));
-    console.log('[Profile POST] Full body:', JSON.stringify(req.body));
+    
     
     const result = await findUserByEmail(req.user.email);
     
