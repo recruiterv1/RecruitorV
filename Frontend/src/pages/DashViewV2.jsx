@@ -385,6 +385,7 @@ function DashViewV2Inner() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const wantsSubmit = searchParams.get('submit') === '1';
+  const bankCandId = searchParams.get('bank') || '';
   const [view, setView] = useState('jd');
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -925,6 +926,17 @@ function DashViewV2Inner() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, [wantsSubmit, hasAccess]);
+
+  // Arriving from the Resume Bank / Shortlist (?bank=<candidate id>): load that
+  // candidate + CV into the form once access is confirmed. Fires once.
+  const bankLoadDone = useRef(false);
+  useEffect(() => {
+    if (bankCandId && !bankLoadDone.current && hasAccess) {
+      bankLoadDone.current = true;
+      useCandidate({ id: bankCandId });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankCandId, hasAccess]);
 
   // ── Position Briefing ───────────────────────────────────────────────────────
   // Authoring lives on its own page now (/briefing/:pos_id). Here we only READ
