@@ -1,6 +1,7 @@
 import axios from 'axios';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Users, TrendingUp, Eye, Phone, MapPin, Calendar, Filter, X, RotateCcw, Search, Mail, FileText, ChevronLeft, ChevronRight, Loader2, Briefcase, CheckCircle, Bookmark } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import SubmitCandidateTabs from '../components/SubmitCandidateTabs';
 
 const AllCandidates = () => {
@@ -142,6 +143,7 @@ const AllCandidates = () => {
   const [resumeFor, setResumeFor] = useState(null);      // candidate for the "Use Resume" modal
   const [assignments, setAssignments] = useState(null);  // recruiter's assigned positions
   const [selectedPos, setSelectedPos] = useState('');    // radio selection (positionId)
+  const navigate = useNavigate();
   const [submitCtx, setSubmitCtx] = useState(null);      // opens SubmitCandidateTabs
 
   const openResume = async (candidate) => {
@@ -154,11 +156,11 @@ const AllCandidates = () => {
   const proceedResume = () => {
     const a = (assignments || []).find(x => String(x.positionId) === String(selectedPos));
     if (!a) return;
-    setSubmitCtx({
-      pos_id: a.positionId, pos_name: a.positionTitle || '', client: a.client || '',
-      clientspoc: a.clientspoc || '', hr_name: a.hr_name || '', prefill: resumeFor,
-    });
+    // Open the live position page (dash_view) with this candidate + CV loaded
+    // into its submit form, instead of the old in-page modal.
+    const bankId = resumeFor?.id;
     setResumeFor(null);
+    navigate(`/dash_view/${a.positionId}?submit=1${bankId ? `&bank=${encodeURIComponent(bankId)}` : ''}`);
   };
 
 

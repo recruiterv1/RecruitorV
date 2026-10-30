@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { Bookmark, Loader2, Gauge, MapPin, Clock, Briefcase, FileText, Trash2, Check, X } from 'lucide-react';
 import DashShell from '../components/DashShell';
+import { useNavigate } from 'react-router-dom';
 import SubmitCandidateTabs from '../components/SubmitCandidateTabs';
 
 // Candidates a recruiter set aside from the Resume Bank, each scored against
@@ -16,6 +17,7 @@ export default function Shortlist() {
   const [msg, setMsg] = useState('');
   const [open, setOpen] = useState(null);       // candidateId whose breakdown is showing
   const [holdHours, setHoldHours] = useState(4);
+  const navigate = useNavigate();
   const [submitCtx, setSubmitCtx] = useState(null);
 
   const load = useCallback(async () => {
@@ -154,10 +156,7 @@ export default function Shortlist() {
 
                     <div className="mt-2.5 flex items-center gap-2">
                       <button
-                        onClick={() => setSubmitCtx({
-                          pos_id: r.best.pos_id, pos_name: r.best.position, client: r.best.client,
-                          clientspoc: r.best.clientspoc, hr_name: r.best.hr_name, prefill: r,
-                        })}
+                        onClick={() => navigate(`/dash_view/${r.best.pos_id}?submit=1&bank=${encodeURIComponent(r.candidateId)}`)}
                         className="px-3.5 py-1.5 rounded-lg bg-blue-600 text-white text-[12.5px] font-bold">
                         Submit to this position
                       </button>

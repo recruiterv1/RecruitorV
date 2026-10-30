@@ -77,7 +77,10 @@ const AssignedPositions = () => {
   const handleSubmitCandidate = (e, position) => {
     e.stopPropagation();
     if (!isPositionActive(position)) return;   // never for inactive/paused positions
-    navigate(`/dash_view/${position.pos_id}?submit=1`);
+    // A candidate carried over from Refer & Earn / Resume Bank is loaded into the form.
+    const bankId = useResumeCand?.id;
+    if (bankId) clearUseResume();
+    navigate(`/dash_view/${position.pos_id}?submit=1${bankId ? `&bank=${encodeURIComponent(bankId)}` : ''}`);
   };
 
   const closeApplyModal = () => {
