@@ -181,7 +181,7 @@ const buildFilter = ({ field, op, value }) => {
     return [`(${value.map(() => AC).join(' OR ') || '0'})`, value.flatMap((x) => [p, p, JSON.stringify(encode(x))])];
   }
   if (op === 'in' || op === 'not-in') {
-    const scalar = (x) => (isTs(x) ? tsIso(x) : typeof x === 'boolean' ? String(x) : String(x));
+    const scalar = (x) => (isTs(x) ? tsIso(x) : typeof x === 'boolean' ? (x ? '1' : '0') : String(x));
     const list = value.map(scalar);
     if (!list.length) return [op === 'in' ? '0' : '1', []];
     const target = value.some(isTs) ? p + '.v' : p;
@@ -192,6 +192,15 @@ const buildFilter = ({ field, op, value }) => {
     return op === '!='
       ? ["JSON_EXTRACT(data, ?) IS NOT NULL AND JSON_TYPE(JSON_EXTRACT(data, ?)) <> 'NULL'", [p, p]]
       : ["JSON_TYPE(JSON_EXTRACT(data, ?)) = 'NULL'", [p]];
+  }
+  // JSON true/false come back from JSON_VALUE as '1'/'0', not 'true'/'false', so a
+  // boolean can't take the string path below (where('active','==',true) matched nothing).
+  if (typeof value === 'boolean') {
+    const isBool = "JSON_TYPE(JSON_EXTRACT(data, ?)) = 'BOOLEAN'";
+    const want = value ? '1' : '0';
+    return op === '!='
+      ? [`JSON_VALUE(data, ?) IS NOT NULL AND NOT (${isBool} AND JSON_VALUE(data, ?) = ?)`, [p, p, p, want]]
+      : [`${isBool} AND JSON_VALUE(data, ?) = ?`, [p, p, want]];
   }
   if (isTs(value)) return [`JSON_VALUE(data, ?) ${BIN} ${op === '!=' ? '<>' : SQL_OPS[op]} ?`, [p + '.v', tsIso(value)]];
   if (typeof value === 'number') return [`JSON_VALUE(data, ?) IS NOT NULL AND CAST(JSON_VALUE(data, ?) AS DOUBLE) ${op === '!=' ? '<>' : SQL_OPS[op]} ?`, [p, p, value]];
