@@ -30,7 +30,13 @@ const toMs = (v) => {
   return Number.isNaN(t) ? 0 : t;
 };
 
-const regMsOf = (r) => toMs(r.registrationDate) || toMs(r.createdAt);
+// The 45 days run from registration, or from the last time an admin switched the
+// account back on, whichever is later; otherwise a reactivated account is suspended
+// again at its very next login because it still has no activity.
+const regMsOf = (r) => {
+  const base = toMs(r.registrationDate) || toMs(r.createdAt);
+  return base ? Math.max(base, toMs(r.reactivatedAt)) : 0;
+};
 
 // ── Bulk sweep — used by the daily scheduled job ──────────────────────────────
 async function suspendInactiveRecruiters() {

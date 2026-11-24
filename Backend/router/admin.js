@@ -931,6 +931,11 @@ router.patch('/user-account-status', adminAuthMiddleware, async (req, res) => {
       ...(action === 'block'
         ? { accessBlockedAt: new Date(), accessBlockedBy: req.user?.email || 'admin' }
         : { accessBlockedAt: null, accessBlockedBy: null }),
+      // Switching an account on clears an inactivity suspension and restarts its
+      // 45-day clock (see inactivityF.regMsOf).
+      ...(newStatus === 'approved'
+        ? { reactivatedAt: new Date(), suspendedAt: null, suspendedReason: null, isActive: true }
+        : {}),
     });
 
     // Send approval email
