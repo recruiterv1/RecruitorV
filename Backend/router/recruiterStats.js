@@ -80,7 +80,7 @@ router.patch('/:id/active', async (req, res) => {
     const recruiterF = require('../model_fire/recruiterF');
     const patch = { isActive: Boolean(isActive) };
     // Re-activating clears an inactivity suspension so the recruiter can log in again.
-    if (Boolean(isActive)) { patch.accountStatus = 'approved'; patch.suspendedReason = null; }
+    if (Boolean(isActive)) { patch.accountStatus = 'approved'; patch.suspendedReason = null; patch.reactivatedAt = new Date(); }
     await recruiterF.updateRecruiter(id, patch);
     // Invalidate the cached recruiter list so the change shows immediately.
     try { require('../utils/cache').invalidate('rec'); } catch (_) {}

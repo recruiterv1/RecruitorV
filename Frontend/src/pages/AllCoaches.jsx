@@ -773,18 +773,18 @@ const AllCoaches = ({ embedded = false }) => {
                       Login as
                     </button>
                     <button
-                      onClick={() => handleAccountStatus(selectedCoach, selectedCoach.accountStatus === 'blocked' ? 'unblock' : 'block')}
+                      onClick={() => handleAccountStatus(selectedCoach, ['blocked', 'suspended'].includes(selectedCoach.accountStatus) ? 'unblock' : 'block')}
                       disabled={updatingId === selectedCoach.id}
-                      title={selectedCoach.accountStatus === 'blocked' ? 'Allow this user to log in again' : 'Stop this user from accessing the dashboard'}
+                      title={['blocked', 'suspended'].includes(selectedCoach.accountStatus) ? 'Allow this user to log in again' : 'Stop this user from accessing the dashboard'}
                       className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 ${
-                        selectedCoach.accountStatus === 'blocked'
+                        ['blocked', 'suspended'].includes(selectedCoach.accountStatus)
                           ? 'bg-white text-green-700 hover:bg-green-50'
                           : 'bg-white text-red-600 hover:bg-red-50'
                       }`}
                     >
                       {updatingId === selectedCoach.id
                         ? 'Saving…'
-                        : selectedCoach.accountStatus === 'blocked' ? 'Grant Access' : 'Decline Access'}
+                        : selectedCoach.accountStatus === 'suspended' ? 'Reactivate Access' : selectedCoach.accountStatus === 'blocked' ? 'Grant Access' : 'Decline Access'}
                     </button>
                     <button
                       onClick={() => setViewModalOpen(false)}
@@ -1038,18 +1038,18 @@ const AllCoaches = ({ embedded = false }) => {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handleAccountStatus(selectedCoach, selectedCoach.accountStatus === 'blocked' ? 'unblock' : 'block')}
+                    onClick={() => handleAccountStatus(selectedCoach, ['blocked', 'suspended'].includes(selectedCoach.accountStatus) ? 'unblock' : 'block')}
                     disabled={updatingId === selectedCoach.id}
-                    title={selectedCoach.accountStatus === 'blocked' ? 'Allow this user to log in again' : 'Stop this user from accessing the dashboard'}
+                    title={['blocked', 'suspended'].includes(selectedCoach.accountStatus) ? 'Allow this user to log in again' : 'Stop this user from accessing the dashboard'}
                     className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 ${
-                      selectedCoach.accountStatus === 'blocked'
+                      ['blocked', 'suspended'].includes(selectedCoach.accountStatus)
                         ? 'bg-white text-green-700 hover:bg-green-50'
                         : 'bg-white text-red-600 hover:bg-red-50'
                     }`}
                   >
                     {updatingId === selectedCoach.id
                       ? 'Saving…'
-                      : selectedCoach.accountStatus === 'blocked' ? 'Grant Access' : 'Decline Access'}
+                      : selectedCoach.accountStatus === 'suspended' ? 'Reactivate Access' : selectedCoach.accountStatus === 'blocked' ? 'Grant Access' : 'Decline Access'}
                   </button>
                   <button
                     onClick={() => setViewModalOpen(false)}

@@ -558,18 +558,18 @@ const AllExperts = ({ embedded = false }) => {
                       Login as
                     </button>
                     <button
-                      onClick={() => handleAccountStatus(selectedExpert, selectedExpert.accountStatus === 'blocked' ? 'unblock' : 'block')}
+                      onClick={() => handleAccountStatus(selectedExpert, ['blocked', 'suspended'].includes(selectedExpert.accountStatus) ? 'unblock' : 'block')}
                       disabled={updatingId === selectedExpert.id}
-                      title={selectedExpert.accountStatus === 'blocked' ? 'Allow this user to log in again' : 'Stop this user from accessing the dashboard'}
+                      title={['blocked', 'suspended'].includes(selectedExpert.accountStatus) ? 'Allow this user to log in again' : 'Stop this user from accessing the dashboard'}
                       className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 ${
-                        selectedExpert.accountStatus === 'blocked'
+                        ['blocked', 'suspended'].includes(selectedExpert.accountStatus)
                           ? 'bg-white text-green-700 hover:bg-green-50'
                           : 'bg-white text-red-600 hover:bg-red-50'
                       }`}
                     >
                       {updatingId === selectedExpert.id
                         ? 'Saving…'
-                        : selectedExpert.accountStatus === 'blocked' ? 'Grant Access' : 'Decline Access'}
+                        : selectedExpert.accountStatus === 'suspended' ? 'Reactivate Access' : selectedExpert.accountStatus === 'blocked' ? 'Grant Access' : 'Decline Access'}
                     </button>
                     <button
                       onClick={() => setViewModalOpen(false)}
@@ -946,18 +946,18 @@ const AllExperts = ({ embedded = false }) => {
                       Login as
                     </button>
                     <button
-                      onClick={() => handleAccountStatus(selectedExpert, selectedExpert.accountStatus === 'blocked' ? 'unblock' : 'block')}
+                      onClick={() => handleAccountStatus(selectedExpert, ['blocked', 'suspended'].includes(selectedExpert.accountStatus) ? 'unblock' : 'block')}
                       disabled={updatingId === selectedExpert.id}
-                      title={selectedExpert.accountStatus === 'blocked' ? 'Allow this user to log in again' : 'Stop this user from accessing the dashboard'}
+                      title={['blocked', 'suspended'].includes(selectedExpert.accountStatus) ? 'Allow this user to log in again' : 'Stop this user from accessing the dashboard'}
                       className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 ${
-                        selectedExpert.accountStatus === 'blocked'
+                        ['blocked', 'suspended'].includes(selectedExpert.accountStatus)
                           ? 'bg-white text-green-700 hover:bg-green-50'
                           : 'bg-white text-red-600 hover:bg-red-50'
                       }`}
                     >
                       {updatingId === selectedExpert.id
                         ? 'Saving…'
-                        : selectedExpert.accountStatus === 'blocked' ? 'Grant Access' : 'Decline Access'}
+                        : selectedExpert.accountStatus === 'suspended' ? 'Reactivate Access' : selectedExpert.accountStatus === 'blocked' ? 'Grant Access' : 'Decline Access'}
                     </button>
                     <button
                       onClick={() => setViewModalOpen(false)}
